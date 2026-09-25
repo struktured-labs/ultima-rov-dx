@@ -1,0 +1,34 @@
+[project]
+name = "ultima-rov-dx"
+version = "0.0.0"
+description = "Colorization toolkit for Ultima: Runes of Virtue (GB to GBC)"
+authors = [ { name = "Carmelo Piccione" } ]
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "click>=8.1",
+  "pillow>=10.0",
+  "numpy>=1.26",
+  "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+# Headless emulation for probes / launch gate (penta-dragon-dx used PyBoy
+# without declaring it; declared explicitly here).
+emu = ["pyboy>=2.0"]
+
+[project.scripts]
+rov-dx = "ultima_rov_dx.cli:main"
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.black]
+line-length = 100
+
+[tool.ruff]
+line-length = 100

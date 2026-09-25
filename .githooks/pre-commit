@@ -1,0 +1,9 @@
+#!/bin/sh
+set -eu
+
+# Use the project environment when uv is available (tests need pyyaml).
+if command -v uv >/dev/null 2>&1; then PY="uv run --quiet python"; else PY="python3"; fi
+
+$PY scripts/diagnostics/verify_mgba_singleflight_guard.py
+$PY scripts/diagnostics/verify_precommit_policy.py
+$PY -m unittest discover -s tests -q

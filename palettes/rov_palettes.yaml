@@ -1,0 +1,36 @@
+# Ultima: Runes of Virtue DX palettes  (source of truth for colors)
+#
+# PLACEHOLDER: every palette below is neutral DMG-style grayscale so the
+# pipeline can be exercised before any art direction exists. Nothing here is
+# copied from penta-dragon-dx. Replace names/colors once the scenes and tile
+# groups are reverse engineered (see reverse_engineering/notes/TODO.md).
+#
+# Colors are BGR555 hex: 0bBBBBBGGGGGRRRRR (5 bits each), 4 per palette,
+# index 0 first. Exactly 8 BG and 8 OBJ palettes are required.
+#   7FFF=white 5294=light gray 294A=dark gray 0000=black
+#   001F=red 03E0=green 7C00=blue 03FF=yellow 7FE0=cyan 7C1F=magenta
+# OBJ color 0 is always transparent on hardware.
+
+bg_palettes:
+  # TODO(art): e.g. overworld grass/trees, town, dungeon stone per dungeon,
+  # water, lava, text box/status bar -- decide after mapping tile usage.
+  BG0: { colors: ["7FFF", "5294", "294A", "0000"] }
+  BG1: { colors: ["7FFF", "5294", "294A", "0000"] }
+  BG2: { colors: ["7FFF", "5294", "294A", "0000"] }
+  BG3: { colors: ["7FFF", "5294", "294A", "0000"] }
+  BG4: { colors: ["7FFF", "5294", "294A", "0000"] }
+  BG5: { colors: ["7FFF", "5294", "294A", "0000"] }
+  BG6: { colors: ["7FFF", "5294", "294A", "0000"] }
+  BG7: { colors: ["7FFF", "5294", "294A", "0000"] }
+
+obj_palettes:
+  # TODO(art): player characters (Mage/Bard/Knight/Ranger per the box text),
+  # enemies, projectiles, items, 2-player partner.
+  OBJ0: { colors: ["7FFF", "5294", "294A", "0000"] }
+  OBJ1: { colors: ["7FFF", "5294", "294A", "0000"] }
+  OBJ2: { colors: ["7FFF", "5294", "294A", "0000"] }
+  OBJ3: { colors: ["7FFF", "5294", "294A", "0000"] }
+  OBJ4: { colors: ["7FFF", "5294", "294A", "0000"] }
+  OBJ5: { colors: ["7FFF", "5294", "294A", "0000"] }
+  OBJ6: { colors: ["7FFF", "5294", "294A", "0000"] }
+  OBJ7: { colors: ["7FFF", "5294", "294A", "0000"] }

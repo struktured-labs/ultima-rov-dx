@@ -1,0 +1,44 @@
+# ROM files (copyrighted, cannot be in public repo)
+*.gb
+*.gbc
+*.gba
+rom/**/*.gb
+rom/**/*.gbc
+
+# Save data and emulator states (penta-dragon-dx tracked many of these by
+# accident; keep them out from the start)
+*.sav
+*.srm
+*.ram
+*.rtc
+*.ss[0-9]
+*.ss
+save_states/*
+!save_states/README.md
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+
+# Local JavaScript dependencies
+node_modules/
+
+# Build artifacts
+/dist/
+rom/working/*
+!rom/working/.gitkeep
+
+# Temporary files (see AGENTS.md: never use system /tmp)
+tmp/
+test_output/
+logs/
+
+# Debug output
+debug_*.png
+*.log
+tests/results/
+
+# mGBA-emitted screenshots next to ROMs
+rom/**/*.png

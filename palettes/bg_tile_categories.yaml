@@ -1,0 +1,13 @@
+# BG tile ID -> material category -> BG palette index.
+# (Same idea as penta-dragon-dx's bg_tile_categories.yaml; contents are
+# game-specific and intentionally EMPTY until tile usage is mapped.)
+#
+# TODO(RE): dump VRAM tile sets per scene (overworld, towns, each dungeon,
+# text/status UI) and categorize tile IDs. Tile IDs are likely shared
+# across scenes, so categories may need to be scene-scoped.
+schema_version: 1
+categories: {}
+#  example_category:
+#    palette: 0
+#    tiles: []      # e.g. [0x10, 0x11]
+#    scenes: []     # optional scene scoping
