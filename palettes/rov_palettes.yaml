@@ -6,7 +6,9 @@
 # these tables, so DMG fades/blanking keep working in color.
 # Exactly 8 BG and 8 OBJ palettes, in hardware order. Names are referenced
 # by palettes/bg_tile_categories.yaml and palettes/obj_categories.yaml.
-# OBJ color 0 is transparent on hardware (the first entry is ignored).
+# OBJ color 0 is transparent on hardware for colour index 0, but it is also
+# the colour of DMG shade 0 when OBP0/OBP1 map a visible index to shade 0
+# (e.g. OBP0=$34 in the dungeon-entrance cutscene), so keep it white.
 
 bg_palettes:
   ui:     { colors: ["#FFF8E8", "#C8B898", "#686050", "#181010"] }  # text, status bar, menus
@@ -19,14 +21,14 @@ bg_palettes:
   gold:   { colors: ["#FFF0C0", "#E8C040", "#A06818", "#382008"] }  # shrines, ankh, carpets, logo
 
 obj_palettes:
-  avatar:  { colors: ["#000000", "#FFE0C0", "#3870D8", "#101830"] }  # the player (tiles < $80)
-  fiend:   { colors: ["#000000", "#FFC8A0", "#E04030", "#481010"] }  # dragons, daemons, imps
-  beast:   { colors: ["#000000", "#D0F090", "#58A838", "#183010"] }  # orcs, trolls, snakes, slimes
-  undead:  { colors: ["#000000", "#F0E8FF", "#A080D0", "#302050"] }  # skeletons, spiders, bats
-  folk:    { colors: ["#000000", "#FFD8B0", "#C07840", "#402010"] }  # townsfolk, animals
-  royal:   { colors: ["#000000", "#FFE0B0", "#D03838", "#302058"] }  # guards, Lord British
-  item:    { colors: ["#000000", "#FFF8A0", "#E8B030", "#704010"] }  # chests, sparkles, missiles
-  obp1:    { colors: ["#000000", "#E0E0E0", "#909090", "#202020"] }  # sprites using DMG OBP1
+  avatar:  { colors: ["#FFFFFF", "#FFE0C0", "#3870D8", "#101830"] }  # the player (tiles < $80)
+  fiend:   { colors: ["#FFFFFF", "#FFC8A0", "#E04030", "#481010"] }  # dragons, daemons, imps
+  beast:   { colors: ["#FFFFFF", "#D0F090", "#58A838", "#183010"] }  # orcs, trolls, snakes, slimes
+  undead:  { colors: ["#FFFFFF", "#F0E8FF", "#A080D0", "#302050"] }  # skeletons, spiders, bats
+  folk:    { colors: ["#FFFFFF", "#FFD8B0", "#C07840", "#402010"] }  # townsfolk, animals
+  royal:   { colors: ["#FFFFFF", "#FFE0B0", "#D03838", "#302058"] }  # guards, Lord British
+  item:    { colors: ["#FFFFFF", "#FFF8A0", "#E8B030", "#704010"] }  # chests, sparkles, missiles
+  obp1:    { colors: ["#FFFFFF", "#E0E0E0", "#909090", "#202020"] }  # sprites using DMG OBP1
 
 # Per-area-theme BG color overrides (theme names come from
 # palettes/bg_tile_categories.yaml `area_themes`). Palettes not listed keep
@@ -42,3 +44,21 @@ bg_themes:
     water:  { colors: ["#C8BCA0", "#58A0E8", "#2050A8", "#082050"] }  # fountains, pools
     fire:   { colors: ["#C8BCA0", "#F89828", "#C02810", "#400808"] }  # lava, fire traps
     gold:   { colors: ["#C8BCA0", "#E8C040", "#A06818", "#382008"] }  # arrow floors, switches
+  entrance:  # dungeon title cards (UI palette: night-blue card, gold letters)
+             # and the cave-entrance cutscene (dusk sky, violet mountains,
+             # misty green plain, brown cliff, ochre ground; shared colour 0)
+    ui:     { colors: ["#141C30", "#6C5830", "#B08838", "#F8D070"] }
+    # picture palettes: colour 0 (sky; banded in fire/gold), 2 and 3 (cliff, rocks) are the same in
+    # all of them, colour 1 is the region (bg_tile_categories.yaml pictures)
+    water:  { colors: ["#F8E0C0", "#F0B8A0", "#6E4C34", "#20140E"] }  # sky
+    stone:  { colors: ["#F8E0C0", "#B09CC8", "#6E4C34", "#20140E"] }  # distant mountains
+    grass:  { colors: ["#F8E0C0", "#9CC49A", "#6E4C34", "#20140E"] }  # misty plain
+    earth:  { colors: ["#F8E0C0", "#A88060", "#6E4C34", "#20140E"] }  # cliff and cave mouth
+    wood:   { colors: ["#F8E0C0", "#D0A468", "#6E4C34", "#20140E"] }  # rocky ground, bones
+    fire:   { colors: ["#E8B4AC", "#A88060", "#6E4C34", "#20140E"] }  # sky, top band (rose)
+    gold:   { colors: ["#F0CAB4", "#B09CC8", "#6E4C34", "#20140E"] }  # sky, middle band + mountain tops
+
+# Colours for a DMG palette whose four shades are alike (BGP/OBP $00 = blank
+# white, $FF = black): every CGB palette gets the same colour, so blanking
+# frames are uniform instead of showing each palette's colour 0.
+flat_bg: ["#FFFFFF", "#B0B0B0", "#606060", "#000000"]

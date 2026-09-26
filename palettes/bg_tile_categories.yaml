@@ -67,3 +67,96 @@ area_themes:
     areas: [0x18, 0x19, 0x1A]    # Cavern of Hatred: 0x18 entrance, 0x19 second level, 0x1A third (shrine rooms)
     metatile_palettes:
       earth: [0x23]              # pebbles / rubble
+  entrance:
+    areas: []                    # no map area: selected by the entrance LCD-on sites
+
+# Theme used by dungeon title cards (bank 7 $4619) and the entrance cutscene
+# (bank 7 $4692); the area theme returns when the next area loads.
+entrance_theme: entrance
+
+# Tile -> palette LUT for the dungeon-entrance cutscene (one picture shared by
+# all dungeon entrances; tiles are numbered in reading order). Derived by
+# majority vote over screen regions (tmp probe, see notes/cutscene.md).
+pictures:
+  entrance:
+    # The picture's DMG colour indices are almost disjoint by material: sky
+    # is colour 0, the mountains / misty plain / ground use colour 1, the
+    # cliff and rocks colours 2-3. rov_palettes.yaml bg_themes.entrance gives
+    # every picture palette the same colours 0, 2 and 3, so the palette of a
+    # tile only chooses what colour 1 means there (violet mountain, green
+    # plain, ochre ground) and tiles on a boundary show no seams. Tiles with
+    # colour 1 are classed by the row of their first use (rows 0-4 mountains,
+    # 5-10 plain, 11+ ground); tiles without it by default (cliff).
+    default: earth
+    ranges:
+      - { first: 0x04, last: 0x04, palette: fire }    # cliff edge against the top sky band
+      - { first: 0x05, last: 0x05, palette: water }   # sky (lowest band; upper bands by fixups)
+      - { first: 0x0A, last: 0x0B, palette: fire }
+      - { first: 0x10, last: 0x10, palette: gold }    # cliff edge against the middle band
+      - { first: 0x11, last: 0x13, palette: gold }    # mountain tops in the middle band
+      - { first: 0x17, last: 0x17, palette: gold }
+      - { first: 0x18, last: 0x20, palette: gold }
+      - { first: 0x21, last: 0x26, palette: earth }
+      - { first: 0x27, last: 0x33, palette: stone }
+      - { first: 0x34, last: 0x38, palette: earth }
+      - { first: 0x39, last: 0x41, palette: grass }
+      - { first: 0x42, last: 0x47, palette: earth }
+      - { first: 0x48, last: 0x4B, palette: grass }
+      - { first: 0x4C, last: 0x51, palette: earth }
+      - { first: 0x52, last: 0x55, palette: grass }
+      - { first: 0x56, last: 0x5A, palette: earth }
+      - { first: 0x5B, last: 0x5D, palette: grass }
+      - { first: 0x5E, last: 0x62, palette: earth }
+      - { first: 0x63, last: 0x64, palette: grass }
+      - { first: 0x65, last: 0x6F, palette: earth }
+      - { first: 0x70, last: 0xE3, palette: wood }
+    # Per-cell attributes for tiles used in two places: tile $1E (solid colour
+    # 1) is a mountain top at row 3 and the ground's right edge; the sky tile
+    # $05 gets banded dusk colours (fire = top band rows 0-1, gold = middle
+    # band rows 2-3; bg_themes.entrance gives those palettes the sky shades).
+    fixups:
+      - { row: 13, col: 19, palette: wood }
+      - { row: 0, col: 5, palette: fire }
+      - { row: 0, col: 6, palette: fire }
+      - { row: 0, col: 7, palette: fire }
+      - { row: 0, col: 8, palette: fire }
+      - { row: 0, col: 9, palette: fire }
+      - { row: 0, col: 10, palette: fire }
+      - { row: 0, col: 11, palette: fire }
+      - { row: 0, col: 12, palette: fire }
+      - { row: 0, col: 13, palette: fire }
+      - { row: 0, col: 14, palette: fire }
+      - { row: 0, col: 15, palette: fire }
+      - { row: 0, col: 16, palette: fire }
+      - { row: 0, col: 17, palette: fire }
+      - { row: 0, col: 18, palette: fire }
+      - { row: 0, col: 19, palette: fire }
+      - { row: 1, col: 6, palette: fire }
+      - { row: 1, col: 7, palette: fire }
+      - { row: 1, col: 8, palette: fire }
+      - { row: 1, col: 9, palette: fire }
+      - { row: 1, col: 10, palette: fire }
+      - { row: 1, col: 11, palette: fire }
+      - { row: 1, col: 12, palette: fire }
+      - { row: 1, col: 13, palette: fire }
+      - { row: 1, col: 14, palette: fire }
+      - { row: 1, col: 15, palette: fire }
+      - { row: 1, col: 16, palette: fire }
+      - { row: 1, col: 17, palette: fire }
+      - { row: 1, col: 18, palette: fire }
+      - { row: 1, col: 19, palette: fire }
+      - { row: 2, col: 6, palette: gold }
+      - { row: 2, col: 7, palette: gold }
+      - { row: 2, col: 8, palette: gold }
+      - { row: 2, col: 9, palette: gold }
+      - { row: 2, col: 10, palette: gold }
+      - { row: 2, col: 11, palette: gold }
+      - { row: 2, col: 12, palette: gold }
+      - { row: 2, col: 13, palette: gold }
+      - { row: 2, col: 17, palette: gold }
+      - { row: 2, col: 18, palette: gold }
+      - { row: 2, col: 19, palette: gold }
+      - { row: 3, col: 6, palette: gold }
+      - { row: 3, col: 7, palette: gold }
+      - { row: 3, col: 18, palette: gold }
+      - { row: 3, col: 19, palette: gold }
