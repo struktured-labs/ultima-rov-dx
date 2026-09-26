@@ -2,8 +2,8 @@
 
 Same YAML schema as penta-dragon-dx (`bg_palettes` / `obj_palettes`, each an
 ordered mapping of ``Name: {colors: [4 x BGR555 hex]}``). Colors are
-BGR555 hex strings: 0bBBBBBGGGGGRRRRR, e.g. 7FFF white, 001F red,
-03E0 green, 7C00 blue, 0000 black.
+either "#RRGGBB" or BGR555 hex strings: 0bBBBBBGGGGGRRRRR, e.g. 7FFF white,
+001F red, 03E0 green, 7C00 blue, 0000 black.
 """
 
 from __future__ import annotations
@@ -27,6 +27,10 @@ def load(path: str | Path) -> dict[str, Any]:
 
 def bgr555(color: str) -> int:
     text = str(color).strip().upper()
+    if text.startswith("#"):
+        if len(text) != 7 or any(c not in "0123456789ABCDEF" for c in text[1:]):
+            raise ValueError(f"invalid RGB color {color!r}; expected '#RRGGBB'")
+        return rgb888_to_bgr555(int(text[1:3], 16), int(text[3:5], 16), int(text[5:7], 16))
     if len(text) != 4 or any(c not in "0123456789ABCDEF" for c in text):
         raise ValueError(f"invalid BGR555 color {color!r}; expected 4 hex digits like '7FFF'")
     value = int(text, 16)
@@ -62,3 +66,9 @@ def encode(data: dict[str, Any]) -> dict[str, Any]:
     bg, bg_names = _encode_group(data.get("bg_palettes"), "bg_palettes")
     obj, obj_names = _encode_group(data.get("obj_palettes"), "obj_palettes")
     return {"bg": bg, "obj": obj, "bg_names": bg_names, "obj_names": obj_names}
+
+
+def names(data: dict[str, Any], kind: str) -> list[str]:
+    """Palette names in hardware order for ``bg_palettes`` / ``obj_palettes``."""
+
+    return [str(n) for n in (data.get(kind) or {})]

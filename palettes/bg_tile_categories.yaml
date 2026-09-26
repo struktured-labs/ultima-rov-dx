@@ -1,13 +1,54 @@
-# BG tile ID -> material category -> BG palette index.
-# (Same idea as penta-dragon-dx's bg_tile_categories.yaml; contents are
-# game-specific and intentionally EMPTY until tile usage is mapped.)
+# BG attribute assignment for Ultima: Runes of Virtue DX.
 #
-# TODO(RE): dump VRAM tile sets per scene (overworld, towns, each dungeon,
-# text/status UI) and categorize tile IDs. Tile IDs are likely shared
-# across scenes, so categories may need to be scene-scoped.
-schema_version: 1
-categories: {}
-#  example_category:
-#    palette: 0
-#    tiles: []      # e.g. [0x10, 0x11]
-#    scenes: []     # optional scene scoping
+# How BG tiles are organised (see reverse_engineering/notes/bg_tiles.md):
+#   * Tiles $00-$3F are 16 "metatile slots": slot s = tiles s*4..s*4+3
+#     (VRAM $9000+s*64). The slot loader (bank1:$4ECD-$4F7C) copies a
+#     2x2 graphic from bank 1 at $689B + g*64 into the slot, where
+#     g = 0..63 is the town/dungeon set and g = 64..92 the overworld set
+#     (base $789B). The runtime records the palette of graphic g for the
+#     slot, so every tile of the slot gets metatile_palettes[g].
+#   * Tiles $40-$FF are font/UI (status bar, text boxes, menus).
+#
+# Values are palette names from palettes/rov_palettes.yaml (bg_palettes).
+schema_version: 2
+
+default_metatile_palette: stone
+metatile_palettes:
+  # --- town / dungeon set (atlas A, g = $00-$3F) ---
+  stone: [0x00, 0x01, 0x02, 0x05, 0x07, 0x0D, 0x16, 0x1D, 0x1F, 0x20, 0x21, 0x23,
+          0x29, 0x2B, 0x2C, 0x31, 0x33, 0x35, 0x36, 0x38, 0x39, 0x3A, 0x3B, 0x3D,
+          0x41, 0x50, 0x52]                             # floors, rock, pits, levers, pillars, grates, castle floor
+  wood:  [0x03, 0x04, 0x06, 0x09, 0x0C, 0x0E, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15,
+          0x17, 0x18, 0x19, 0x1A, 0x2A, 0x2D, 0x2E,
+          0x49, 0x4C, 0x54, 0x55]                       # doors, ladders, chests, furniture, ship, houses
+  earth: [0x08, 0x1E, 0x40, 0x44, 0x4A, 0x4B, 0x4D]   # brick walls, mountains, hills
+  water: [0x0B, 0x0F, 0x45, 0x46, 0x47, 0x48]           # water, fountain
+  grass: [0x0A, 0x1B, 0x1C, 0x30, 0x32, 0x34, 0x42, 0x43, 0x4E, 0x4F]  # plains (dotted), plants, trees
+  fire:  [0x24, 0x2F, 0x3C]                             # lava/swamp blotches, spike trap, brazier
+  gold:  [0x22, 0x25, 0x26, 0x27, 0x28, 0x37, 0x3E, 0x3F, 0x51, 0x53]  # shop sign, arrows, carpets, shrine, ankh
+
+# Palette for font/UI tiles $40-$FF on game screens (overrides allowed).
+ui_palette: ui
+ui_overrides: {}
+
+# Title-screen LUTs, used on screens whose LCD-on site is `rst $30`
+# (game_layout.TITLE_LCD_ON_SITES). The runtime picks the LUT from LCDC
+# bit 3 of the value being written: 0 (map $9800) = castle, 1 ($9C00) = logo.
+title_screens:
+  castle:            # picture uses tile ids in reading order
+    default: stone   # $00-$65 sky and castle
+    ranges:
+      - { first: 0x66, last: 0xC1, palette: grass }   # hills and road
+  logo:
+    default: stone   # white/gray gradient background rows
+    ranges:
+      - { first: 0x01, last: 0x3B, palette: fire }    # "Ultima" lettering
+      - { first: 0x3C, last: 0x3D, palette: gold }    # coin (ankh medallion)
+      - { first: 0x3F, last: 0x42, palette: gold }
+      - { first: 0x44, last: 0x4A, palette: gold }
+      - { first: 0x4C, last: 0x52, palette: gold }
+      - { first: 0x54, last: 0x5A, palette: gold }
+      - { first: 0x5C, last: 0x62, palette: gold }
+      - { first: 0x64, last: 0x68, palette: gold }
+      - { first: 0x6A, last: 0x6C, palette: gold }
+      - { first: 0x6D, last: 0x9B, palette: water }   # "Runes of Virtue" band

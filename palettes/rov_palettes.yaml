@@ -1,36 +1,29 @@
 # Ultima: Runes of Virtue DX palettes  (source of truth for colors)
 #
-# PLACEHOLDER: every palette below is neutral DMG-style grayscale so the
-# pipeline can be exercised before any art direction exists. Nothing here is
-# copied from penta-dragon-dx. Replace names/colors once the scenes and tile
-# groups are reverse engineered (see reverse_engineering/notes/TODO.md).
-#
-# Colors are BGR555 hex: 0bBBBBBGGGGGRRRRR (5 bits each), 4 per palette,
-# index 0 first. Exactly 8 BG and 8 OBJ palettes are required.
-#   7FFF=white 5294=light gray 294A=dark gray 0000=black
-#   001F=red 03E0=green 7C00=blue 03FF=yellow 7FE0=cyan 7C1F=magenta
-# OBJ color 0 is always transparent on hardware.
+# Colors are "#RRGGBB" (converted to BGR555, 5 bits per channel) or raw
+# BGR555 hex like "7FFF". 4 per palette, index = DMG shade (0 = lightest,
+# 3 = darkest). The runtime maps the game's BGP/OBP0/OBP1 values through
+# these tables, so DMG fades/blanking keep working in color.
+# Exactly 8 BG and 8 OBJ palettes, in hardware order. Names are referenced
+# by palettes/bg_tile_categories.yaml and palettes/obj_categories.yaml.
+# OBJ color 0 is transparent on hardware (the first entry is ignored).
 
 bg_palettes:
-  # TODO(art): e.g. overworld grass/trees, town, dungeon stone per dungeon,
-  # water, lava, text box/status bar -- decide after mapping tile usage.
-  BG0: { colors: ["7FFF", "5294", "294A", "0000"] }
-  BG1: { colors: ["7FFF", "5294", "294A", "0000"] }
-  BG2: { colors: ["7FFF", "5294", "294A", "0000"] }
-  BG3: { colors: ["7FFF", "5294", "294A", "0000"] }
-  BG4: { colors: ["7FFF", "5294", "294A", "0000"] }
-  BG5: { colors: ["7FFF", "5294", "294A", "0000"] }
-  BG6: { colors: ["7FFF", "5294", "294A", "0000"] }
-  BG7: { colors: ["7FFF", "5294", "294A", "0000"] }
+  ui:     { colors: ["#FFF8E8", "#C8B898", "#686050", "#181010"] }  # text, status bar, menus
+  grass:  { colors: ["#D8F0A0", "#80C050", "#307828", "#102010"] }  # plains, trees, plants
+  water:  { colors: ["#C8ECFF", "#5898E8", "#2050A8", "#082050"] }  # sea, rivers, fountains
+  stone:  { colors: ["#E8E8E0", "#A8A8B8", "#585870", "#181820"] }  # dungeon floor/walls, castle
+  wood:   { colors: ["#F8E0B0", "#C89050", "#785028", "#281808"] }  # doors, chests, furniture, ladders, ship
+  earth:  { colors: ["#F0D8B0", "#C89868", "#885838", "#302010"] }  # brick, mountains, sand
+  fire:   { colors: ["#FFF080", "#F8A020", "#C03010", "#401008"] }  # lava, fire, traps
+  gold:   { colors: ["#FFF0C0", "#E8C040", "#A06818", "#382008"] }  # shrines, ankh, carpets, logo
 
 obj_palettes:
-  # TODO(art): player characters (Mage/Bard/Knight/Ranger per the box text),
-  # enemies, projectiles, items, 2-player partner.
-  OBJ0: { colors: ["7FFF", "5294", "294A", "0000"] }
-  OBJ1: { colors: ["7FFF", "5294", "294A", "0000"] }
-  OBJ2: { colors: ["7FFF", "5294", "294A", "0000"] }
-  OBJ3: { colors: ["7FFF", "5294", "294A", "0000"] }
-  OBJ4: { colors: ["7FFF", "5294", "294A", "0000"] }
-  OBJ5: { colors: ["7FFF", "5294", "294A", "0000"] }
-  OBJ6: { colors: ["7FFF", "5294", "294A", "0000"] }
-  OBJ7: { colors: ["7FFF", "5294", "294A", "0000"] }
+  avatar:  { colors: ["#000000", "#FFE0C0", "#3870D8", "#101830"] }  # the player (tiles < $80)
+  fiend:   { colors: ["#000000", "#FFC8A0", "#E04030", "#481010"] }  # dragons, daemons, imps
+  beast:   { colors: ["#000000", "#D0F090", "#58A838", "#183010"] }  # orcs, trolls, snakes, slimes
+  undead:  { colors: ["#000000", "#F0E8FF", "#A080D0", "#302050"] }  # skeletons, spiders, bats
+  folk:    { colors: ["#000000", "#FFD8B0", "#C07840", "#402010"] }  # townsfolk, animals
+  royal:   { colors: ["#000000", "#FFE0B0", "#D03838", "#302058"] }  # guards, Lord British
+  item:    { colors: ["#000000", "#FFF8A0", "#E8B030", "#704010"] }  # chests, sparkles, missiles
+  obp1:    { colors: ["#000000", "#E0E0E0", "#909090", "#202020"] }  # sprites using DMG OBP1
