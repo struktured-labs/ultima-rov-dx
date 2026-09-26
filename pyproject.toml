@@ -27,6 +27,9 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+ultima_rov_dx = ["asm/*.asm"]
+
 [tool.black]
 line-length = 100
 

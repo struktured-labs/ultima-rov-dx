@@ -2,7 +2,7 @@
 """Pre-launch gate: verify a ROM boots to a non-blank screen before headed play.
 
 Usage:
-    uv run --extra emu python scripts/launch_gate.py rom/working/ultima_rov_dx.gb
+    uv run --extra emu python scripts/launch_gate.py rom/working/ultima_rov_dx.gbc
 
 Exit 0 = screen shows content after N frames (or PyBoy unavailable -> skipped),
      1 = blank/white screen (typical of a CGB-flagged ROM with no palettes loaded),

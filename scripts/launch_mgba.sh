@@ -8,7 +8,7 @@
 set -euo pipefail
 
 PROJECT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-ROM="${1:-rom/working/ultima_rov_dx.gb}"
+ROM="${1:-rom/working/ultima_rov_dx.gbc}"
 GUARDED_MGBA="$PROJECT_DIR/scripts/mgba-qt-singleflight"
 if [[ "$#" -gt 0 ]]; then
     shift

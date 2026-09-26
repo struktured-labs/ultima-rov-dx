@@ -35,9 +35,9 @@ Its MD5 must be `411c3d168141d10eddd93243f2a7765f`
 ```bash
 uv sync --extra emu                         # python deps (+ PyBoy for probes)
 python3 scripts/check_rom.py                # verify the ROM and print its header
-uv run python scripts/build_dx.py           # -> rom/working/ultima_rov_dx.gb + rom/ultima_rov_dx.ips
-uv run python scripts/launch_gate.py rom/working/ultima_rov_dx.gb   # boots to a non-blank screen?
-scripts/launch_mgba.sh rom/working/ultima_rov_dx.gb                 # guarded headed play
+uv run python scripts/build_dx.py           # -> rom/working/ultima_rov_dx.gbc + rom/ultima_rov_dx.ips
+uv run python scripts/launch_gate.py rom/working/ultima_rov_dx.gbc   # boots to a non-blank screen?
+scripts/launch_mgba.sh rom/working/ultima_rov_dx.gbc                 # guarded headed play
 ```
 
 The launcher is deliberate: it goes through a project-wide single-flight

@@ -13,5 +13,5 @@ Place your own dump of the original cartridge here:
 
 Build outputs:
 
-- `rom/working/ultima_rov_dx.gb` — patched ROM (gitignored)
+- `rom/working/ultima_rov_dx.gbc` — patched ROM (gitignored)
 - `rom/ultima_rov_dx.ips` — ROM-free distribution patch (committed once real)

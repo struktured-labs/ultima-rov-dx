@@ -36,17 +36,17 @@ class PalettePipelineTest(unittest.TestCase):
 class BuilderTest(unittest.TestCase):
     def setUp(self):
         import build_dx
-        from ultima_rov_dx import palettes
         self.build_dx = build_dx
-        self.encoded = palettes.encode(palettes.load(ROOT / "palettes/rov_palettes.yaml"))
+        self.inputs = build_dx.load_inputs()
 
-    def test_full_build_refuses_until_reverse_engineering_is_done(self):
-        with self.assertRaises(self.build_dx.IncompleteReverseEngineering):
-            self.build_dx.build(synthetic_rom(), self.encoded)
+    def test_full_build_fails_closed_on_foreign_rom(self):
+        from ultima_rov_dx import dx_patch
+        with self.assertRaises(dx_patch.PatchError):
+            self.build_dx.build(synthetic_rom(cart_type=0x06), self.inputs)
 
     def test_header_only_build(self):
         original = synthetic_rom()
-        out = self.build_dx.build(original, self.encoded, header_only=True)
+        out = self.build_dx.build(original, self.inputs, header_only=True)
         hdr = rom_utils.parse_header(out)
         self.assertEqual(len(out), len(original))
         self.assertEqual(hdr["cgb_flag"], 0x80)

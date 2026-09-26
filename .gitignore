@@ -42,3 +42,8 @@ tests/results/
 
 # mGBA-emitted screenshots next to ROMs
 rom/**/*.png
+
+# Generated outputs (IPS patch, screenshots); regenerate with
+# scripts/build_dx.py and scripts/capture_screens.py
+rom/*.ips
+artifacts/

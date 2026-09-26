@@ -6,10 +6,10 @@ single-flight guardian.
 ## Steps
 
 1. Build first if needed: `uv run python scripts/build_dx.py`.
-2. Optional preflight: `uv run python scripts/launch_gate.py rom/working/ultima_rov_dx.gb`.
+2. Optional preflight: `uv run python scripts/launch_gate.py rom/working/ultima_rov_dx.gbc`.
 3. Launch (from the repo root; no pipes or redirects):
    ```bash
-   scripts/launch_mgba.sh rom/working/ultima_rov_dx.gb
+   scripts/launch_mgba.sh rom/working/ultima_rov_dx.gbc
    ```
    Keep the command session alive while the window is open; the launcher is
    the emulator's parent-death guardian. On NVIDIA hosts set `ROV_MGBA_NVIDIA=1`.

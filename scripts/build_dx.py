@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
 """Production builder for Ultima: Runes of Virtue DX.
 
-Mirrors penta-dragon-dx's approach: a pure-Python binary patcher (no
-assembler toolchain) that loads the verified original ROM plus palette
-YAML, installs hand-assembled SM83 routines, sets the CGB header flag, and
-writes a working ROM and a ROM-free IPS patch.
+Pure Python, like penta-dragon-dx: loads the verified original ROM plus the
+palette/category YAML, assembles src/ultima_rov_dx/asm/dx.asm with the
+in-repo SM83 assembler (src/ultima_rov_dx/sm83asm.py), verifies every
+overwritten byte against game_layout preimages, expands the ROM to 256 KiB
+(MBC2 maximum), and writes a CGB-enhanced ROM plus a ROM-free IPS patch.
 
 Stages:
-  1. validate palette YAML (ROM-free)
+  1. validate palette + category YAML (ROM-free)
   2. report reverse-engineering readiness (ROM-free; src/ultima_rov_dx/game_layout.py)
   3. require and verify rom/Ultima - Runes of Virtue (USA).gb   -> exit 66/65 if missing/wrong
-  4. patch (currently: header only -- game hooks are TODO)       -> exit 78 until RE is done
-  5. write rom/working/ultima_rov_dx.gb + rom/ultima_rov_dx.ips
+  4. patch (src/ultima_rov_dx/dx_patch.py)                      -> exit 78 if RE facts missing
+  5. write rom/working/ultima_rov_dx.gbc + rom/ultima_rov_dx.ips
 
 Usage:
   uv run python scripts/build_dx.py
@@ -28,11 +29,15 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from ultima_rov_dx import game_layout, original_rom, palettes, patch_builder, rom_utils  # noqa: E402
+import yaml  # noqa: E402
+
+from ultima_rov_dx import dx_patch, game_layout, original_rom, palettes, patch_builder, rom_utils  # noqa: E402
 
 EXIT_RE_INCOMPLETE = 78  # sysexits EX_CONFIG
 DEFAULT_PALETTES = ROOT / "palettes" / "rov_palettes.yaml"
-DEFAULT_OUT = ROOT / "rom" / "working" / "ultima_rov_dx.gb"
+DEFAULT_BG_CATEGORIES = ROOT / "palettes" / "bg_tile_categories.yaml"
+DEFAULT_OBJ_CATEGORIES = ROOT / "palettes" / "obj_categories.yaml"
+DEFAULT_OUT = ROOT / "rom" / "working" / "ultima_rov_dx.gbc"
 DEFAULT_IPS = ROOT / "rom" / "ultima_rov_dx.ips"
 HEADER_ONLY_OUT = ROOT / "tmp" / "ultima_rov_dx_header_only.gb"
 
@@ -41,32 +46,39 @@ class IncompleteReverseEngineering(Exception):
     pass
 
 
-def build(original: bytes, encoded: dict, header_only: bool = False) -> bytes:
-    """Return the patched ROM image. Pure function; unit-tested with synthetic ROMs."""
+def load_inputs(pal_path: Path = DEFAULT_PALETTES, bg_path: Path = DEFAULT_BG_CATEGORIES,
+                obj_path: Path = DEFAULT_OBJ_CATEGORIES) -> dict:
+    """Load and validate the YAML inputs (ROM-free)."""
 
-    rom = bytearray(original)
-    if not header_only:
-        missing = game_layout.missing_facts()
-        if missing:
-            raise IncompleteReverseEngineering(
-                "game-specific facts still unknown: " + ", ".join(missing)
-            )
-        # TODO(RE): once PALETTE_INIT_HOOK / FREE_SPACE are known:
-        #   - verify hook preimage bytes exactly (fail closed on mismatch)
-        #   - place encoded['bg'] + encoded['obj'] and asm.cram_loader() in free space
-        #   - redirect the hook with CALL/JP, preserving displaced instructions
-        #   - then VBlank / tilemap-attribute / OAM-palette services
-        raise IncompleteReverseEngineering("patch installation not implemented yet")
-    rom = bytearray(rom_utils.set_cgb_supported(bytes(rom)))  # 0x143 |= 0x80 (CGB-enhanced, DMG-compatible)
-    rom = bytearray(rom_utils.fix_header_checksum(bytes(rom)))
-    rom = bytearray(rom_utils.fix_global_checksum(bytes(rom)))
-    return bytes(rom)
+    pal = palettes.load(pal_path)
+    with open(bg_path, encoding="utf-8") as fh:
+        bg = yaml.safe_load(fh) or {}
+    with open(obj_path, encoding="utf-8") as fh:
+        obj = yaml.safe_load(fh) or {}
+    dx_patch.build_tables(pal, bg, obj)  # raises on bad names/ranges
+    return {"palettes": pal, "bg_categories": bg, "obj_categories": obj}
+
+
+def build(original: bytes, inputs: dict, header_only: bool = False) -> bytes:
+    """Return the patched ROM image. Pure function of its inputs."""
+
+    if header_only:
+        rom = rom_utils.set_cgb_supported(bytes(original))  # 0x143 |= 0x80
+        rom = rom_utils.fix_header_checksum(rom)
+        return rom_utils.fix_global_checksum(rom)
+    missing = game_layout.missing_facts()
+    if missing:
+        raise IncompleteReverseEngineering("game-specific facts still unknown: " + ", ".join(missing))
+    out, _ = dx_patch.build(original, inputs["palettes"], inputs["bg_categories"], inputs["obj_categories"])
+    return out
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--rom", type=Path, default=None, help="original ROM (default: rom/<No-Intro name>.gb)")
     parser.add_argument("--palettes", type=Path, default=DEFAULT_PALETTES)
+    parser.add_argument("--bg-categories", type=Path, default=DEFAULT_BG_CATEGORIES)
+    parser.add_argument("--obj-categories", type=Path, default=DEFAULT_OBJ_CATEGORIES)
     parser.add_argument("--out", type=Path, default=None)
     parser.add_argument("--ips", type=Path, default=DEFAULT_IPS)
     parser.add_argument("--header-only", action="store_true",
@@ -75,8 +87,13 @@ def main() -> int:
     sys.stdout.reconfigure(line_buffering=True)  # keep progress ordered with stderr
 
     print(f"[1/5] palettes: {args.palettes.relative_to(ROOT) if args.palettes.is_relative_to(ROOT) else args.palettes}")
-    encoded = palettes.encode(palettes.load(args.palettes))
-    print(f"      OK ({len(encoded['bg'])} BG + {len(encoded['obj'])} OBJ CRAM bytes)")
+    try:
+        inputs = load_inputs(args.palettes, args.bg_categories, args.obj_categories)
+    except (ValueError, dx_patch.PatchError) as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 65
+    encoded = palettes.encode(inputs["palettes"])
+    print(f"      OK ({len(encoded['bg'])} BG + {len(encoded['obj'])} OBJ CRAM bytes, categories valid)")
 
     missing = game_layout.missing_facts()
     print("[2/5] reverse-engineering readiness: "
@@ -92,7 +109,10 @@ def main() -> int:
 
     print("[4/5] patch" + (" (header only)" if args.header_only else ""))
     try:
-        patched = build(original, encoded, header_only=args.header_only)
+        patched = build(original, inputs, header_only=args.header_only)
+    except dx_patch.PatchError as exc:
+        print(f"ERROR: patch refused: {exc}", file=sys.stderr)
+        return 65
     except IncompleteReverseEngineering as exc:
         print(f"ERROR: cannot build the DX ROM yet: {exc}.\n"
               "  Fill in src/ultima_rov_dx/game_layout.py (see reverse_engineering/notes/TODO.md),\n"
