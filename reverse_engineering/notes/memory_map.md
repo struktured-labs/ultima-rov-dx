@@ -30,13 +30,21 @@ restores bank 1 (the only bank the hooked callers run from) after far calls.
 | `$C511` | overworld flag |
 | `$C522` | 1 = VBlank ISR must not DMA (tile program running, dialogs) |
 | `$C580-$C58F` | sprite graphic id per sprite slot (bit7 large, bit6 people, `$FF` = continuation) |
-| `$D12F` | area/map id (02 overworld, 00 Lord British's castle) |
+| `$C600-$C6FF` | current area map, 16x16 cells (bits 0-5 graphic g, 6-7 flags), see dungeons.md |
+| `$D12F` | area/map id (02 overworld, 00 Lord British's castle, 18/19/1A Cavern of Hatred) |
 | `$D800-` (bank 1) | generated tile program |
 | `$FF80-$FF8B` | OAM DMA routine |
 | `$FF8E` | VBlank-happened flag |
+| `$FF91` | player cell in the area map (high nibble row, low nibble column) |
 | `$FFA0-$FFAF` | metatile slot -> graphic index |
 | free | `$FF98-$FF9F`, `$FFE8-$FFFE` (DX uses `$FF98-$FF9B`) |
 | WRAM bank 2-7 | unused by the DMG game (DX runtime lives in bank 2) |
+
+## LCD-on sites seen (PyBoy hook on the DX `rst $28`)
+`$03A3` map restore after dialogs/menus (also passes during title/story), `$1B17` overworld,
+`$23E2` area entry, `$10A8` start menu (stats + mini-map), `$1323` dialog box,
+bank 3 `$78F8/$7954/$79C7` champion select, `$7665/$7697/$7A93/$7AA2/$7779/$7788` story,
+initials, difficulty; bank 7 `$4319/$438B/$4619` blank transition screens and game over.
 
 ## Palettes
 BGP is `$E4` normally, `$00` while blanking during transitions. OBP0 `$E4`-ish; OBP1 is

@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+### Added (dungeon colors, 2026-09-26 run 3)
+
+- Per-area themes: `area_themes` in `bg_tile_categories.yaml` + `bg_themes` in
+  `rov_palettes.yaml`; runtime swaps BG base colours and metatile palettes by
+  area id `$D12F`. First theme `cavern` for the Cavern of Hatred (areas
+  `$18-$1A`): dusty floor shared by all palettes, slate cobbles, wood
+  furniture/doors, gold arrow floors, blue fountains.
+- Map vs text screen modes for game LCD-on sites (mode byte after `rst $28`):
+  story/champion/dialog/game-over screens use the UI palette only; floor
+  pickups (tiles `$40-$4F`) are red on the map.
+- Dungeon monster palettes: bat/skeleton undead, rat folk, gremlin fiend.
+- `capture_screens.py`: cell-accurate navigation (`$FF91`), START-until-
+  champion-screen sync so DMG and DX runs pick the same champion, second route
+  into the Cavern of Hatred, dialog scenes, save states in `save_states/`.
+- Notes: `dungeons.md`; area map buffer `$C600`, player cell `$FF91`.
+
 ### Added (first color milestone, 2026-09-26)
 
 - `sm83asm`: pure-Python two-pass SM83 assembler (validated against ~95k

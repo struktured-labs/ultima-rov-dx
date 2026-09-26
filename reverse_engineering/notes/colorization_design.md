@@ -29,6 +29,23 @@ tables and patching in `src/ultima_rov_dx/dx_patch.py`; build with `uv run pytho
    shade to the base colors (so fades to white/black work); then patch OAM attribute bits 0-2 in `$FE00`:
    player tiles (<`$80`) -> palette 0, monster/people tiles -> `OBJPAL[id]`, DMG-OBP1 sprites -> palette 7.
 
+## Area themes (run 3)
+* Theme = BG base colours (64 bytes, WRAM2 `BG_THEMES $DF00`, 4 slots) + metatile->palette map
+  (bank 8 `METAPAL + theme*$80`). `AREA_THEME` (bank 8 `$5400`, 256 bytes) maps `[$D12F]` to a theme.
+* `Slot` looks the theme up on every slot load; `SetTheme` copies the colours into `BASE_BG`
+  and invalidates `LAST_BGP`, so CRAM is rewritten at the next OAM DMA (VBlank). Title screens
+  (LCD modes 1/9) force theme 0.
+* Theme `cavern` (areas `$18-$1A`): every non-UI palette shares a dusty floor colour 0 so furniture,
+  doors, arrows and pickups sit on the floor; slate cobbles; pebbles `$23` use `earth`.
+
+## Map vs text screens (run 3)
+Game LCD-on sites are patched `rst $28` + a mode byte that is itself a harmless opcode:
+`$00` (nop) = map screen (LUT from slot palettes + `LUT_GAME`), `$40` (`ld b,b`) = text screen
+(every tile gets the UI palette). `W2LcdOn` reads the byte through the return address of the
+`rst`. Map sites are listed in `game_layout.MAP_LCD_ON_SITES`; all other game sites are text.
+This keeps dialog/story/champion/game-over screens clean while floor-item tiles `$40-$4F`
+use `fire` (red hearts) on the map.
+
 ## Palettes
 `palettes/rov_palettes.yaml`: BG ui, grass, water, stone, wood, earth, fire, gold; OBJ avatar, fiend,
 beast, undead, folk, royal, item, obp1. `bg_tile_categories.yaml` maps graphic g -> BG palette and title
