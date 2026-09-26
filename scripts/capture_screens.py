@@ -45,7 +45,8 @@ ROUTE: list[tuple[str, list[tuple[str | None, int | str, int]]]] = [
 # Second pass (fresh boot, same inputs up to the overworld): from the start
 # position south of the castle, go around it to the cave mouth due north.
 CAVERN_ROUTE = ROUTE[:6] + [
-    ("cavern_entrance", [("nav", "R1,U2,L1,U2", 0), (None, 0, 420)]),
+    ("cavern_approach", [("nav", "R1,U2,L1", 0), (None, 0, 20)]),     # one cell below the cave mouth
+    ("cavern_entrance", [("nav", "U2", 0), (None, 0, 420)]),
     ("cavern_level1", [("nav", "D2", 0), (None, 0, 30)]),
     ("cavern_level2", [("nav", "D7,R8,U1,U5", 0), (None, 0, 300)]),
     ("cavern_level2_arrows", [("nav", "L4", 0), (None, 0, 20)]),
@@ -76,7 +77,7 @@ def nav(pb, path: str) -> None:
         button = DIRS[move[0]]
         for _ in range(int(move[1:])):
             start, area = mem[0xFF91], mem[0xD12F]
-            for _attempt in range(10):
+            for _attempt in range(30):
                 t = 0
                 pb.button_press(button)
                 pos = (mem[0xFF42], mem[0xFF43], mem[0xFE00], mem[0xFE01])
