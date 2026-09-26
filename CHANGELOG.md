@@ -2,6 +2,29 @@
 
 ## [Unreleased]
 
+### Added (dungeon entrance cutscene, 2026-09-26)
+
+- Dungeon title card (bank 7 `$4619`) in its own `entrance` theme: navy card,
+  gold letters, gold HUD.
+- Entrance cutscene (bank 7 `$4692`: cliff, cave mouth, mountains, plain, the
+  champion walking into the cave) colored with its own tile->palette LUT
+  (`pictures.entrance`, bank 8 `$5600`) plus per-cell fixups (`$5700`): brown
+  cliff, violet mountains, misty green plain, ochre ground, banded dusk sky.
+  Picture palettes share colours 2-3 so region boundaries have no seams.
+- Blank transition screens (bank 7 `$438B`) and flat DMG palettes
+  (`BGP=$00/$FF`) render one uniform `flat_bg` colour: no mosaic of palette
+  colour 0 before the title card.
+- `scripts/capture_entry_sequence.py`: frame-by-frame recordings of the
+  entrance (GIFs, strips, cutscene/title-card comparisons), exit and ladder
+  transitions in `artifacts/`. Notes: `cutscene.md`.
+
+### Fixed
+
+- The cutscene hero was drawn black: OBP0 `$34` shows shade 0 on the hero;
+  OBJ palettes' colour 0 is now white as on DMG.
+- `capture_screens.py`: the original's run now reaches cavern level 3 (more
+  retries per step while a monster blocks the way); new `cavern_approach` scene/state.
+
 ### Added (dungeon colors, 2026-09-26 run 3)
 
 - Per-area themes: `area_themes` in `bg_tile_categories.yaml` + `bg_themes` in

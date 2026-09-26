@@ -46,6 +46,17 @@ Game LCD-on sites are patched `rst $28` + a mode byte that is itself a harmless 
 This keeps dialog/story/champion/game-over screens clean while floor-item tiles `$40-$4F`
 use `fire` (red hearts) on the map.
 
+More mode bytes (dungeon entrance, see cutscene.md): `$49` (`ld c,c`) title card = text LUT +
+`ENTRANCE_THEME`; `$52` (`ld d,d`) picture = LCD mode 3, LUT copied from bank 8 `PICTURE_LUT $5600`
+(then bank 7 is mapped back: `PICTURE_BANK`), then per-cell attribute fixups from bank 8
+`PICTURE_FIX $5700` (`lo, hi, attr` triples, `hi = 0` ends); `$5B` (`ld e,e`) blank = text + theme 0
+with BG palette 0 colour 0 = `FLAT_BG[0]`.
+
+## Flat DMG palettes
+`SyncGroup` treats a DMG palette whose four shades are equal (`$00/$55/$AA/$FF`) as flat: all CGB
+palettes of that group get `FLAT_BG[shade]` (`$D708`, 4 colours from `rov_palettes.yaml flat_bg`).
+Blank transition frames are therefore uniform white instead of a mosaic of palette colour 0.
+
 ## Palettes
 `palettes/rov_palettes.yaml`: BG ui, grass, water, stone, wood, earth, fire, gold; OBJ avatar, fiend,
 beast, undead, folk, royal, item, obp1. `bg_tile_categories.yaml` maps graphic g -> BG palette and title

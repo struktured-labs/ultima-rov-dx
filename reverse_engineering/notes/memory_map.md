@@ -44,7 +44,13 @@ restores bank 1 (the only bank the hooked callers run from) after far calls.
 `$03A3` map restore after dialogs/menus (also passes during title/story), `$1B17` overworld,
 `$23E2` area entry, `$10A8` start menu (stats + mini-map), `$1323` dialog box,
 bank 3 `$78F8/$7954/$79C7` champion select, `$7665/$7697/$7A93/$7AA2/$7779/$7788` story,
-initials, difficulty; bank 7 `$4319/$438B/$4619` blank transition screens and game over.
+initials, difficulty; bank 7 `$4319/$438B/$4619` blank transition screens and game over; 0:`$1804` (LCD "on" while on),
+7:`$4619` dungeon title card, 7:`$4692` entrance cutscene (LCDC `$87`), 7:`$438B` blank (see cutscene.md).
+
+## DX runtime variables (WRAM bank 2)
+`$D700-$D702` last BGP/OBP0/OBP1, `$D703` LCD mode (0 map, 1 castle, 2 text, 3 picture, 9 logo),
+`$D704` current theme, `$D705` entrance theme, `$D706` last mode byte, `$D708-$D70F` `FLAT_BG`.
+Bank 8: `$5400` AREA_THEME, `$5600` PICTURE_LUT, `$5700` PICTURE_FIX, `$5800` METAPAL.
 
 ## Palettes
 BGP is `$E4` normally, `$00` while blanking during transitions. OBP0 `$E4`-ish; OBP1 is

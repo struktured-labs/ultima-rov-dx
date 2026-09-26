@@ -41,3 +41,7 @@ proved it (static disassembly offset list, emulator trace, etc.).
 - [ ] Classify the unobserved LCD-on sites ($0AEB, $14FF, 1:$4126, 1:$54E9 assumed map).
 - [ ] Per-sprite-id palette tuning; HUD heart colors.
 - [ ] Real hardware test; IPS RLE.
+- [x] Dungeon entrance title card + cutscene colored (entrance theme, picture LUT), see cutscene.md.
+- [ ] Classify LCDC `$87` sites 7:`$40BF`, 7:`$4AE3` (other pictures?) and give them picture LUTs.
+- [ ] Hero in the cutscene uses the gameplay avatar palette (navy/skin/white); a cutscene-only OBJ palette would need OBJ themes.
+- [ ] Other dungeons' title cards reuse the navy/gold card (entrance theme); per-dungeon card accents would need a theme per text pointer.
