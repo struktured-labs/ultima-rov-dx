@@ -1,0 +1,39 @@
+# Colorization design (DX runtime)
+
+Source: `src/ultima_rov_dx/asm/dx.asm` assembled by `src/ultima_rov_dx/sm83asm.py`;
+tables and patching in `src/ultima_rov_dx/dx_patch.py`; build with `uv run python scripts/build_dx.py`.
+
+## Layout
+* Header: `0x143=$80` (CGB-compatible, still runs on DMG), `0x148=$03` (256 KiB), checksums fixed.
+* Bank 0 `$0003-$001F`: `Far8Term`, `Far8SlotInner`, `Far8` (call bank 8 `$4000` dispatcher, restore bank 1).
+  `rst $20` DissolveCopy, `rst $28` LcdOnGame, `rst $30` LcdOnTitle. `$0061-$00FB`: AttrRun, DmaHook,
+  LcdOn*, MetaHook, Far8Slot, DissolveCopy, AttrDone, Boot.
+* Bank 8: dispatcher, `Term` (tile-program translator), `Slot`, `Bank8Boot`, the WRAM2 image
+  (`$4400`, copied to `$D000-$DEFF`) and `METAPAL` (`$5800`, graphic g -> BG palette).
+* WRAM bank 2: code `$D000`, `OBJPAL $D500` (sprite id -> OBJ palette), `BASE_BG $D580`,
+  `BASE_OBJ $D5C0` (RGB555 base colors), live `LUT $D600` (tile -> attribute), vars `$D700`,
+  `SLOTPAL $D7F0`, attribute program `$D800`, `LUT_TITLE $DC00`, `LUT_GAME $DD00`, `LUT_LOGO $DE00`.
+* HRAM `$FF98-$FF9B`: dispatch scratch, LCD mode, slot scratch, CGB flag.
+
+## Flow
+1. **Boot** (`$0150`): on CGB (A=`$11` and WRAM banking works) switch to double speed, copy
+   the WRAM2 image, set `HR_CGB`; then `jp $1AE2`. On DMG every hook falls through to the original code.
+2. **Tile program**: at the terminator the translator emits a matching attribute program in WRAM2
+   `$D800` (same `ld sp` targets, fill registers translated through the LUT). The original program
+   now ends with `jp AttrRun`, which sets VBK=1/SVBK=2, runs it, and `AttrDone` restores and jumps `$4B8F`.
+3. **Slot loads** record `METAPAL[g]` for the slot's 4 tiles in the LUT.
+4. **MetaHook** writes the 4 attributes of a single metatile.
+5. **LCD-on**: mode switch (title castle / logo / game) swaps LUTs; all of `$9800-$9FFF` attributes
+   are recomputed from the tile map while the LCD is still off.
+6. **After each OAM DMA** (`DmaHook`): if BGP/OBP0/OBP1 changed, rebuild CRAM by mapping each DMG
+   shade to the base colors (so fades to white/black work); then patch OAM attribute bits 0-2 in `$FE00`:
+   player tiles (<`$80`) -> palette 0, monster/people tiles -> `OBJPAL[id]`, DMG-OBP1 sprites -> palette 7.
+
+## Palettes
+`palettes/rov_palettes.yaml`: BG ui, grass, water, stone, wood, earth, fire, gold; OBJ avatar, fiend,
+beast, undead, folk, royal, item, obp1. `bg_tile_categories.yaml` maps graphic g -> BG palette and title
+tile ranges; `obj_categories.yaml` maps sprite id -> OBJ palette.
+
+## Timing
+Double speed keeps original game speed (the game is VBlank-paced; measured overworld scroll ≈1.1 px/frame
+in both OG and DX) while giving the attribute program room inside VBlank.
