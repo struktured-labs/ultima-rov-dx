@@ -32,6 +32,8 @@ rOCPS   equ $6A
 rOCPD   equ $6B
 rLCDC   equ $40
 rLY     equ $44
+rSCX    equ $43
+rWX     equ $4B
 rBGP    equ $47
 rOBP0   equ $48
 rOBP1   equ $49
@@ -68,16 +70,25 @@ LCD_MODE        equ $D703
 CUR_THEME       equ $D704   ; area theme currently loaded into BASE_BG
 ENTRANCE_THEME  equ $D705   ; theme of dungeon title cards + entrance cutscene (set by builder)
 LCD_BYTE        equ $D706   ; mode byte of the last game LCD-on site
+MAP_THEME       equ $D707   ; area theme of the play field (set by Slot, restored at map LCD-on)
+UI_THEME        equ $D710   ; theme of text screens, dialogs and the start menu (set by builder)
+LIVE_K          equ $D711   ; frame counter: start-menu slot pair refreshed this frame
+LIVE_R          equ $D712   ; next side-panel cell (0-35) refreshed after the OAM DMA
+MENU_OBJ        equ $D718   ; 4 colours of the start-menu cursor (OBJ palette 7 in menu mode)
+HR_BACKUP       equ $D720   ; 12: HRAM bytes under HELPER while it is installed
+ITEM_PAL        equ $D740   ; 64: BG palette per item id (inventory / side-panel icons)
+INV             equ $D780   ; 64: copy of WRAM1 $D100-$D13F (inventory $D100-$D11F, B $D125, A $D126, armour $D134)
 FLAT_BG         equ $D708   ; 4 colours used when a DMG palette maps every shade alike (blank/fade)
 SLOTG           equ $D7E0   ; 16: graphic index g of metatile slot s (debug/inspection)
 SLOTPAL         equ $D7F0   ; 16: palette of metatile slot s
 ATTR_PROG       equ $D800   ; translated attribute program
-LUT_TITLE       equ $DC00   ; 256
+LUT_MENU        equ $DC00   ; 256: start menu (items overlaid from ITEM_PAL at LCD-on)
 LUT_GAME        equ $DD00   ; 256 (entries $00-$3F unused: from SLOTPAL)
-LUT_LOGO        equ $DE00   ; 256
-BG_THEMES       equ $DF00   ; 4 x 64: BG base colours per area theme
+BG_THEMES       equ $DE00   ; 8 x 64: BG base colours per theme
 W2_IMAGE_LEN    equ $1000
-MAX_THEMES      equ 4
+MAX_THEMES      equ 8
+HELPER          equ $FFF3   ; 12 bytes of HRAM: reads WRAM bank 1 for WRAM2 code (installed only while used)
+CURSOR_PAL      equ 7
 PLAYER_PAL      equ 0
 OBP1_PAL        equ 7
 
@@ -87,7 +98,10 @@ AREA_THEME      equ $5400   ; bank 8: theme index per area id [$D12F] (256)
 PICTURE_LUT     equ $5600   ; bank 8: tile -> BG palette for the dungeon-entrance cutscene (256)
 PICTURE_FIX     equ $5700   ; bank 8: attribute fixups (VRAM lo, hi, attr)..., hi = 0 ends (<= 256 bytes)
 PICTURE_BANK    equ 7       ; ROM bank of the (only) picture LCD-on site, restored after the copy
-METAPAL         equ $5800   ; bank 8: palette per metatile graphic, 128 per theme
+METAPAL         equ $5800   ; bank 8: palette per metatile graphic, 128 per theme (8 themes)
+LUT_TITLE_ROM   equ $5C00   ; bank 8: castle title LUT (256), copied at the bank-7 title LCD-on
+LUT_LOGO_ROM    equ $5D00   ; bank 8: logo LUT (256)
+TITLE_BANK      equ 7       ; ROM bank of the title and picture LCD-on sites
 AREA_ID         equ $D12F   ; WRAM bank 1: current area/map id
 
 ; ======================================================== bank 0 free space
@@ -120,6 +134,9 @@ LcdOnTitle:                             ; A = new LCDC value; LUT mode from it:
         push af                         ; $81 (castle, map $9800) -> 1
         and $09                         ; $89 (logo, map $9C00)   -> 9
         jr LcdOnCommon
+HudExit:                                ; $0035: back from W2Hud (A = 1)
+        ldh [rSVBK], a
+        ret
 
 section bank0_c, $0061, $0061           ; $0061-$00FF (159 bytes)
 AttrRun:                                ; end of tile program (SP = VRAM, DI)
@@ -137,19 +154,13 @@ DmaHook:                                ; HRAM $FF80 now jumps here (all DMA sit
         ldh a, [HR_CGB]
         or a
         ret z                           ; DMG: done
-        push bc
-        push de
-        push hl
         ldh a, [rSVBK]
         push af
         ld a, 2
         ldh [rSVBK], a
-        call W2AfterDma
+        call W2AfterDma                 ; (saves BC, DE, HL itself)
         pop af
         ldh [rSVBK], a
-        pop hl
-        pop de
-        pop bc
         ret
 
 LcdOnGame:                              ; rst $28: A = new LCDC value
@@ -160,17 +171,11 @@ LcdOnCommon:
         ldh a, [HR_CGB]
         or a
         jr z, .dmg
-        push bc
-        push de
-        push hl
         ld a, 2
         ldh [rSVBK], a
-        call W2LcdOn
+        call W2LcdOn                    ; (saves BC, DE, HL itself)
         ld a, 1
         ldh [rSVBK], a
-        pop hl
-        pop de
-        pop bc
 .dmg:
         pop af
         ldh [rLCDC], a
@@ -179,21 +184,15 @@ LcdOnCommon:
 MetaHook:                               ; $066B: A = tile, HL = map address
         call .orig
         push af
-        push hl
         ldh a, [HR_CGB]
         or a
         jr z, .skip
-        push bc
-        push de
         ld a, 2
         ldh [rSVBK], a
-        call W2Meta
+        call W2MetaW                    ; (saves BC, DE, HL itself)
         ld a, 1
         ldh [rSVBK], a
-        pop de
-        pop bc
 .skip:
-        pop hl
         pop af
         ret
 .orig:
@@ -225,6 +224,20 @@ AttrDone:                               ; end of translated attribute program
         inc a
         ldh [rSVBK], a
         jp EXEC_RETURN
+
+HudTramp:                               ; tail of $04C1 (A/B item icons copied)
+        ld a, 1                         ; original: select bank 1, ret
+        ld [MBC_BANK], a
+        ldh a, [HR_CGB]
+        or a
+        ret z
+        ld hl, $D125
+        ld e, [hl]                      ; E = B item, D = A item
+        inc l
+        ld d, [hl]
+        inc a
+        ldh [rSVBK], a
+        jp W2Hud                        ; returns through HudExit
 
 Boot:                                   ; $0150: A = $11 on CGB
         cp $11
@@ -260,6 +273,12 @@ section patch_term, $4B3C, $4B3C        ; bank1:$4B3C (9 bytes)
         nop
 section patch_slot, $4F6C, $4F6C        ; bank1:$4F6C
         call Far8Slot
+section patch_hud_icons, $04E6, $04E6   ; $04E6: call $01A9; ld a,1; ld [$2100],a; ret
+        call COPY64
+        jp HudTramp
+        nop
+        nop
+        nop
 section patch_dissolve, $1CBD1, $4BD1   ; bank7:$4BD1
         rst $20
         nop
@@ -439,6 +458,7 @@ Slot:
         ld a, 2
         ldh [rSVBK], a
         pop af
+        ld [MAP_THEME], a
         call SetTheme                   ; (WRAM2) new area theme -> BASE_BG
         pop hl
         push hl
@@ -555,6 +575,97 @@ section wram2, $20400, $D000
 ; -- after every OAM DMA (VBlank): palette sync on DMG-register change,
 ; then OBJ palette bits in OAM.
 W2AfterDma:
+        push bc
+        push de
+        push hl
+        call W2AfterDmaBody
+        pop hl
+        pop de
+        pop bc
+        ret
+W2AfterDmaBody:
+        call W2Pal
+        ld a, [LCD_MODE]                ; live refresh of attributes that the
+        or a                            ; game changes with the LCD on: side
+        jr z, .live                     ; panel (hearts/stars/equipped items)
+        cp 4                            ; and start-menu item slots
+        jr z, .live
+        cp 5
+        ret nz
+.live:
+        ldh a, [rLCDC]
+        bit 7, a
+        ret z
+        ldh a, [rLY]
+        cp 144
+        ret c                           ; not in VBlank: try next frame
+        di
+        call HelperOn
+        ld hl, $D125
+        call HELPER
+        ld [INV+$25], a
+        call HELPER
+        ld [INV+$26], a
+        ld a, [LIVE_K]
+        inc a
+        ld [LIVE_K], a
+        and $0F
+        add a
+        ld c, a                         ; menu: slots c, c+1
+        ld l, a
+        ld h, $D1
+        call HELPER
+        ld e, a
+        call HELPER
+        ld d, a
+        push de
+        call HelperOff
+        pop de
+        ei
+        ld a, [LCD_MODE]
+        cp 4
+        jr nz, .hud
+        ld h, high(INV)
+        ld a, c
+        add low(INV)
+        ld l, a
+        ld [hl], e
+        inc l
+        ld [hl], d
+        ld a, c
+        call SlotLut
+        ld a, c
+        call SlotCells
+        inc c
+        ld a, c
+        call SlotLut
+        ld a, c
+        call SlotCells
+.hud:
+        call HudItemsLut
+; 4 side-panel cells per frame (36 cells: rows 0-17, 2 columns)
+        ld a, [LIVE_R]
+        ld c, a
+        ld b, 4
+.n:
+        push bc
+        ld a, c
+        call HudCell
+        pop bc
+        inc c
+        ld a, c
+        cp 36
+        jr c, .k
+        ld c, 0
+.k:
+        dec b
+        jr nz, .n
+        ld a, c
+        ld [LIVE_R], a
+        ret
+
+; palette sync on DMG-register change, then OBJ palette bits in OAM.
+W2Pal:
         ldh a, [rBGP]
         ld hl, LAST_BGP
         cp [hl]
@@ -602,7 +713,17 @@ W2AfterDma:
         ld a, [de]
         jr .apply
 .player:
+        ld a, [LCD_MODE]                ; start menu: cursor (tiles 0-3) gets
+        cp 4                            ; its own palette
         ld a, PLAYER_PAL
+        jr nz, .apply
+        dec l
+        ld a, [hl]
+        inc l
+        cp 4
+        ld a, PLAYER_PAL
+        jr nc, .apply
+        ld a, CURSOR_PAL
 .apply:
         ld c, a
         ld a, [hl]
@@ -651,6 +772,12 @@ SyncOBJ:
         ld a, [LAST_OBP1]
         ld d, a
         ld b, 1
+        ld a, [LCD_MODE]                ; start menu: palette 7 = cursor colours
+        cp 4                            ; mapped through OBP0
+        jr nz, SyncGroup
+        ld hl, MENU_OBJ
+        ld a, [LAST_OBP0]
+        ld d, a
 ; HL = base colours (4 per palette, index = DMG shade), B = count,
 ; D = DMG palette register value, C = data port. Advances HL.
 SyncGroup:
@@ -725,6 +852,15 @@ SyncGroup:
 ; [ret][hl][de][bc][af][rst return -> mode byte].
 ; LCD_MODE: 0 map, 1 castle title, 2 text, 3 picture, 9 logo.
 W2LcdOn:
+        push bc
+        push de
+        push hl
+        call W2LcdOnBody
+        pop hl
+        pop de
+        pop bc
+        ret
+W2LcdOnBody:
         ldh a, [rLCDC]
         bit 7, a
         ret nz                          ; already on: nothing safe to do
@@ -733,7 +869,7 @@ W2LcdOn:
         ldh a, [HR_LCDMODE]
         or a
         jr nz, .have
-        ld hl, sp+10
+        ld hl, sp+12                    ; [ret][hl][de][bc][ret][af][rst ret]
         ld a, [hl+]
         ld h, [hl]
         ld l, a
@@ -741,27 +877,43 @@ W2LcdOn:
         ld [LCD_BYTE], a
         or a
         jr z, .have
+        ld b, 3                         ; picture
         cp $52
-        ld a, 3                         ; picture
-        jr z, .have
-        ld a, 2                         ; text screen
+        jr z, .b
+        inc b                           ; 4 start menu
+        cp $64
+        jr z, .b
+        inc b                           ; 5 dialog
+        cp $6D
+        jr z, .b
+        ld b, 2                         ; text screen
+.b:
+        ld a, b
 .have:
-        ld hl, LCD_MODE
-        cp [hl]
-        ld [hl], a
-        call nz, BuildLut
+        ld [LCD_MODE], a
+        call BuildLut
         ld a, [LCD_MODE]                ; theme for the new screen
         or a
-        jr z, .game                     ; map: keep the area theme
+        jr z, .map                      ; map: the area theme
+        cp 1
+        jr z, .t0                       ; title screens: surface theme
+        cp 9
+        jr z, .t0
         cp 3
         jr z, .ent
         cp 2
-        jr nz, .t0                      ; title screens: surface theme
+        jr nz, .ui                      ; menu, dialog: UI theme
         ld a, [LCD_BYTE]
         cp $49
         jr z, .ent
         cp $5B
-        jr nz, .game                    ; plain text: keep
+        jr z, .t0
+.ui:
+        ld a, [UI_THEME]
+        jr .set
+.map:
+        ld a, [MAP_THEME]
+        jr .set
 .t0:
         xor a
         jr .set
@@ -769,7 +921,6 @@ W2LcdOn:
         ld a, [ENTRANCE_THEME]
 .set:
         call SetTheme
-.game:
         ldh a, [rBGP]
         call SyncBG
         call SyncOBJ
@@ -807,7 +958,7 @@ W2LcdOn:
 .fixed:
         xor a
         ldh [rVBK], a
-        ld a, PICTURE_BANK
+        ld a, TITLE_BANK
         ld [MBC_BANK], a
         ret
 ; Recompute attributes of both BG maps from their tile ids (LCD off).
@@ -838,10 +989,13 @@ SetTheme:
         ld [hl], a
         rrca                            ; DE = BG_THEMES + theme*64
         rrca
-        ld e, a
+        ld b, a
         and $C0
         ld e, a
-        ld d, high(BG_THEMES)
+        ld a, b
+        and $07
+        add high(BG_THEMES)
+        ld d, a
         ld hl, BASE_BG
         ld b, 64
 .c:
@@ -860,35 +1014,72 @@ BuildLut:
         ld a, [LCD_MODE]
         or a
         jr z, .game
-        ld hl, LUT_TITLE
         dec a
-        jr z, .t0
+        jr z, .castle
         dec a
         jr z, .text
         dec a
         jr z, .pic
-        ld hl, LUT_LOGO
-.t0:
+        dec a
+        jr z, .menu
+        dec a
+        jr z, .dialog
+        ld hl, LUT_LOGO_ROM             ; 9: logo
+        jr .rom
+.castle:
+        ld hl, LUT_TITLE_ROM
+        jr .rom
+.pic:                                   ; entrance cutscene
+        ld hl, PICTURE_LUT
+.rom:                                   ; LUT from bank 8; bank-7 sites only
+        ld a, 8
+        ld [MBC_BANK], a
         ld de, LUT
 .t:
         ld a, [hl+]
         ld [de], a
         inc e
         jr nz, .t
-        ret
-.pic:                                   ; entrance cutscene: LUT from bank 8
-        ld a, 8
+        ld a, TITLE_BANK
         ld [MBC_BANK], a
-        ld hl, PICTURE_LUT
+        ret
+.menu:                                  ; start menu: base LUT + item icons
+        ld hl, LUT_MENU
         ld de, LUT
-.pc:
+.m:
         ld a, [hl+]
         ld [de], a
         inc e
-        jr nz, .pc
-        ld a, PICTURE_BANK
-        ld [MBC_BANK], a
+        jr nz, .m
+        call ReadInv
+        call HudItemsLut
+        ld c, 0
+.ms:
+        ld a, c
+        call SlotLut
+        inc c
+        ld a, c
+        cp 32
+        jr nz, .ms
+        ld a, [INV+$34]                 ; armour icon, tiles $BC-$BF
+        call ItemPal
+        ld hl, LUT+$BC
+        ld [hl+], a
+        ld [hl+], a
+        ld [hl+], a
+        ld [hl], a
         ret
+.dialog:                                ; dialog: UI palette + side panel
+        call .text
+        ld hl, LUT_MENU+$E4
+        ld de, LUT+$E4
+.d:
+        ld a, [hl+]
+        ld [de], a
+        inc e
+        jr nz, .d
+        call ReadInv
+        jp HudItemsLut
 .text:                                  ; text screens: every tile uses the UI palette
         ld a, [LUT_GAME + $FF]
         ld hl, LUT
@@ -920,10 +1111,278 @@ BuildLut:
         ld a, e
         cp $40
         jr nz, .s
-        ret
+        call ReadInv
+        jp HudItemsLut
 
+; ---- inventory helpers. WRAM2 code cannot see WRAM bank 1 ($D1xx), so a
+; 12-byte reader is placed in HRAM while needed (the bytes under it are
+; saved and put back).
+HelperOn:
+        ld hl, HELPER
+        ld de, HR_BACKUP
+        ld bc, HelperCode
+.l:
+        ld a, [hl]
+        ld [de], a
+        ld a, [bc]
+        ld [hl+], a
+        inc de
+        inc bc
+        ld a, l
+        cp $FF
+        jr nz, .l
+        ret
+HelperOff:
+        ld hl, HELPER
+        ld de, HR_BACKUP
+.l:
+        ld a, [de]
+        ld [hl+], a
+        inc de
+        ld a, l
+        cp $FF
+        jr nz, .l
+        ret
+HelperCode:                             ; A = B = [HL+] of WRAM bank 1
+        ld a, 1
+        ldh [rSVBK], a
+        ld a, [hl+]
+        ld b, a
+        ld a, 2
+        ldh [rSVBK], a
+        ld a, b
+        ret
+; INV = WRAM1 $D100-$D13F (LCD off: no VBlank interrupt can nest).
+ReadInv:
+        call HelperOn
+        ld hl, $D100
+        ld de, INV
+.r:
+        call HELPER
+        ld [de], a
+        inc e
+        ld a, l
+        cp $40
+        jr nz, .r
+        jp HelperOff
+; A = item id -> A = BG palette. Clobbers HL.
+ItemPal:
+        cp $FF
+        jr z, .none
+        and $3F
+        add low(ITEM_PAL)
+        ld l, a
+        ld h, high(ITEM_PAL)
+        ld a, [hl]
+        ret
+.none:
+        ld a, [LUT_GAME + $FF]
+        ret
+; LUT[$F8-$FB] = palette of the A item, LUT[$FC-$FF] = B item.
+HudItemsLut:
+        ld a, [INV+$26]
+        call ItemPal
+        ld hl, LUT+$F8
+        ld [hl+], a
+        ld [hl+], a
+        ld [hl+], a
+        ld [hl+], a
+        push hl
+        ld a, [INV+$25]
+        call ItemPal
+        pop hl
+        ld [hl+], a
+        ld [hl+], a
+        ld [hl+], a
+        ld [hl], a
+        ret
+; A = inventory slot c (0-31): LUT[4*(c+3)..+3] = palette of INV[c]. Keeps C.
+SlotLut:
+        ld b, a
+        add low(INV)
+        ld l, a
+        ld h, high(INV)
+        ld a, [hl]
+        call ItemPal
+        ld e, a
+        ld a, b
+        add 3
+        add a
+        add a
+        ld l, a
+        ld h, high(LUT)
+        ld a, e
+        ld [hl+], a
+        ld [hl+], a
+        ld [hl+], a
+        ld [hl], a
+        ret
+; A = slot c: rewrite the attributes of its 2x2 cells at $9C25 + (c&7)*2
+; + (c&$18)*8 (bank 0 $1027-$108C layout). Keeps C.
+SlotCells:
+        ld b, a
+        and $07
+        add a
+        add $25
+        ld l, a
+        ld a, b
+        and $18
+        add a
+        add a
+        add a
+        add l
+        ld l, a
+        ld h, $9C
+        call Cell
+        inc hl
+        call Cell
+        ld a, l
+        add 31
+        ld l, a
+        ld a, h
+        adc 0
+        ld h, a
+        call Cell
+        inc hl
+; HL = map cell: attribute = LUT[tile]. Keeps HL; clobbers A, DE.
+Cell:
+        xor a
+        ldh [rVBK], a
+        ld e, [hl]
+        ld d, high(LUT)
+        ld a, [de]
+        ld d, a
+        ld a, 1
+        ldh [rVBK], a
+        ld [hl], d
+        xor a
+        ldh [rVBK], a
+        ret
+; A = side-panel cell r (0-35: row r/2, column r&1). The panel is the
+; window (LCDC bit 5, WX < 160) at its column 0, else BG columns
+; SCX/8+18.. (start menu, dialogs).
+HudCell:
+        ld b, a
+        ldh a, [rLCDC]
+        ld d, a
+        and $20
+        jr z, .bg
+        ldh a, [rWX]
+        cp 160
+        jr nc, .bg
+        ld e, 0
+        ld a, d
+        and $40
+        jr .map
+.bg:
+        ldh a, [rSCX]
+        rrca
+        rrca
+        rrca
+        and $1F
+        add 18
+        ld e, a
+        ld a, d
+        and $08
+.map:
+        ld h, $98
+        jr z, .h
+        ld h, $9C
+.h:
+        ld a, b
+        and 1
+        add e
+        and $1F
+        ld e, a
+        ld a, b
+        srl a
+        ld c, a
+        and $07
+        swap a
+        add a
+        or e
+        ld l, a
+        ld a, c
+        rrca
+        rrca
+        rrca
+        and $03
+        add h
+        ld h, a
+        jr Cell
+
+; -- $04C1 copied the A/B item icons (bank 0 HudTramp; D = A item, E = B
+; item). Right after the copy we are in VBlank or the LCD is off: recolour
+; the icon cells now. In the start menu (no OAM DMA while idle) also the
+; slot under the cursor, whose item was just swapped. Exits via HudExit.
+W2Hud:
+        push bc
+        ld a, e
+        ld [INV+$25], a
+        ld a, d
+        ld [INV+$26], a
+        ldh a, [rLCDC]
+        bit 7, a
+        jr z, .ok
+        ldh a, [rLY]
+        cp 144
+        jr c, .out
+.ok:
+        ld a, [LCD_MODE]
+        or a
+        jr z, .go
+        cp 5
+        jr z, .go
+        cp 4
+        jr nz, .out
+        call HelperOn                   ; menu: no DMA from the VBlank ISR
+        ldh a, [$FF8F]                  ; cursor slot (bank 0 $10AB)
+        and $1F
+        ld c, a
+        ld l, a
+        ld h, $D1
+        call HELPER
+        push af
+        call HelperOff
+        pop af
+        ld b, a
+        ld h, high(INV)
+        ld a, c
+        add low(INV)
+        ld l, a
+        ld [hl], b
+        ld a, c
+        call SlotLut
+        ld a, c
+        call SlotCells
+.go:
+        call HudItemsLut
+        ld c, 2                         ; side-panel rows 1-5 (A and B icons)
+.h:
+        ld a, c
+        push bc
+        call HudCell
+        pop bc
+        inc c
+        ld a, c
+        cp 12
+        jr nz, .h
+.out:
+        pop bc
+        ld a, 1
+        jp HudExit
+
+W2MetaW:
+        push hl
+        push bc
+        push de
+        call W2Meta
+        pop de
+        pop bc
+        pop hl
+        ret
 ; -- single metatile written by $066B. HL = map address + $21,
-; stack: [ret][de][bc][hl][af: A = tile + 4].
+; stack: [ret][de][bc][hl][ret][af: A = tile + 4].
 W2Meta:
         ld a, l
         sub $21
@@ -935,7 +1394,7 @@ W2Meta:
         ret c
         cp $A0
         ret nc
-        ld hl, sp+9
+        ld hl, sp+11
         ld a, [hl]
         sub 4
         ld c, a                         ; C = tile

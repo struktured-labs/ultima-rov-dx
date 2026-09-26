@@ -39,9 +39,40 @@ class TablesTest(unittest.TestCase):
         t = dx_patch.build_tables(self.inputs["palettes"], self.inputs["bg_categories"], self.inputs["obj_categories"])
         self.assertEqual((t.area_theme[0x18], t.area_theme[0x19], t.area_theme[0x02], t.area_theme[0x00]), (1, 1, 0, 0))
         cav = t.bg_themes[64:128]
-        floor = cav[0:2]  # palette 0 (ui) keeps its color 0; the others share the cave floor
-        self.assertEqual({cav[p * 8:p * 8 + 2] for p in range(1, 8)}, {cav[8:10]})
-        self.assertEqual(floor, t.base_bg[0:2])
+        # all 8 palettes (side panel included) share the cave floor as colour 0
+        self.assertEqual({cav[p * 8:p * 8 + 2] for p in range(8)}, {cav[8:10]})
+        self.assertNotEqual(cav[8:10], t.base_bg[8:10])
+
+    def test_menu_tables(self):
+        from ultima_rov_dx import dx_patch
+        t = dx_patch.build_tables(self.inputs["palettes"], self.inputs["bg_categories"], self.inputs["obj_categories"])
+        bg = self.inputs["bg_categories"]
+        names = list(bg["area_themes"])
+        pal = list(self.inputs["palettes"]["bg_palettes"])
+        self.assertEqual(t.ui_theme, 1 + names.index(bg["ui_theme"]))
+        self.assertEqual((len(t.lut_menu), len(t.item_pal), len(t.menu_obj)), (256, 64, 8))
+        self.assertTrue(all(v < 8 for v in t.lut_menu + t.item_pal))
+        # coin gold, heart red, bow wood, rope (item $2C) not the plain ui palette
+        self.assertEqual(t.item_pal[0x09], pal.index("gold"))
+        self.assertEqual(t.item_pal[0x10], pal.index("fire"))
+        self.assertEqual(t.item_pal[0x01], pal.index("wood"))
+        self.assertGreaterEqual(len(set(t.item_pal)), 6)
+        # side-panel glyphs: hearts red, stars / coin / A: B: gold (map and menu)
+        # (on the map, hearts use the panel palette 0 whose shade 2 is red)
+        self.assertEqual((t.lut_game[0xF4], t.lut_menu[0xF4]), (pal.index("ui"), pal.index("fire")))
+        for lut in (t.lut_game, t.lut_menu):
+            self.assertEqual({lut[i] for i in (0xE4, 0xF5, 0xF7)}, {pal.index("gold")})
+        self.assertEqual({t.lut_game[0xF2], t.lut_game[0xF3]}, {pal.index("gold")})
+        # menu theme: one shared paper colour 0 behind every palette
+        menu = t.bg_themes[64 * t.ui_theme:64 * (t.ui_theme + 1)]
+        self.assertEqual(len({menu[p * 8:p * 8 + 2] for p in range(8)}), 1)
+
+    def test_item_in_two_palettes_rejected(self):
+        from ultima_rov_dx import dx_patch
+        bg = dict(self.inputs["bg_categories"])
+        bg["item_palettes"] = {"gold": [9], "fire": [9]}
+        with self.assertRaises(dx_patch.PatchError):
+            dx_patch.build_tables(self.inputs["palettes"], bg, self.inputs["obj_categories"])
 
     def test_entrance_scene_tables(self):
         from ultima_rov_dx import dx_patch
@@ -130,6 +161,10 @@ class RealRomBuildTest(unittest.TestCase):
                 mode = 0x52                      # ld d,d: entrance cutscene
             elif (bank, addr) in GL.BLANK_LCD_ON_SITES:
                 mode = 0x5B                      # ld e,e: blank screen
+            elif (bank, addr) in GL.MENU_LCD_ON_SITES:
+                mode = 0x64                      # ld h,h: start menu
+            elif (bank, addr) in GL.DIALOG_LCD_ON_SITES:
+                mode = 0x6D                      # ld l,l: dialog text screen
             else:
                 mode = 0x40                      # ld b,b: text screen
             self.assertEqual(self.out[off + 1], mode)

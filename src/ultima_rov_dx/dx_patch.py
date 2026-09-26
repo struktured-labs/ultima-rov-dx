@@ -19,7 +19,7 @@ from .sm83asm import assemble
 
 DX_SIZE = 0x40000
 RST28, RST30 = 0xEF, 0xF7
-MAX_THEMES = 4    # dx.asm MAX_THEMES / BG_THEMES size
+MAX_THEMES = 8    # dx.asm MAX_THEMES / BG_THEMES size
 
 # Windows that assembled sections may occupy (file offsets, inclusive-exclusive).
 FREE_WINDOWS = [(0x0003, 0x0038), (0x0061, 0x0100), (0x20000, 0x40000)]
@@ -44,6 +44,10 @@ class Tables:
     entrance_theme: int = 0           # theme index of title cards + cutscene
     flat_bg: bytes = bytes(8)         # colours for blank/flat DMG palettes
     picture_fix: bytes = b"\0\0"      # entrance cutscene attribute fixups: (lo, hi, attr)*, 0, 0
+    lut_menu: bytes = bytes(256)      # start menu tile -> palette (items overlaid at run time)
+    item_pal: bytes = bytes(64)       # BG palette per item id (inventory + side-panel icons)
+    ui_theme: int = 0                 # theme of text screens, dialogs and the start menu
+    menu_obj: bytes = bytes(8)        # start-menu cursor colours (OBJ palette 7 in menu mode)
 
 
 def _index(names: list[str], name: str, what: str) -> int:
@@ -155,8 +159,31 @@ def build_tables(pal_data: dict[str, Any], bg_cat: dict[str, Any], obj_cat: dict
     if len(flat) != 4:
         raise PatchError("flat_bg needs 4 colours")
     flat_bg = b"".join(P.bgr555(c).to_bytes(2, "little") for c in flat)
+    ui_name = bg_cat.get("ui_theme")
+    ui_theme = 0
+    if ui_name is not None:
+        if ui_name not in theme_names[1:]:
+            raise PatchError(f"ui_theme {ui_name!r} is not an area_themes entry")
+        ui_theme = theme_names.index(ui_name)
+    lut_menu = title_lut_from(bg_cat.get("menu_screen") or {}, "menu_screen")
+    item_pal = bytearray([ui] * 64)
+    seen_i: dict[int, str] = {}
+    for name, ids in (bg_cat.get("item_palettes") or {}).items():
+        idx = _index(bg_names, name, "item_palettes")
+        for i in ids:
+            if not 0 <= i < 64:
+                raise PatchError(f"item id {i:#x} out of range (0-$3F)")
+            if i in seen_i:
+                raise PatchError(f"item {i:#x} in both {seen_i[i]} and {name}")
+            seen_i[i] = name
+            item_pal[i] = idx
+    cursor = pal_data.get("menu_cursor") or ["#FFFFFF", "#F8E080", "#F09838", "#D83020"]
+    if len(cursor) != 4:
+        raise PatchError("menu_cursor needs 4 colours")
+    menu_obj = b"".join(P.bgr555(c).to_bytes(2, "little") for c in cursor)
     return Tables(bytes(objpal), enc["bg"], enc["obj"], lut_title, bytes(lut_game), lut_logo,
-                  b"".join(metapals), bytes(area_theme), bg_themes, picture_lut, entrance_theme, flat_bg, bytes(fix))
+                  b"".join(metapals), bytes(area_theme), bg_themes, picture_lut, entrance_theme, flat_bg, bytes(fix),
+                  lut_menu, bytes(item_pal), ui_theme, menu_obj)
 
 
 def _asm_source() -> str:
@@ -205,10 +232,17 @@ def build(original: bytes, pal_data: dict[str, Any], bg_cat: dict[str, Any], obj
     if syms["MAX_THEMES"] != MAX_THEMES:
         raise PatchError("MAX_THEMES mismatch between dx.asm and dx_patch.py")
     if (syms["W2_IMAGE_ROM"] + syms["W2_IMAGE_LEN"] > syms["AREA_THEME"] or syms["AREA_THEME"] + 256 > syms["PICTURE_LUT"]
-            or syms["PICTURE_LUT"] + 256 > syms["PICTURE_FIX"] or syms["PICTURE_FIX"] + 256 > syms["METAPAL"]):
+            or syms["PICTURE_LUT"] + 256 > syms["PICTURE_FIX"] or syms["PICTURE_FIX"] + 256 > syms["METAPAL"]
+            or syms["METAPAL"] + 128 * MAX_THEMES > syms["LUT_TITLE_ROM"] or syms["LUT_TITLE_ROM"] + 256 > syms["LUT_LOGO_ROM"]
+            or syms["LUT_LOGO_ROM"] + 256 > 0x8000):
         raise PatchError("bank 8 table layout overlap")
     if syms["W2CodeEnd"] > syms["OBJPAL"]:
         raise PatchError(f"WRAM2 code too large (ends {syms['W2CodeEnd']:#x})")
+
+    if syms["PICTURE_BANK"] != syms["TITLE_BANK"] or any(b != syms["TITLE_BANK"] for b, _ in GL.TITLE_LCD_ON_SITES):
+        raise PatchError("title/picture LCD-on sites must all be in TITLE_BANK (LUTs are copied from bank 8)")
+    if syms["INV"] + 64 > syms["SLOTG"] or syms["ITEM_PAL"] + 64 > syms["INV"] or syms["HR_BACKUP"] + 12 > syms["ITEM_PAL"]:
+        raise PatchError("WRAM2 variable layout overlap")
 
     # 3. LCD-on sites
     unknown = GL.MAP_LCD_ON_SITES - set(GL.GAME_LCD_ON_SITES)
@@ -228,6 +262,10 @@ def build(original: bytes, pal_data: dict[str, Any], bg_cat: dict[str, Any], obj
                 mode = 0x52                  # ld d,d: entrance cutscene
             elif (bank, addr) in GL.BLANK_LCD_ON_SITES:
                 mode = 0x5B                  # ld e,e: blank screen
+            elif (bank, addr) in GL.MENU_LCD_ON_SITES:
+                mode = 0x64                  # ld h,h: start menu
+            elif (bank, addr) in GL.DIALOG_LCD_ON_SITES:
+                mode = 0x6D                  # ld l,l: dialog (text + side panel)
             else:
                 mode = 0x40                  # ld b,b: text screen
             off = GL.file_offset(bank, addr)
@@ -246,16 +284,20 @@ def build(original: bytes, pal_data: dict[str, Any], bg_cat: dict[str, Any], obj
     w2(syms["OBJPAL"], t.objpal, "OBJPAL")
     w2(syms["BASE_BG"], t.base_bg, "BASE_BG")
     w2(syms["BASE_OBJ"], t.base_obj, "BASE_OBJ")
-    w2(syms["LAST_BGP"], bytes([0xFF, 0xFF, 0xFF, 0xFF, 0x00, t.entrance_theme, 0x00]), "vars")   # force first sync + LUT build; CUR_THEME 0
+    w2(syms["LAST_BGP"], bytes([0xFF, 0xFF, 0xFF, 0xFF, 0x00, t.entrance_theme, 0x00, 0x00]), "vars")   # force first sync + LUT build; CUR_THEME 0, MAP_THEME 0
+    w2(syms["UI_THEME"], bytes([t.ui_theme, 0, 0]), "UI_THEME/LIVE")
+    w2(syms["MENU_OBJ"], t.menu_obj, "MENU_OBJ")
+    w2(syms["ITEM_PAL"], t.item_pal, "ITEM_PAL")
+    w2(syms["LUT_MENU"], t.lut_menu, "LUT_MENU")
     w2(syms["FLAT_BG"], t.flat_bg, "FLAT_BG")
     put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["PICTURE_LUT"]), t.picture_lut, "PICTURE_LUT")
     put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["PICTURE_FIX"]), t.picture_fix, "PICTURE_FIX")
     w2(syms["BG_THEMES"], t.bg_themes, "BG_THEMES")
     put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["AREA_THEME"]), t.area_theme, "AREA_THEME")
     w2(syms["SLOTPAL"], bytes([t.metapal[0]] * 16), "SLOTPAL")
-    w2(syms["LUT_TITLE"], t.lut_title, "LUT_TITLE")
+    put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["LUT_TITLE_ROM"]), t.lut_title, "LUT_TITLE_ROM")
     w2(syms["LUT_GAME"], t.lut_game, "LUT_GAME")
-    w2(syms["LUT_LOGO"], t.lut_logo, "LUT_LOGO")
+    put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["LUT_LOGO_ROM"]), t.lut_logo, "LUT_LOGO_ROM")
     w2(syms["LUT"], t.lut_game, "LUT")
     put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["METAPAL"]), t.metapal, "METAPAL")
 

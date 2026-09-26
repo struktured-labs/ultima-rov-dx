@@ -89,6 +89,8 @@ HOOKS: tuple[Hook, ...] = (
          "writes jp $4B8F at end of $D800 program -> call Far8Term (translate)"),
     Hook("slot_copy", file_offset(1, 0x4F6C), bytes.fromhex("cda901"),
          "call $01A9 in the metatile slot loader -> call Far8Slot"),
+    Hook("hud_icons", 0x04E6, bytes.fromhex("cda9013e01ea0021c9"),
+         "tail of $04C1 (A/B item icons -> tiles $F8-$FF): call $01A9; ld a,1; ld [$2100],a; ret -> call $01A9; jp HudTramp"),
     Hook("logo_dissolve", file_offset(7, 0x4BD1), bytes.fromhex("7e12"),
          "title dissolve copies $98xx->$9Cxx with LCD on -> rst $20 (copies attribute too)"),
 )
@@ -119,9 +121,15 @@ GAME_LCD_ON_SITES: tuple[tuple[int, int], ...] = (
 # entry, $10A8 start menu (mini-map); $0AEB/$14FF/1:$4126/1:$54E9 are map
 # redraw paths (static reading, not yet seen firing).
 MAP_LCD_ON_SITES: frozenset[tuple[int, int]] = frozenset({
-    (0, 0x03A3), (0, 0x0AEB), (0, 0x10A8), (0, 0x14FF), (0, 0x1B17), (0, 0x23E2),
+    (0, 0x03A3), (0, 0x0AEB), (0, 0x14FF), (0, 0x1B17), (0, 0x23E2),
     (1, 0x4126), (1, 0x54E9),
 })
+# Start menu (START during play; bank 0 $0FDB-$10A8, notes/menu.md): item grid
+# (inventory $D100-$D11F drawn as 16x16 icons from bank 3 $4B00 + id*64 into
+# tiles $0C-$8B), stats box with portrait, side panel in BG columns 22-23.
+MENU_LCD_ON_SITES: frozenset[tuple[int, int]] = frozenset({(0, 0x10A8)})
+# In-play dialog box screen (e.g. Lord British): text + side panel.
+DIALOG_LCD_ON_SITES: frozenset[tuple[int, int]] = frozenset({(0, 0x1323)})
 # Dungeon entrance sequence (bank 7, reverse_engineering/notes/cutscene.md):
 # $4619 title card ("The Cavern of Hatred"), $4692 the entrance cutscene
 # (cliff, cave mouth, the champion walking in; LCDC $87, art from bank 7
