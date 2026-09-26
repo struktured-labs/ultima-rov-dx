@@ -29,7 +29,11 @@ metatile_palettes:
 
 # Palette for font/UI tiles $40-$FF on game screens (overrides allowed).
 ui_palette: ui
-ui_overrides: {}
+# Tiles $40-$4F hold the floor-item graphics of the current area (heart
+# pickups etc., drawn as BG tiles on the map; verified in the Cavern of
+# Hatred). They use `fire` so hearts read red and color 0 matches the floor.
+ui_overrides: {0x40: fire, 0x41: fire, 0x42: fire, 0x43: fire, 0x44: fire, 0x45: fire, 0x46: fire, 0x47: fire,
+               0x48: fire, 0x49: fire, 0x4A: fire, 0x4B: fire, 0x4C: fire, 0x4D: fire, 0x4E: fire, 0x4F: fire}
 
 # Title-screen LUTs, used on screens whose LCD-on site is `rst $30`
 # (game_layout.TITLE_LCD_ON_SITES). The runtime picks the LUT from LCDC
@@ -52,3 +56,14 @@ title_screens:
       - { first: 0x64, last: 0x68, palette: gold }
       - { first: 0x6A, last: 0x6C, palette: gold }
       - { first: 0x6D, last: 0x9B, palette: water }   # "Runes of Virtue" band
+
+# Per-area themes, selected by the area id at $D12F when metatile slots are
+# loaded (reverse_engineering/notes/dungeons.md). Each theme may override
+# metatile_palettes entries; its colors come from rov_palettes.yaml
+# bg_themes.<name>. Areas not listed use theme 0 (the tables above).
+# At most 3 themes (MAX_THEMES = 4 including theme 0).
+area_themes:
+  cavern:
+    areas: [0x18, 0x19, 0x1A]    # Cavern of Hatred: 0x18 entrance, 0x19 second level, 0x1A third (shrine rooms)
+    metatile_palettes:
+      earth: [0x23]              # pebbles / rubble

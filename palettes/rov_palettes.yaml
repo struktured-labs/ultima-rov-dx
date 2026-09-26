@@ -15,7 +15,7 @@ bg_palettes:
   stone:  { colors: ["#E8E8E0", "#A8A8B8", "#585870", "#181820"] }  # dungeon floor/walls, castle
   wood:   { colors: ["#F8E0B0", "#C89050", "#785028", "#281808"] }  # doors, chests, furniture, ladders, ship
   earth:  { colors: ["#F0D8B0", "#C89868", "#885838", "#302010"] }  # brick, mountains, sand
-  fire:   { colors: ["#FFF080", "#F8A020", "#C03010", "#401008"] }  # lava, fire, traps
+  fire:   { colors: ["#E8E8E0", "#F8A020", "#C03010", "#401008"] }  # lava, fire, traps, floor items (color 0 = castle floor)
   gold:   { colors: ["#FFF0C0", "#E8C040", "#A06818", "#382008"] }  # shrines, ankh, carpets, logo
 
 obj_palettes:
@@ -27,3 +27,18 @@ obj_palettes:
   royal:   { colors: ["#000000", "#FFE0B0", "#D03838", "#302058"] }  # guards, Lord British
   item:    { colors: ["#000000", "#FFF8A0", "#E8B030", "#704010"] }  # chests, sparkles, missiles
   obp1:    { colors: ["#000000", "#E0E0E0", "#909090", "#202020"] }  # sprites using DMG OBP1
+
+# Per-area-theme BG color overrides (theme names come from
+# palettes/bg_tile_categories.yaml `area_themes`). Palettes not listed keep
+# the colors above. The runtime swaps the whole BG set when the player
+# enters an area of a different theme (see colorization_design.md).
+bg_themes:
+  cavern:   # dungeons: every palette shares the dusty cave-floor color 0 so
+            # furniture, doors and hazards sit on the floor instead of boxes
+    stone:  { colors: ["#C8BCA0", "#8C90A0", "#4C5068", "#141420"] }  # cave floor + cobbled rock
+    wood:   { colors: ["#C8BCA0", "#C08848", "#704820", "#241408"] }  # doors, chests, barrels, furniture, ladders
+    earth:  { colors: ["#C8BCA0", "#A08060", "#604028", "#201408"] }  # rubble, pebbles
+    grass:  { colors: ["#C8BCA0", "#88B858", "#3C7030", "#102010"] }  # mushrooms, plants
+    water:  { colors: ["#C8BCA0", "#58A0E8", "#2050A8", "#082050"] }  # fountains, pools
+    fire:   { colors: ["#C8BCA0", "#F89828", "#C02810", "#400808"] }  # lava, fire traps
+    gold:   { colors: ["#C8BCA0", "#E8C040", "#A06818", "#382008"] }  # arrow floors, switches
