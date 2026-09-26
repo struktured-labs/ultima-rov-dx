@@ -39,7 +39,10 @@ proved it (static disassembly offset list, emulator trace, etc.).
 - [ ] Remaining 7 dungeons: find entrances/area ids, add themes (lava/ice...). Max 3 themes besides theme 0 (grow BG_THEMES if needed).
 - [ ] Decode the per-area header in bank 4 (graphics list + compressed map) to enumerate all area ids statically.
 - [ ] Classify the unobserved LCD-on sites ($0AEB, $14FF, 1:$4126, 1:$54E9 assumed map).
-- [ ] Per-sprite-id palette tuning; HUD heart colors.
+- [ ] Per-sprite-id palette tuning.
+- [x] HUD/side panel (hearts, stars, coin, A/B icons) and start menu colored, see menu.md.
+- [ ] Side-panel A/B icons on theme-0 maps sit on a tinted square (item palette colour 0); gold digits are dark brown.
+- [ ] Observe 0:`$14FF` (text screen, LCDC `$8F`) and check its colours.
 - [ ] Real hardware test; IPS RLE.
 - [x] Dungeon entrance title card + cutscene colored (entrance theme, picture LUT), see cutscene.md.
 - [ ] Classify LCDC `$87` sites 7:`$40BF`, 7:`$4AE3` (other pictures?) and give them picture LUTs.

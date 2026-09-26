@@ -48,9 +48,13 @@ initials, difficulty; bank 7 `$4319/$438B/$4619` blank transition screens and ga
 7:`$4619` dungeon title card, 7:`$4692` entrance cutscene (LCDC `$87`), 7:`$438B` blank (see cutscene.md).
 
 ## DX runtime variables (WRAM bank 2)
-`$D700-$D702` last BGP/OBP0/OBP1, `$D703` LCD mode (0 map, 1 castle, 2 text, 3 picture, 9 logo),
-`$D704` current theme, `$D705` entrance theme, `$D706` last mode byte, `$D708-$D70F` `FLAT_BG`.
-Bank 8: `$5400` AREA_THEME, `$5600` PICTURE_LUT, `$5700` PICTURE_FIX, `$5800` METAPAL.
+`$D700-$D702` last BGP/OBP0/OBP1, `$D703` LCD mode (0 map, 1 castle, 2 text, 3 picture, 4 menu, 5 dialog, 9 logo),
+`$D704` current theme, `$D705` entrance theme, `$D706` last mode byte, `$D707` map theme, `$D708-$D70F` `FLAT_BG`,
+`$D710` UI theme, `$D711/$D712` live-refresh counters, `$D718` menu cursor colours, `$D720` HRAM backup (12),
+`$D740` `ITEM_PAL` (64), `$D780` inventory copy (64). Tables `$DC00` `LUT_MENU`, `$DD00` `LUT_GAME`, `$DE00` `BG_THEMES` (8x64).
+HRAM `$FFF3-$FFFE`: WRAM1 reader installed only while used (see menu.md).
+Bank 8: `$5400` AREA_THEME, `$5600` PICTURE_LUT, `$5700` PICTURE_FIX, `$5800` METAPAL (8 themes), `$5C00` LUT_TITLE, `$5D00` LUT_LOGO.
+Inventory/side panel: `$D100-$D11F` bag, `$D125` B item, `$D126` A item, `$D134` armour (see menu.md).
 
 ## Palettes
 BGP is `$E4` normally, `$00` while blanking during transitions. OBP0 `$E4`-ish; OBP1 is

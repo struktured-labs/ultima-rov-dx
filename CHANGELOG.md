@@ -2,6 +2,25 @@
 
 ## [Unreleased]
 
+### Added (start menu + side panel, 2026-09-26)
+
+- Start menu (0:`$10A8`) has its own LCD mode and `menu` theme: paper background, gold-brown
+  frames, skin-toned portrait, gold digits, red/orange cursor, and every item icon coloured by
+  item id (`item_palettes`: wood bows, steel swords/armour, gold coins/keys, red potions/hearts,
+  blue/green runes...).
+- Side panel (A/B items, gold, hearts, stars) coloured on the map, in dialogs and in the menu:
+  cream/parchment panel (dusty in the cavern), gold coin, stars and letters, red hearts, A/B icons
+  in their inventory colours. It is the window layer on the map, so scrolling does not disturb it.
+- Live refresh: equipping inside the menu recolours the A/B icons and the swapped slot at once
+  (hook at the end of `$04C1`), plus a rotating per-frame refresh.
+- `scripts/capture_menu.py`: `artifacts/menu_compare.png`, `artifacts/side_panel_compare.png`,
+  `save_states/{og,dx}_menu.state`. Notes: `menu.md`.
+
+### Fixed (menu run)
+
+- The start menu was treated as a map screen (random coloured blocks); dialogs now use the UI
+  theme and closing the menu/dialog restores the area theme.
+
 ### Added (dungeon entrance cutscene, 2026-09-26)
 
 - Dungeon title card (bank 7 `$4619`) in its own `entrance` theme: navy card,

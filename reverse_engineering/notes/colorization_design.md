@@ -12,7 +12,8 @@ tables and patching in `src/ultima_rov_dx/dx_patch.py`; build with `uv run pytho
   (`$4400`, copied to `$D000-$DEFF`) and `METAPAL` (`$5800`, graphic g -> BG palette).
 * WRAM bank 2: code `$D000`, `OBJPAL $D500` (sprite id -> OBJ palette), `BASE_BG $D580`,
   `BASE_OBJ $D5C0` (RGB555 base colors), live `LUT $D600` (tile -> attribute), vars `$D700`,
-  `SLOTPAL $D7F0`, attribute program `$D800`, `LUT_TITLE $DC00`, `LUT_GAME $DD00`, `LUT_LOGO $DE00`.
+  `SLOTPAL $D7F0`, attribute program `$D800`, `LUT_MENU $DC00`, `LUT_GAME $DD00`, `BG_THEMES $DE00`
+  (title/logo LUTs live in bank 8 `$5C00/$5D00` and are copied into `LUT` at LCD-on).
 * HRAM `$FF98-$FF9B`: dispatch scratch, LCD mode, slot scratch, CGB flag.
 
 ## Flow
@@ -51,6 +52,15 @@ More mode bytes (dungeon entrance, see cutscene.md): `$49` (`ld c,c`) title card
 (then bank 7 is mapped back: `PICTURE_BANK`), then per-cell attribute fixups from bank 8
 `PICTURE_FIX $5700` (`lo, hi, attr` triples, `hi = 0` ends); `$5B` (`ld e,e`) blank = text + theme 0
 with BG palette 0 colour 0 = `FLAT_BG[0]`.
+
+## Start menu, dialogs and side panel (run 5)
+Mode bytes `$64` (`ld h,h`, 0:`$10A8` start menu, LCD mode 4) and `$6D` (`ld l,l`, 0:`$1323`
+dialog, mode 5). Text screens, dialogs and the menu use `UI_THEME` (`bg_themes.menu`); map
+LCD-on restores `MAP_THEME`. Item icons get `ITEM_PAL[id]`, the side panel gets its glyph
+palettes from `LUT_GAME`/`LUT_MENU`, and a hook at the end of `$04C1` plus a rotating refresh
+after each OAM DMA keep the A/B icons and swapped slots coloured. Details: menu.md.
+Bank-0 space was freed by moving the BC/DE/HL saves of DmaHook/LcdOnGame/MetaHook into
+WRAM2 wrappers (`W2AfterDma`, `W2LcdOn`, `W2MetaW`).
 
 ## Flat DMG palettes
 `SyncGroup` treats a DMG palette whose four shades are equal (`$00/$55/$AA/$FF`) as flat: all CGB
