@@ -27,8 +27,28 @@ class TablesTest(unittest.TestCase):
         from ultima_rov_dx import dx_patch
         t = dx_patch.build_tables(self.inputs["palettes"], self.inputs["bg_categories"], self.inputs["obj_categories"])
         self.assertEqual((len(t.objpal), len(t.base_bg), len(t.base_obj)), (128, 64, 64))
-        self.assertEqual((len(t.lut_title), len(t.lut_game), len(t.lut_logo), len(t.metapal)), (256, 256, 256, 128))
+        themes = 1 + len(self.inputs["bg_categories"].get("area_themes") or {})
+        self.assertEqual((len(t.lut_title), len(t.lut_game), len(t.lut_logo), len(t.metapal)), (256, 256, 256, 128 * themes))
+        self.assertEqual((len(t.area_theme), len(t.bg_themes)), (256, 64 * dx_patch.MAX_THEMES))
         self.assertTrue(all(v < 8 for v in t.metapal + t.objpal + t.lut_game + t.lut_title + t.lut_logo))
+        self.assertTrue(all(v < themes for v in t.area_theme))
+        self.assertEqual(t.bg_themes[:64], t.base_bg)
+
+    def test_cavern_theme(self):
+        from ultima_rov_dx import dx_patch
+        t = dx_patch.build_tables(self.inputs["palettes"], self.inputs["bg_categories"], self.inputs["obj_categories"])
+        self.assertEqual((t.area_theme[0x18], t.area_theme[0x19], t.area_theme[0x02], t.area_theme[0x00]), (1, 1, 0, 0))
+        cav = t.bg_themes[64:128]
+        floor = cav[0:2]  # palette 0 (ui) keeps its color 0; the others share the cave floor
+        self.assertEqual({cav[p * 8:p * 8 + 2] for p in range(1, 8)}, {cav[8:10]})
+        self.assertEqual(floor, t.base_bg[0:2])
+
+    def test_area_in_two_themes_rejected(self):
+        from ultima_rov_dx import dx_patch
+        bg = dict(self.inputs["bg_categories"])
+        bg["area_themes"] = {"a": {"areas": [5]}, "b": {"areas": [5]}}
+        with self.assertRaises(dx_patch.PatchError):
+            dx_patch.build_tables(self.inputs["palettes"], bg, self.inputs["obj_categories"])
 
     def test_duplicate_metatile_rejected(self):
         from ultima_rov_dx import dx_patch
@@ -75,7 +95,10 @@ class RealRomBuildTest(unittest.TestCase):
 
     def test_lcd_sites_use_rst(self):
         for bank, addr in GL.GAME_LCD_ON_SITES:
-            self.assertEqual(self.out[GL.file_offset(bank, addr)], 0xEF)
+            off = GL.file_offset(bank, addr)
+            self.assertEqual(self.out[off], 0xEF)
+            mode = 0x00 if (bank, addr) in GL.MAP_LCD_ON_SITES else 0x40   # nop / ld b,b
+            self.assertEqual(self.out[off + 1], mode)
         for bank, addr in GL.TITLE_LCD_ON_SITES:
             self.assertEqual(self.out[GL.file_offset(bank, addr)], 0xF7)
 

@@ -111,14 +111,38 @@ GAME_LCD_ON_SITES: tuple[tuple[int, int], ...] = (
     (7, 0x4619), (7, 0x4692), (7, 0x4853), (7, 0x4A40), (7, 0x4AE3),
     (7, 0x4C32), (7, 0x4C78), (7, 0x4C8D),
 )
+# Game sites whose screen is the play field (map mode: tiles $00-$3F take
+# the metatile-slot palettes). Every other game site is a text/picture screen
+# (story, champion select, dialogs, game over) where all tiles use the UI
+# palette. Verified with tmp/sitetrace.py-style PyBoy hooks on rst $28:
+# $03A3 restores the map after dialogs/menus, $1B17 overworld, $23E2 area
+# entry, $10A8 start menu (mini-map); $0AEB/$14FF/1:$4126/1:$54E9 are map
+# redraw paths (static reading, not yet seen firing).
+MAP_LCD_ON_SITES: frozenset[tuple[int, int]] = frozenset({
+    (0, 0x03A3), (0, 0x0AEB), (0, 0x10A8), (0, 0x14FF), (0, 0x1B17), (0, 0x23E2),
+    (1, 0x4126), (1, 0x54E9),
+})
 TITLE_LCD_ON_SITES: tuple[tuple[int, int], ...] = (
     (7, 0x44F2),             # castle picture, LCDC $81 (tiles $00-$C1 in reading order)
     (7, 0x4BC2),             # "Ultima / Runes of Virtue" logo, LCDC $89 (map $9C00)
 )
 
-# Scene variables (partially understood; see memory_map.md)
+# Scene variables (partially understood; see memory_map.md, dungeons.md)
 SCENE_STATE_ADDR = 0xD12F    # map/area id used by the slot loader's overworld remap
 OVERWORLD_FLAG = 0xC511
+AREA_MAP = 0xC600            # 16x16 cells of the current area, row-major; low 6 bits = graphic g
+PLAYER_CELL = 0xFF91         # player cell index in AREA_MAP: high nibble row, low nibble column
+FLOOR_ITEM_TILES = (0x40, 0x4F)   # BG tiles of floor pickups (hearts...) on map screens
+AREA_IDS = {
+    0x00: "Lord British's castle (throne room)",
+    0x02: "overworld (Britannia, around the castle)",
+    0x18: "Cavern of Hatred, entrance level (cave mouth due north of the castle)",
+    0x19: "Cavern of Hatred, level 2 (down-ladder at $18 cell $9E)",
+    0x1A: "Cavern of Hatred, level 3 (south-east exit of $19, cell $FD)",
+}
+# Area graphics list: the 16 metatile graphics of area $18 are stored at
+# bank 4 $4CC8 (file 0x10CC8) with flag bits in bits 6-7, inside what looks
+# like a per-area header (dims?, 16 graphics, compressed map). Not decoded yet.
 
 
 def missing_facts() -> list[str]:

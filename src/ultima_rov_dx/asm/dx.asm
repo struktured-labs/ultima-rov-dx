@@ -51,7 +51,7 @@ MBC_BANK        equ $2100
 
 ; ---------------------------------------------------------------- ours
 HR_DISPATCH     equ $FF98   ; bank-8 far-call index
-HR_LCDMODE      equ $FF99   ; 0 = game LUT, 1 = castle title LUT, 9 = logo LUT
+HR_LCDMODE      equ $FF99   ; 0 = game site (mode byte decides map/text), 1 = castle title, 9 = logo
 HR_SLOTG        equ $FF9A   ; scratch: graphic index in Slot
 HR_CGB          equ $FF9B   ; 1 = CGB (set by Boot on every power-up; KEY1 is not
                             ;     a reliable DMG test on all emulators)
@@ -65,19 +65,24 @@ LAST_BGP        equ $D700
 LAST_OBP0       equ $D701
 LAST_OBP1       equ $D702
 LCD_MODE        equ $D703
+CUR_THEME       equ $D704   ; area theme currently loaded into BASE_BG
 SLOTG           equ $D7E0   ; 16: graphic index g of metatile slot s (debug/inspection)
 SLOTPAL         equ $D7F0   ; 16: palette of metatile slot s
 ATTR_PROG       equ $D800   ; translated attribute program
 LUT_TITLE       equ $DC00   ; 256
 LUT_GAME        equ $DD00   ; 256 (entries $00-$3F unused: from SLOTPAL)
 LUT_LOGO        equ $DE00   ; 256
-W2_IMAGE_LEN    equ $0F00
+BG_THEMES       equ $DF00   ; 4 x 64: BG base colours per area theme
+W2_IMAGE_LEN    equ $1000
+MAX_THEMES      equ 4
 PLAYER_PAL      equ 0
 OBP1_PAL        equ 7
 
 BANK8_ORG       equ $4000
 W2_IMAGE_ROM    equ $4400   ; bank 8 address of the WRAM2 image
-METAPAL         equ $5800   ; bank 8: palette per metatile graphic (128)
+AREA_THEME      equ $5400   ; bank 8: theme index per area id [$D12F] (256)
+METAPAL         equ $5800   ; bank 8: palette per metatile graphic, 128 per theme
+AREA_ID         equ $D12F   ; WRAM bank 1: current area/map id
 
 ; ======================================================== bank 0 free space
 section bank0_a, $0003, $0003          ; $0003-$001F (29 bytes)
@@ -407,12 +412,28 @@ Slot:
         add a
         or e
         and $7F
-        ld c, a
         ldh [HR_SLOTG], a
-        ld b, 0
-        ld hl, METAPAL
-        add hl, bc
+        ld a, [AREA_ID]                 ; theme of the current area
+        ld l, a
+        ld h, high(AREA_THEME)
+        ld a, [hl]
+        push af
+        ld b, a                         ; HL = METAPAL + theme*128 + g
+        rrca
+        and $80
+        ld c, a
+        ld a, b
+        srl a
+        add high(METAPAL)
+        ld h, a
+        ldh a, [HR_SLOTG]
+        or c
+        ld l, a
         ld c, [hl]                      ; C = palette
+        ld a, 2
+        ldh [rSVBK], a
+        pop af
+        call SetTheme                   ; (WRAM2) new area theme -> BASE_BG
         pop hl
         push hl
         ld a, l                         ; s = (HL - $9000) >> 6
@@ -656,15 +677,37 @@ SyncGroup:
         ret
 
 ; -- LCD about to be switched on (HR_LCDMODE: 0 game, 1 title).
+; Game sites are patched `rst $28` + one mode byte that is also a harmless
+; opcode: $00 (nop) = map screen, $40 (ld b,b) = text screen. Stack here:
+; [ret][hl][de][bc][af][rst return -> mode byte].
 W2LcdOn:
         ldh a, [rLCDC]
         bit 7, a
         ret nz                          ; already on: nothing safe to do
         ldh a, [HR_LCDMODE]
+        or a
+        jr nz, .have
+        ld hl, sp+10
+        ld a, [hl+]
+        ld h, [hl]
+        ld l, a
+        ld a, [hl]                      ; mode byte (caller's ROM bank is mapped)
+        or a
+        jr z, .have
+        ld a, 2                         ; text screen
+.have:
         ld hl, LCD_MODE
         cp [hl]
         ld [hl], a
         call nz, BuildLut
+        ld a, [LCD_MODE]
+        or a
+        jr z, .game
+        cp 2
+        jr z, .game
+        xor a                           ; title screens: surface theme
+        call SetTheme
+.game:
         ldh a, [rBGP]
         call SyncBG
         call SyncOBJ
@@ -687,6 +730,32 @@ FillAttrs:
         ldh [rVBK], a
         ret
 
+; A = area theme. Loads its BG base colours and forces a CRAM resync at
+; the next OAM DMA (VBlank) if it differs from the current one. SVBK = 2.
+SetTheme:
+        ld hl, CUR_THEME
+        cp [hl]
+        ret z
+        ld [hl], a
+        rrca                            ; DE = BG_THEMES + theme*64
+        rrca
+        ld e, a
+        and $C0
+        ld e, a
+        ld d, high(BG_THEMES)
+        ld hl, BASE_BG
+        ld b, 64
+.c:
+        ld a, [de]
+        ld [hl+], a
+        inc e
+        dec b
+        jr nz, .c
+        ld a, [LAST_BGP]
+        cpl
+        ld [LAST_BGP], a
+        ret
+
 ; Rebuild the live LUT for LCD_MODE.
 BuildLut:
         ld a, [LCD_MODE]
@@ -695,6 +764,8 @@ BuildLut:
         ld hl, LUT_TITLE
         dec a
         jr z, .t0
+        dec a
+        jr z, .text
         ld hl, LUT_LOGO
 .t0:
         ld de, LUT
@@ -703,6 +774,14 @@ BuildLut:
         ld [de], a
         inc e
         jr nz, .t
+        ret
+.text:                                  ; text screens: every tile uses the UI palette
+        ld a, [LUT_GAME + $FF]
+        ld hl, LUT
+.x:
+        ld [hl], a
+        inc l
+        jr nz, .x
         ret
 .game:
         ld hl, LUT_GAME + $40
