@@ -13,7 +13,7 @@ scripts/check_rom.py` prints the header) — never from memory or forum posts.
 | CRC32 | `C44A0F1E` | [1] |
 | MD5 | `411C3D168141D10EDDD93243F2A7765F` | [1], [2] |
 | SHA-1 | `8D911CBBC6BD1518A85282DEF7F01D3ADD16E596` | [1], [2] |
-| SHA-256 | not listed in the sources used — record from `check_rom.py` | — |
+| SHA-256 | `9008DF8D950B4E6966B38218E43BC3BAF9BAD91EF44B271B558AEE6F38C993D7` | [5] |
 
 Other entries in the same DAT, recognized by `original_rom.py` so the error
 message can name them, but **not supported**:
@@ -27,11 +27,13 @@ message can name them, but **not supported**:
 
 | Field | Value | Status |
 |---|---|---|
-| Header title (0x134–0x143) | — | **unverified** |
-| Cartridge type (0x147) / MBC | — | **unverified**. The box describes a "1 meg chip with battery back-up saves" [3], consistent with the 128 KiB size and implying cartridge RAM + battery, but the exact MBC/type byte must come from the ROM. |
-| ROM size code (0x148) | — | **unverified** (size 128 KiB per [1] would be code 0x02) |
-| RAM size code (0x149) | — | **unverified** |
-| CGB flag (0x143) / SGB flag (0x146) | — | **unverified**; gbdb lists "Super GB support: No" [3] |
+| Header title (0x134–0x143) | `RUNES OF VIRTUE` | [5] |
+| Cartridge type (0x147) / MBC | `0x06` = MBC2+BATTERY | [5]. MBC2 has 512×4-bit RAM built into the mapper, which matches the box's "battery back-up saves" [3]. |
+| ROM size code (0x148) | `0x02` (128 KiB, 8 banks) | [5] |
+| RAM size code (0x149) | `0x00` (expected for MBC2; the save RAM is inside the MBC2 chip) | [5] |
+| CGB flag (0x143) / SGB flag (0x146) | `0x00` (DMG only) / `0x00` (no SGB support) | [5]; the SGB flag agrees with gbdb [3] |
+| Mask ROM version (0x14C) | `0` | [5] |
+| Header / global checksums | both OK | [5] |
 | Part number | DMG-UT-USA | [3] |
 
 ## Game
@@ -58,3 +60,6 @@ message can name them, but **not supported**:
    (box-back text, part number, SGB support, saves).
 4. Wikipedia, "Ultima: Runes of Virtue":
    <https://en.wikipedia.org/wiki/Ultima:_Runes_of_Virtue> (fetched 2026-09-24).
+5. `python3 scripts/check_rom.py` output for the local dump
+   `rom/Ultima - Runes of Virtue (USA).gb`, which matches the DAT size, CRC32,
+   MD5 and SHA-1 above (run 2026-09-26).
