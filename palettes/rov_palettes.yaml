@@ -11,7 +11,7 @@
 # (e.g. OBP0=$34 in the dungeon-entrance cutscene), so keep it white.
 
 bg_palettes:
-  ui:     { colors: ["#FFF8E8", "#C8B898", "#686050", "#181010"] }  # text, status bar, menus
+  ui:     { colors: ["#FFF0C0", "#E0CC98", "#D83020", "#281810"] }  # map side panel: parchment, pale (empty hearts/stars), red hearts, ink
   grass:  { colors: ["#D8F0A0", "#80C050", "#307828", "#102010"] }  # plains, trees, plants
   water:  { colors: ["#C8ECFF", "#5898E8", "#2050A8", "#082050"] }  # sea, rivers, fountains
   stone:  { colors: ["#E8E8E0", "#A8A8B8", "#585870", "#181820"] }  # dungeon floor/walls, castle
@@ -37,6 +37,7 @@ obj_palettes:
 bg_themes:
   cavern:   # dungeons: every palette shares the dusty cave-floor color 0 so
             # furniture, doors and hazards sit on the floor instead of boxes
+    ui:     { colors: ["#C8BCA0", "#E8DCC0", "#C82818", "#201410"] }  # side panel on the cave floor
     stone:  { colors: ["#C8BCA0", "#8C90A0", "#4C5068", "#141420"] }  # cave floor + cobbled rock
     wood:   { colors: ["#C8BCA0", "#C08848", "#704820", "#241408"] }  # doors, chests, barrels, furniture, ladders
     earth:  { colors: ["#C8BCA0", "#A08060", "#604028", "#201408"] }  # rubble, pebbles
@@ -57,6 +58,21 @@ bg_themes:
     wood:   { colors: ["#F8E0C0", "#D0A468", "#6E4C34", "#20140E"] }  # rocky ground, bones
     fire:   { colors: ["#E8B4AC", "#A88060", "#6E4C34", "#20140E"] }  # sky, top band (rose)
     gold:   { colors: ["#F0CAB4", "#B09CC8", "#6E4C34", "#20140E"] }  # sky, middle band + mountain tops
+
+  menu:  # text screens, dialogs and the start menu: parchment boxes (shared
+         # colour 0), item colours for the inventory icons
+    ui:     { colors: ["#FFF8E8", "#C8B898", "#686050", "#181010"] }  # text, frames, letters
+    gold:   { colors: ["#FFF8E8", "#F0C848", "#B87C18", "#5A3808"] }  # box frames, coins, keys, digits
+    fire:   { colors: ["#FFF8E8", "#F88060", "#D02818", "#401008"] }  # hearts, red potions
+    water:  { colors: ["#FFF8E8", "#88B8F0", "#3060C0", "#101C48"] }  # blue flask, magic
+    stone:  { colors: ["#FFF8E8", "#B8C4D4", "#687890", "#182030"] }  # steel: blades, armour
+    wood:   { colors: ["#FFF8E8", "#D8A868", "#8A5A2C", "#2A1808"] }  # bows, chests, boots, rope
+    earth:  { colors: ["#FFF8E8", "#F0C0A0", "#A86848", "#301810"] }  # portrait skin, food, rock
+    grass:  { colors: ["#FFF8E8", "#A0D070", "#408838", "#102010"] }  # green potion, rune of justice
+
+# Start-menu cursor (sprite tiles 0-3, OBJ palette 7 while the menu is up;
+# shade index through OBP0).
+menu_cursor: ["#FFFFFF", "#F8E080", "#F09838", "#D83020"]
 
 # Colours for a DMG palette whose four shades are alike (BGP/OBP $00 = blank
 # white, $FF = black): every CGB palette gets the same colour, so blanking

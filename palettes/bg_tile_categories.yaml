@@ -33,7 +33,13 @@ ui_palette: ui
 # pickups etc., drawn as BG tiles on the map; verified in the Cavern of
 # Hatred). They use `fire` so hearts read red and color 0 matches the floor.
 ui_overrides: {0x40: fire, 0x41: fire, 0x42: fire, 0x43: fire, 0x44: fire, 0x45: fire, 0x46: fire, 0x47: fire,
-               0x48: fire, 0x49: fire, 0x4A: fire, 0x4B: fire, 0x4C: fire, 0x4D: fire, 0x4E: fire, 0x4F: fire}
+               0x48: fire, 0x49: fire, 0x4A: fire, 0x4B: fire, 0x4C: fire, 0x4D: fire, 0x4E: fire, 0x4F: fire,
+               # side panel (window): $E4 full star and the coin $F5/$F7 in gold; hearts $F4,
+               # empty heart $E5, empty star $E7, letters and digits stay on the ui palette,
+               # which the map themes make the panel palette (parchment, pale, red, dark).
+               # $F8-$FB / $FC-$FF (A / B item icons) follow item_palettes at run time.
+               # letters A/B ($F2/$F3) have shade-2 antialiasing: gold, not the red ink.
+               0xE4: gold, 0xF2: gold, 0xF3: gold, 0xF5: gold, 0xF7: gold}
 
 # Title-screen LUTs, used on screens whose LCD-on site is `rst $30`
 # (game_layout.TITLE_LCD_ON_SITES). The runtime picks the LUT from LCDC
@@ -69,10 +75,42 @@ area_themes:
       earth: [0x23]              # pebbles / rubble
   entrance:
     areas: []                    # no map area: selected by the entrance LCD-on sites
+  menu:
+    areas: []                    # no map area: text screens, dialogs and the start menu
 
 # Theme used by dungeon title cards (bank 7 $4619) and the entrance cutscene
 # (bank 7 $4692); the area theme returns when the next area loads.
 entrance_theme: entrance
+# Theme of text screens, in-play dialogs and the start menu. Its palettes all
+# share the parchment colour 0 so item icons sit on the menu boxes.
+ui_theme: menu
+
+# Start menu LUT (bank 0 $10A8, notes/menu.md). Tiles $0C-$8B (item grid),
+# $BC-$BF (armour) and $F8-$FF (A/B icons) are overwritten at run time from
+# item_palettes; dialogs reuse entries $E4-$FF (side panel, digits).
+menu_screen:
+  default: ui
+  ranges:
+    - { first: 0x02, last: 0x0B, palette: gold }   # box frames: gold-brown lines
+    - { first: 0xD4, last: 0xE3, palette: earth }  # champion portrait (skin tones)
+    - { first: 0xE4, last: 0xE4, palette: gold }   # full star
+    - { first: 0xE8, last: 0xF1, palette: gold }   # digits 0-9 (stats, gold count)
+    - { first: 0xF4, last: 0xF4, palette: fire }   # full heart
+    - { first: 0xF5, last: 0xF5, palette: gold }   # coin
+    - { first: 0xF7, last: 0xF7, palette: gold }
+
+# BG palette per item id (icon = bank 3 $4B00 + id*64; tmp atlas in
+# notes/menu.md). Used by the start-menu grid, the armour slot and the side
+# panel A/B icons in every theme (map themes: same palette names).
+item_palettes:
+  stone: [0x00, 0x04, 0x08, 0x0A, 0x0B, 0x0F, 0x12, 0x15, 0x18, 0x19, 0x1A, 0x1B, 0x1C,
+          0x20, 0x29, 0x33, 0x34]                     # armour, blades, throwing stars, pick, chain, caltrops
+  wood:  [0x01, 0x02, 0x03, 0x05, 0x11, 0x21, 0x2C, 0x2D, 0x2E, 0x30, 0x37]   # bows, arrows, boomerang, whip, chest, rope, boots, net, pipes
+  water: [0x06, 0x07, 0x16, 0x24]                     # blue flask, magic staff, rain, rune of honesty (hand)
+  gold:  [0x09, 0x0C, 0x14, 0x17, 0x1D, 0x1E, 0x1F, 0x25, 0x2A, 0x31, 0x32, 0x36, 0x38, 0x3E]  # coins, keys, lamp, rings, chalice, ankh, compass, stars
+  fire:  [0x0D, 0x10, 0x23, 0x26, 0x28, 0x3F]         # fireballs, heart, red potion, runes of valour / sacrifice
+  earth: [0x0E, 0x13, 0x22, 0x2F, 0x35]               # rock, food
+  grass: [0x27, 0x3D]                                 # rune of justice, green potion
 
 # Tile -> palette LUT for the dungeon-entrance cutscene (one picture shared by
 # all dungeon entrances; tiles are numbered in reading order). Derived by
