@@ -43,6 +43,31 @@ class TablesTest(unittest.TestCase):
         self.assertEqual({cav[p * 8:p * 8 + 2] for p in range(1, 8)}, {cav[8:10]})
         self.assertEqual(floor, t.base_bg[0:2])
 
+    def test_entrance_scene_tables(self):
+        from ultima_rov_dx import dx_patch
+        t = dx_patch.build_tables(self.inputs["palettes"], self.inputs["bg_categories"], self.inputs["obj_categories"])
+        names = list(self.inputs["bg_categories"]["area_themes"])
+        self.assertEqual(t.entrance_theme, 1 + names.index("entrance"))
+        self.assertEqual(len(t.picture_lut), 256)
+        self.assertTrue(all(v < 8 for v in t.picture_lut))
+        # the cutscene uses several palettes (cliff, sky, mountains, plain, ground)
+        self.assertGreaterEqual(len(set(t.picture_lut[:0xE4])), 5)
+        self.assertEqual(len(t.flat_bg), 8)
+        self.assertEqual(t.flat_bg[:2], b"\xff\x7f")   # blank screens are white
+        ent = t.bg_themes[64 * t.entrance_theme:64 * (t.entrance_theme + 1)]
+        # picture palettes 1-7 share colours 2 and 3 (cliff, rocks): no seams between regions
+        self.assertEqual(len({ent[p * 8 + 4:p * 8 + 8] for p in range(1, 8)}), 1)
+        fix = t.picture_fix
+        self.assertEqual((fix[-2:], len(fix) % 3), (b"\0\0", 2))
+        cells = {fix[i] | fix[i + 1] << 8: fix[i + 2] for i in range(0, len(fix) - 2, 3)}
+        self.assertEqual(cells[0x9800 + 13 * 32 + 19], t.picture_lut[0x70])   # $1E at the ground edge
+
+    def test_obj_color0_is_white(self):
+        from ultima_rov_dx import dx_patch
+        t = dx_patch.build_tables(self.inputs["palettes"], self.inputs["bg_categories"], self.inputs["obj_categories"])
+        # OBP0 $34 in the entrance cutscene shows shade 0 on the hero: white, as on DMG
+        self.assertTrue(all(t.base_obj[p * 8:p * 8 + 2] == b"\xff\x7f" for p in range(8)))
+
     def test_area_in_two_themes_rejected(self):
         from ultima_rov_dx import dx_patch
         bg = dict(self.inputs["bg_categories"])
@@ -97,7 +122,16 @@ class RealRomBuildTest(unittest.TestCase):
         for bank, addr in GL.GAME_LCD_ON_SITES:
             off = GL.file_offset(bank, addr)
             self.assertEqual(self.out[off], 0xEF)
-            mode = 0x00 if (bank, addr) in GL.MAP_LCD_ON_SITES else 0x40   # nop / ld b,b
+            if (bank, addr) in GL.MAP_LCD_ON_SITES:
+                mode = 0x00                      # nop: map screen
+            elif (bank, addr) in GL.CARD_LCD_ON_SITES:
+                mode = 0x49                      # ld c,c: dungeon title card
+            elif (bank, addr) in GL.PICTURE_LCD_ON_SITES:
+                mode = 0x52                      # ld d,d: entrance cutscene
+            elif (bank, addr) in GL.BLANK_LCD_ON_SITES:
+                mode = 0x5B                      # ld e,e: blank screen
+            else:
+                mode = 0x40                      # ld b,b: text screen
             self.assertEqual(self.out[off + 1], mode)
         for bank, addr in GL.TITLE_LCD_ON_SITES:
             self.assertEqual(self.out[GL.file_offset(bank, addr)], 0xF7)

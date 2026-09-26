@@ -40,6 +40,10 @@ class Tables:
     metapal: bytes     # 128 per theme
     area_theme: bytes  # 256: theme index per area id ($D12F)
     bg_themes: bytes   # MAX_THEMES x 64: BG base colours per theme
+    picture_lut: bytes = bytes(256)   # entrance cutscene tile -> palette
+    entrance_theme: int = 0           # theme index of title cards + cutscene
+    flat_bg: bytes = bytes(8)         # colours for blank/flat DMG palettes
+    picture_fix: bytes = b"\0\0"      # entrance cutscene attribute fixups: (lo, hi, attr)*, 0, 0
 
 
 def _index(names: list[str], name: str, what: str) -> int:
@@ -70,14 +74,16 @@ def build_tables(pal_data: dict[str, Any], bg_cat: dict[str, Any], obj_cat: dict
     for tile, name in (bg_cat.get("ui_overrides") or {}).items():
         lut_game[int(tile)] = _index(bg_names, name, "ui_overrides")
 
-    def title_lut(key: str) -> bytes:
-        spec = (bg_cat.get("title_screens") or {}).get(key) or {}
+    def title_lut_from(spec: dict[str, Any], key: str) -> bytes:
         lut = bytearray([_index(bg_names, spec.get("default", bg_names[0]), key)] * 256)
         for rng in spec.get("ranges") or []:
             idx = _index(bg_names, rng["palette"], f"{key}.ranges")
             for t in range(rng["first"], rng["last"] + 1):
                 lut[t] = idx
         return bytes(lut)
+
+    def title_lut(key: str) -> bytes:
+        return title_lut_from((bg_cat.get("title_screens") or {}).get(key) or {}, key)
 
     lut_title, lut_logo = title_lut("castle"), title_lut("logo")
 
@@ -127,8 +133,30 @@ def build_tables(pal_data: dict[str, Any], bg_cat: dict[str, Any], obj_cat: dict
         if name not in (bg_cat.get("area_themes") or {}):
             raise PatchError(f"bg_themes.{name} has no area_themes entry")
     bg_themes = b"".join(bg_sets) + bytes(64 * (MAX_THEMES - len(bg_sets)))
+    theme_names = ["base"] + list((bg_cat.get("area_themes") or {}).keys())
+    entrance = bg_cat.get("entrance_theme")
+    entrance_theme = 0
+    if entrance is not None:
+        if entrance not in theme_names[1:]:
+            raise PatchError(f"entrance_theme {entrance!r} is not an area_themes entry")
+        entrance_theme = theme_names.index(entrance)
+    pic_spec = (bg_cat.get("pictures") or {}).get("entrance") or {}
+    picture_lut = bytes(title_lut_from(pic_spec, "pictures.entrance"))
+    fix = bytearray()
+    for f in pic_spec.get("fixups") or []:
+        if not (0 <= f["row"] < 32 and 0 <= f["col"] < 32):
+            raise PatchError(f"pictures.entrance fixup {f} outside the 32x32 map")
+        addr = 0x9800 + 32 * f["row"] + f["col"]
+        fix += bytes([addr & 0xFF, addr >> 8, _index(bg_names, f["palette"], "pictures.entrance.fixups")])
+    fix += b"\0\0"
+    if len(fix) > 256:
+        raise PatchError("too many pictures.entrance fixups")
+    flat = pal_data.get("flat_bg") or ["#FFFFFF", "#B0B0B0", "#606060", "#000000"]
+    if len(flat) != 4:
+        raise PatchError("flat_bg needs 4 colours")
+    flat_bg = b"".join(P.bgr555(c).to_bytes(2, "little") for c in flat)
     return Tables(bytes(objpal), enc["bg"], enc["obj"], lut_title, bytes(lut_game), lut_logo,
-                  b"".join(metapals), bytes(area_theme), bg_themes)
+                  b"".join(metapals), bytes(area_theme), bg_themes, picture_lut, entrance_theme, flat_bg, bytes(fix))
 
 
 def _asm_source() -> str:
@@ -176,7 +204,8 @@ def build(original: bytes, pal_data: dict[str, Any], bg_cat: dict[str, Any], obj
         raise PatchError("bank 8 code overlaps the WRAM2 image")
     if syms["MAX_THEMES"] != MAX_THEMES:
         raise PatchError("MAX_THEMES mismatch between dx.asm and dx_patch.py")
-    if syms["W2_IMAGE_ROM"] + syms["W2_IMAGE_LEN"] > syms["AREA_THEME"] or syms["AREA_THEME"] + 256 > syms["METAPAL"]:
+    if (syms["W2_IMAGE_ROM"] + syms["W2_IMAGE_LEN"] > syms["AREA_THEME"] or syms["AREA_THEME"] + 256 > syms["PICTURE_LUT"]
+            or syms["PICTURE_LUT"] + 256 > syms["PICTURE_FIX"] or syms["PICTURE_FIX"] + 256 > syms["METAPAL"]):
         raise PatchError("bank 8 table layout overlap")
     if syms["W2CodeEnd"] > syms["OBJPAL"]:
         raise PatchError(f"WRAM2 code too large (ends {syms['W2CodeEnd']:#x})")
@@ -189,7 +218,18 @@ def build(original: bytes, pal_data: dict[str, Any], bg_cat: dict[str, Any], obj
         for bank, addr in sites:
             # rst $28 is followed by a mode byte that is also a no-op opcode:
             # $00 nop = map screen, $40 ld b,b = text screen (see W2LcdOn)
-            mode = 0x00 if rst == RST30 or (bank, addr) in GL.MAP_LCD_ON_SITES else 0x40
+            if rst == RST30 or (bank, addr) in GL.MAP_LCD_ON_SITES:
+                mode = 0x00                  # nop: map screen
+            elif (bank, addr) in GL.CARD_LCD_ON_SITES:
+                mode = 0x49                  # ld c,c: title card
+            elif (bank, addr) in GL.PICTURE_LCD_ON_SITES:
+                if bank != syms["PICTURE_BANK"]:
+                    raise PatchError("picture LCD-on sites must be in PICTURE_BANK")
+                mode = 0x52                  # ld d,d: entrance cutscene
+            elif (bank, addr) in GL.BLANK_LCD_ON_SITES:
+                mode = 0x5B                  # ld e,e: blank screen
+            else:
+                mode = 0x40                  # ld b,b: text screen
             off = GL.file_offset(bank, addr)
             pre = original[off - 2:off + 2]
             if not (pre[0] == 0x3E and pre[1] & 0x80 and pre[2:] == b"\xE0\x40"):
@@ -206,7 +246,10 @@ def build(original: bytes, pal_data: dict[str, Any], bg_cat: dict[str, Any], obj
     w2(syms["OBJPAL"], t.objpal, "OBJPAL")
     w2(syms["BASE_BG"], t.base_bg, "BASE_BG")
     w2(syms["BASE_OBJ"], t.base_obj, "BASE_OBJ")
-    w2(syms["LAST_BGP"], bytes([0xFF, 0xFF, 0xFF, 0xFF, 0x00]), "vars")   # force first sync + LUT build; CUR_THEME 0
+    w2(syms["LAST_BGP"], bytes([0xFF, 0xFF, 0xFF, 0xFF, 0x00, t.entrance_theme, 0x00]), "vars")   # force first sync + LUT build; CUR_THEME 0
+    w2(syms["FLAT_BG"], t.flat_bg, "FLAT_BG")
+    put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["PICTURE_LUT"]), t.picture_lut, "PICTURE_LUT")
+    put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["PICTURE_FIX"]), t.picture_fix, "PICTURE_FIX")
     w2(syms["BG_THEMES"], t.bg_themes, "BG_THEMES")
     put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["AREA_THEME"]), t.area_theme, "AREA_THEME")
     w2(syms["SLOTPAL"], bytes([t.metapal[0]] * 16), "SLOTPAL")

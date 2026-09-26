@@ -122,6 +122,13 @@ MAP_LCD_ON_SITES: frozenset[tuple[int, int]] = frozenset({
     (0, 0x03A3), (0, 0x0AEB), (0, 0x10A8), (0, 0x14FF), (0, 0x1B17), (0, 0x23E2),
     (1, 0x4126), (1, 0x54E9),
 })
+# Dungeon entrance sequence (bank 7, reverse_engineering/notes/cutscene.md):
+# $4619 title card ("The Cavern of Hatred"), $4692 the entrance cutscene
+# (cliff, cave mouth, the champion walking in; LCDC $87, art from bank 7
+# $5D50/$6550, map $6B90), $438B blank screen before the area is shown.
+CARD_LCD_ON_SITES: frozenset[tuple[int, int]] = frozenset({(7, 0x4619)})
+PICTURE_LCD_ON_SITES: frozenset[tuple[int, int]] = frozenset({(7, 0x4692)})
+BLANK_LCD_ON_SITES: frozenset[tuple[int, int]] = frozenset({(7, 0x438B)})
 TITLE_LCD_ON_SITES: tuple[tuple[int, int], ...] = (
     (7, 0x44F2),             # castle picture, LCDC $81 (tiles $00-$C1 in reading order)
     (7, 0x4BC2),             # "Ultima / Runes of Virtue" logo, LCDC $89 (map $9C00)

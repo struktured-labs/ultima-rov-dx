@@ -66,6 +66,9 @@ LAST_OBP0       equ $D701
 LAST_OBP1       equ $D702
 LCD_MODE        equ $D703
 CUR_THEME       equ $D704   ; area theme currently loaded into BASE_BG
+ENTRANCE_THEME  equ $D705   ; theme of dungeon title cards + entrance cutscene (set by builder)
+LCD_BYTE        equ $D706   ; mode byte of the last game LCD-on site
+FLAT_BG         equ $D708   ; 4 colours used when a DMG palette maps every shade alike (blank/fade)
 SLOTG           equ $D7E0   ; 16: graphic index g of metatile slot s (debug/inspection)
 SLOTPAL         equ $D7F0   ; 16: palette of metatile slot s
 ATTR_PROG       equ $D800   ; translated attribute program
@@ -81,6 +84,9 @@ OBP1_PAL        equ 7
 BANK8_ORG       equ $4000
 W2_IMAGE_ROM    equ $4400   ; bank 8 address of the WRAM2 image
 AREA_THEME      equ $5400   ; bank 8: theme index per area id [$D12F] (256)
+PICTURE_LUT     equ $5600   ; bank 8: tile -> BG palette for the dungeon-entrance cutscene (256)
+PICTURE_FIX     equ $5700   ; bank 8: attribute fixups (VRAM lo, hi, attr)..., hi = 0 ends (<= 256 bytes)
+PICTURE_BANK    equ 7       ; ROM bank of the (only) picture LCD-on site, restored after the copy
 METAPAL         equ $5800   ; bank 8: palette per metatile graphic, 128 per theme
 AREA_ID         equ $D12F   ; WRAM bank 1: current area/map id
 
@@ -648,6 +654,11 @@ SyncOBJ:
 ; HL = base colours (4 per palette, index = DMG shade), B = count,
 ; D = DMG palette register value, C = data port. Advances HL.
 SyncGroup:
+        ld a, d                         ; all four shades alike (blank/fade)?
+        rrca
+        rrca
+        cp d
+        jr z, .flat
 .pal:
         ld e, d
         push bc
@@ -675,15 +686,50 @@ SyncGroup:
         dec b
         jr nz, .pal
         ret
+.flat:                                  ; every colour of B palettes = FLAT_BG[shade]
+        push hl
+        ld a, d
+        and $03
+        add a
+        add low(FLAT_BG)
+        ld l, a
+        ld h, high(FLAT_BG)
+        ld a, [hl+]
+        ld e, a
+        ld d, [hl]
+        pop hl
+.fp:
+        push bc
+        ld b, 4
+.fc:
+        ld a, e
+        ldh [c], a
+        ld a, d
+        ldh [c], a
+        dec b
+        jr nz, .fc
+        pop bc
+        ld a, l
+        add 8
+        ld l, a
+        dec b
+        jr nz, .fp
+        ret
 
 ; -- LCD about to be switched on (HR_LCDMODE: 0 game, 1 title).
 ; Game sites are patched `rst $28` + one mode byte that is also a harmless
-; opcode: $00 (nop) = map screen, $40 (ld b,b) = text screen. Stack here:
+; opcode: $00 (nop) = map screen, $40 (ld b,b) = text screen, $49 (ld c,c) =
+; dungeon title card (text + entrance theme), $52 (ld d,d) = entrance
+; cutscene picture (PICTURE_LUT + entrance theme, bank-7 site only),
+; $5B (ld e,e) = blank screen (text + surface theme). Stack here:
 ; [ret][hl][de][bc][af][rst return -> mode byte].
+; LCD_MODE: 0 map, 1 castle title, 2 text, 3 picture, 9 logo.
 W2LcdOn:
         ldh a, [rLCDC]
         bit 7, a
         ret nz                          ; already on: nothing safe to do
+        xor a
+        ld [LCD_BYTE], a
         ldh a, [HR_LCDMODE]
         or a
         jr nz, .have
@@ -692,7 +738,11 @@ W2LcdOn:
         ld h, [hl]
         ld l, a
         ld a, [hl]                      ; mode byte (caller's ROM bank is mapped)
+        ld [LCD_BYTE], a
         or a
+        jr z, .have
+        cp $52
+        ld a, 3                         ; picture
         jr z, .have
         ld a, 2                         ; text screen
 .have:
@@ -700,17 +750,66 @@ W2LcdOn:
         cp [hl]
         ld [hl], a
         call nz, BuildLut
-        ld a, [LCD_MODE]
+        ld a, [LCD_MODE]                ; theme for the new screen
         or a
-        jr z, .game
+        jr z, .game                     ; map: keep the area theme
+        cp 3
+        jr z, .ent
         cp 2
-        jr z, .game
-        xor a                           ; title screens: surface theme
+        jr nz, .t0                      ; title screens: surface theme
+        ld a, [LCD_BYTE]
+        cp $49
+        jr z, .ent
+        cp $5B
+        jr nz, .game                    ; plain text: keep
+.t0:
+        xor a
+        jr .set
+.ent:
+        ld a, [ENTRANCE_THEME]
+.set:
         call SetTheme
 .game:
         ldh a, [rBGP]
         call SyncBG
         call SyncOBJ
+        ld a, [LCD_BYTE]                ; blank screen: UI colour 0 -> flat white,
+        cp $5B                          ; matching the LCD-off frames around it
+        jr nz, .attrs
+        ld a, $80
+        ldh [rBCPS], a
+        ld a, [FLAT_BG]
+        ldh [rBCPD], a
+        ld a, [FLAT_BG+1]
+        ldh [rBCPD], a
+.attrs:
+        call FillAttrs
+        ld a, [LCD_MODE]
+        cp 3
+        ret nz
+; Picture: map cells whose tile id is shared by two regions get their own
+; attribute (list in bank 8), then the caller's bank 7 is mapped back.
+        ld a, 8
+        ld [MBC_BANK], a
+        ld hl, PICTURE_FIX
+        ld a, 1
+        ldh [rVBK], a
+.fix:
+        ld e, [hl]
+        inc hl
+        ld a, [hl+]
+        or a
+        jr z, .fixed
+        ld d, a
+        ld a, [hl+]
+        ld [de], a
+        jr .fix
+.fixed:
+        xor a
+        ldh [rVBK], a
+        ld a, PICTURE_BANK
+        ld [MBC_BANK], a
+        ret
 ; Recompute attributes of both BG maps from their tile ids (LCD off).
 FillAttrs:
         ld hl, $9800
@@ -766,6 +865,8 @@ BuildLut:
         jr z, .t0
         dec a
         jr z, .text
+        dec a
+        jr z, .pic
         ld hl, LUT_LOGO
 .t0:
         ld de, LUT
@@ -774,6 +875,19 @@ BuildLut:
         ld [de], a
         inc e
         jr nz, .t
+        ret
+.pic:                                   ; entrance cutscene: LUT from bank 8
+        ld a, 8
+        ld [MBC_BANK], a
+        ld hl, PICTURE_LUT
+        ld de, LUT
+.pc:
+        ld a, [hl+]
+        ld [de], a
+        inc e
+        jr nz, .pc
+        ld a, PICTURE_BANK
+        ld [MBC_BANK], a
         ret
 .text:                                  ; text screens: every tile uses the UI palette
         ld a, [LUT_GAME + $FF]
