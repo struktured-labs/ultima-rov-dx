@@ -1,13 +1,13 @@
 """Game-specific facts about Ultima: Runes of Virtue (USA).
 
-EVERY value here must come from reverse engineering the verified original
-ROM (see reverse_engineering/notes/TODO.md) and should cite the doc or probe
-that established it. Nothing has been established yet: the ROM has not been
-supplied. ``None`` means "unknown -- do not guess".
+Every value here was established by reverse engineering the verified ROM
+(SHA-256 9008df8d...c993d7, see docs/rom_facts.md) with the mgbdis
+disassembly, PyBoy runs and the scripts/probes/sm83.py tracer. Notes with
+the evidence live in reverse_engineering/notes/ (memory_map.md,
+bg_tiles.md, sprites.md, colorization_design.md).
 
-Nothing in this file was copied from penta-dragon-dx; Penta Dragon's
-addresses (VBlank chain at $06D1, inline copier at bank1:$42A7, HRAM
-FFC1/FFC4, D880, ...) are meaningless for this game.
+Addresses are CPU addresses; ``file_offset(bank, addr)`` converts.
+Nothing here was copied from penta-dragon-dx.
 """
 
 from __future__ import annotations
@@ -15,9 +15,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 
+def file_offset(bank: int, addr: int) -> int:
+    return addr if addr < 0x4000 else bank * 0x4000 + (addr - 0x4000)
+
+
 @dataclass(frozen=True)
 class Hook:
-    """A patch site: replace ``length`` bytes at file ``offset`` with a CALL/JP."""
+    """A patch site whose original bytes must match ``preimage`` exactly."""
 
     name: str
     offset: int | None       # file offset in the original ROM
@@ -25,36 +29,96 @@ class Hook:
     note: str
 
 
-# TODO(RE): cartridge header facts, to be filled in from `rov-dx check-rom`
-# output once the ROM is present (do not fill from memory or forums).
-CARTRIDGE_TYPE: int | None = None      # header 0x147 (battery saves suggest MBCx+RAM+BATTERY; unverified)
-ROM_BANKS: int | None = None           # 131072 bytes per No-Intro -> 8 x 16 KiB banks (confirm)
-BANK_SELECT_SHADOW: int | None = None  # WRAM/HRAM byte where the game mirrors its current ROM bank
+# ---------------------------------------------------------------- cartridge
+CARTRIDGE_TYPE = 0x06        # MBC2 + battery (header 0x147)
+ROM_BANKS = 8                # 128 KiB original (header 0x148 = 0x02)
+DX_ROM_SIZE_CODE = 0x03      # DX build: 256 KiB (MBC2 maximum), banks 8-15 free
+DX_RUNTIME_BANK = 8          # bank holding the DX code and WRAM2 image
+BANK_SELECT_SHADOW = None    # the game keeps NO shadow of the ROM bank (verified: writes $2100 directly)
+MBC2_BANK_REGISTER = 0x2100  # any $0000-$3FFF address with bit 8 set; low 4 bits = bank
 
-# TODO(RE): where CGB palettes get loaded once after LCD init (before the
-# title screen draws). Without this the CGB-flagged ROM shows a blank/white
-# screen, because CGB mode ignores BGP/OBP0/OBP1.
-PALETTE_INIT_HOOK = Hook("palette_init", None, None, "after LCD init, before title")
+# ---------------------------------------------------------------- vectors / core
+ENTRY_JP = 0x0150            # jp $1AE2 (also rst $00 target)
+GAME_INIT = 0x1AE2           # di; SP=$CFFF; init; LCDC=$E7; main loop ~$1B7B
+VBLANK_ISR = 0x1ACB          # push af; if [$C522]!=1: call $FF80; [$FF8E]=1
+STAT_ISR = 0x1A9F            # link/serial byte pump ($CC00 page); no $Dxxx access
+OAM_DMA_HRAM = 0xFF80        # di; DMA from $C000; ei; ret (source bank3:$735C, 12 bytes)
+OAM_DMA_CALLERS = (0x03A8, 0x10D3, 0x1762, 0x1AD3, 0x1EF3, 0x2BE5, (1, 0x50C0), (1, 0x52C3), (1, 0x52F3))
+SHADOW_OAM = 0xC000          # also used as a text buffer while $C522 == 1
+VBLANK_FLAG = 0xFF8E
+DMA_INHIBIT = 0xC522         # 1 = ISR must not DMA (tile program running / dialogs)
+WAIT_LY91 = 0x02DC           # busy-wait LY == $91 (returns at once if LCD off)
+COPY64 = 0x01A9              # wait LY $91, copy 64 bytes DE -> HL
+MEMCPY = 0x01A0              # HL -> DE, BC bytes
+LCD_OFF_ROUTINES = (0x078F, 0x079D)
 
-# TODO(RE): VBlank handler entry (vector $0040 target) for per-scene
-# palette/attribute service.
-VBLANK_HOOK = Hook("vblank", None, None, "VBlank ISR chain")
+# ---------------------------------------------------------------- BG pipeline
+SHADOW_TILEMAP = 0xC100      # $C100-$C4FF mirrors $9800-$9BFF
+TILE_PROGRAM = 0xD800        # generated code: 31 lo hi / 01 lo hi / C5 / D5 / C3 8F 4B
+TILE_PROGRAM_GENERATOR = (1, 0x4A61)
+TILE_PROGRAM_EXECUTOR = (1, 0x4B45)
+TILE_PROGRAM_RETURN = (1, 0x4B8F)
+METATILE_WRITER = 0x066B     # A=tile t, HL=map: [t,t+2 / t+1,t+3]; returns HL+$21, A=t+4
+SLOT_IDS = 0xFFA0            # 16 HRAM bytes: metatile graphic per slot ($FF empty)
+SLOT_LOADER = (1, 0x4ECD)    # copies graphic bank1:$689B+g*64 into $9000+s*64
+METATILE_GFX_BASE = 0x689B   # bank 1; overworld set at $789B (= g 64..)
+SPRITE_IDS = 0xC580          # 16 bytes: graphic id per sprite slot
+SPRITE_LOADER = 0x28E1       # slot b -> tiles $80+b*8 (VRAM $8800+b*$80)
+MONSTER_GFX = (6, 0x6AD9)    # sprite id bit 6 = 0
+PEOPLE_GFX = (1, 0x5A92)     # sprite id bit 6 = 1
 
-# TODO(RE): BG tilemap writers (dungeon/overworld map redraw, text boxes,
-# status bar) -- needed for per-tile BG attributes in VRAM bank 1.
-TILEMAP_WRITER_HOOKS: tuple[Hook, ...] = ()
+# ---------------------------------------------------------------- free space
+# Bank 0: $0003-$0027, $0028-$0037 (rst vectors, unused by the game; $0038
+# kept because rst $38 on $FF is the crash trap) and $0061-$00FF.
+FREE_SPACE: tuple[tuple[int, int], ...] = (
+    (0x0003, 0x0025),
+    (0x0028, 0x0010),
+    (0x0061, 0x009F),
+    (0x20000, 0x20000),      # banks 8-15 after expansion to 256 KiB
+)
+FREE_HRAM = ((0xFF98, 8), (0xFFE8, 0x17))
+# WRAM bank 2 ($D000-$DFFF with SVBK=2) is entirely unused by the DMG game.
 
-# TODO(RE): shadow-OAM buffer address and the DMA routine in HRAM
-# (for OBJ palette bits 0-2 in OAM attributes).
-SHADOW_OAM: int | None = None
-OAM_DMA_HRAM: int | None = None
+# ---------------------------------------------------------------- hooks
+HOOKS: tuple[Hook, ...] = (
+    Hook("boot", 0x0150, bytes.fromhex("c3e21a"), "jp $1AE2 -> jp Boot (CGB init)"),
+    Hook("hram_dma_routine", file_offset(3, 0x735C), bytes.fromhex("f33ec0e0463e283d20fdfbc9"),
+         "12-byte OAM DMA routine copied to $FF80 by bank3:$7071 -> jp DmaHook + relocated core"),
+    Hook("metatile_writer", 0x066B, bytes.fromhex("22c602"), "ld [hl+],a; add 2 -> jp MetaHook"),
+    Hook("tile_program_terminator", file_offset(1, 0x4B3C), bytes.fromhex("3ec3223e8f223e4b77"),
+         "writes jp $4B8F at end of $D800 program -> call Far8Term (translate)"),
+    Hook("slot_copy", file_offset(1, 0x4F6C), bytes.fromhex("cda901"),
+         "call $01A9 in the metatile slot loader -> call Far8Slot"),
+    Hook("logo_dissolve", file_offset(7, 0x4BD1), bytes.fromhex("7e12"),
+         "title dissolve copies $98xx->$9Cxx with LCD on -> rst $20 (copies attribute too)"),
+)
+PALETTE_INIT_HOOK = HOOKS[0]
+VBLANK_HOOK = HOOKS[1]   # OAM DMA is called from ~10 sites, so the hook is the HRAM routine itself
+TILEMAP_WRITER_HOOKS = HOOKS[2:4]
 
-# TODO(RE): scene/state variables (title, character select, overworld,
-# dungeon number 1..8, shrine, 2-player mode, ending) for scene-aware palettes.
-SCENE_STATE_ADDR: int | None = None
+# LCD-on sites: `ld a,$xx (bit 7 set); ldh [rLCDC],a`. The `ldh` (e0 40) is
+# replaced by `rst $28; nop` (game screens) or `rst $30; nop` (title art).
+# (bank, address of the e0 40 instruction)
+GAME_LCD_ON_SITES: tuple[tuple[int, int], ...] = (
+    (0, 0x03A3), (0, 0x0AEB), (0, 0x10A8), (0, 0x1323), (0, 0x14FF), (0, 0x1804),
+    (0, 0x1B17), (0, 0x23E2),
+    (1, 0x4126), (1, 0x54E9),
+    (3, 0x6E93), (3, 0x6EE1), (3, 0x6F78), (3, 0x6FAC), (3, 0x71FF), (3, 0x720E),
+    (3, 0x7517), (3, 0x7526), (3, 0x7665), (3, 0x7697), (3, 0x7779), (3, 0x7788),
+    (3, 0x78F8), (3, 0x7954), (3, 0x79C7), (3, 0x79FE), (3, 0x7A23), (3, 0x7A93),
+    (3, 0x7AA2),
+    (7, 0x40BF), (7, 0x4319), (7, 0x438B), (7, 0x4517), (7, 0x457E), (7, 0x4589),
+    (7, 0x4619), (7, 0x4692), (7, 0x4853), (7, 0x4A40), (7, 0x4AE3),
+    (7, 0x4C32), (7, 0x4C78), (7, 0x4C8D),
+)
+TITLE_LCD_ON_SITES: tuple[tuple[int, int], ...] = (
+    (7, 0x44F2),             # castle picture, LCDC $81 (tiles $00-$C1 in reading order)
+    (7, 0x4BC2),             # "Ultima / Runes of Virtue" logo, LCDC $89 (map $9C00)
+)
 
-# TODO(RE): free space usable for injected code/data (run `rov-dx analyze`).
-FREE_SPACE: tuple[tuple[int, int], ...] = ()   # (file_offset, length)
+# Scene variables (partially understood; see memory_map.md)
+SCENE_STATE_ADDR = 0xD12F    # map/area id used by the slot loader's overworld remap
+OVERWORLD_FLAG = 0xC511
 
 
 def missing_facts() -> list[str]:
