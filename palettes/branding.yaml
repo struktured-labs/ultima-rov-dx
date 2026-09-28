@@ -1,0 +1,17 @@
+# DX title-logo branding (src/ultima_rov_dx/branding.py). Added to the
+# "Ultima / Runes of Virtue" logo screen (bank 7 $4BC2, LCD mode 9) while the
+# LCD is off: tiles go to free ids first_tile.. (the logo uses $00-$9B),
+# cells into the $9800 map that the logo dissolve copies to $9C00, colours
+# via the logo LUT. Shades index the named logo palette (theme 0 colours).
+schema_version: 1
+first_tile: 0xA0
+credit:                      # row 17: bottom of the navy "Runes of Virtue" band
+  text: STRUKTURED LABS      # capitals and spaces, the game's own font
+  row: 17
+  palette: water             # icy cyan on navy, the studio's colours
+  shades: { ink: 0, glow: 2, background: 3 }
+plate:                       # 4x2 tiles right of the ankh coin
+  row: 9
+  col: 15
+  palette: fire              # the "Ultima" lettering colours
+  shades: { border: 3, fill: 1, letter: 0, shadow: 2 }

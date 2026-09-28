@@ -113,6 +113,10 @@ PICTURE_BANK    equ 7       ; ROM bank of the (only) picture LCD-on site, restor
 METAPAL         equ $5800   ; bank 8: palette per metatile graphic, 128 per theme (8 themes)
 LUT_TITLE_ROM   equ $5C00   ; bank 8: castle title LUT (256), copied at the bank-7 title LCD-on
 LUT_LOGO_ROM    equ $5D00   ; bank 8: logo LUT (256)
+BRAND_TILES     equ $6000   ; bank 8: logo branding tile data (palettes/branding.yaml), BRAND_TILES_LEN bytes
+BRAND_CELLS     equ $6600   ; bank 8: (lo, hi, tile)*, hi = 0 ends: $9800 map cells of the branding
+BRAND_TILES_LEN equ $600    ; tiles $A0-$FF (all unused by the logo), zero-padded by the builder
+BRAND_VRAM      equ $8A00   ; tile $A0 with LCDC $89 (signed tile data, $80-$FF at $8800)
 TITLE_BANK      equ 7       ; ROM bank of the title and picture LCD-on sites
 AREA_ID         equ $D12F   ; WRAM bank 1: current area/map id
 
@@ -1091,6 +1095,7 @@ BuildLut:
         ld [de], a
         inc e
         jr nz, .t
+        call Brand                      ; logo: DX plate + credit (bank 8 mapped)
         ld a, TITLE_BANK
         ld [MBC_BANK], a
         ret
@@ -1570,4 +1575,36 @@ W2Meta:
         xor a
         ldh [rVBK], a
         ret
+
+; Logo screen (LCD_MODE 9, LCD off, bank 8 mapped): copy the branding tiles
+; into VRAM and place their cells in the $9800 map; the dissolve copies them
+; to $9C00 with the rest of the logo. Attributes follow from the logo LUT.
+Brand:
+        ld a, [LCD_MODE]
+        cp 9
+        ret nz
+        xor a
+        ldh [rVBK], a
+        ld hl, BRAND_TILES
+        ld de, BRAND_VRAM
+        ld bc, BRAND_TILES_LEN
+.t:
+        ld a, [hl+]
+        ld [de], a
+        inc de
+        dec bc
+        ld a, b
+        or c
+        jr nz, .t
+        ld hl, BRAND_CELLS
+.c:
+        ld e, [hl]
+        inc hl
+        ld a, [hl+]
+        or a
+        ret z
+        ld d, a
+        ld a, [hl+]
+        ld [de], a
+        jr .c
 W2bEnd:

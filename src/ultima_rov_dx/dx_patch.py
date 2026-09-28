@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from importlib import resources
 from typing import Any
 
+from . import branding as BR
 from . import game_layout as GL
 from . import palettes as P
 from . import rom_utils
@@ -219,7 +220,8 @@ def _asm_source() -> str:
     return resources.files("ultima_rov_dx").joinpath("asm/dx.asm").read_text(encoding="utf-8")
 
 
-def build(original: bytes, pal_data: dict[str, Any], bg_cat: dict[str, Any], obj_cat: dict[str, Any]) -> tuple[bytes, dict[str, int]]:
+def build(original: bytes, pal_data: dict[str, Any], bg_cat: dict[str, Any], obj_cat: dict[str, Any],
+          brand: dict[str, Any] | None = None) -> tuple[bytes, dict[str, int]]:
     if len(original) != GL.ROM_BANKS * 0x4000:
         raise PatchError(f"expected a {GL.ROM_BANKS * 16} KiB ROM, got {len(original)} bytes")
     if original[0x147] != GL.CARTRIDGE_TYPE:
@@ -263,7 +265,8 @@ def build(original: bytes, pal_data: dict[str, Any], bg_cat: dict[str, Any], obj
     if (syms["W2_IMAGE_ROM"] + syms["W2_IMAGE_LEN"] > syms["AREA_THEME"] or syms["AREA_THEME"] + 256 > syms["PICTURE_LUT"]
             or syms["PICTURE_LUT"] + 256 > syms["PICTURE_FIX"] or syms["PICTURE_FIX"] + 256 > syms["METAPAL"]
             or syms["METAPAL"] + 128 * MAX_THEMES > syms["LUT_TITLE_ROM"] or syms["LUT_TITLE_ROM"] + 256 > syms["LUT_LOGO_ROM"]
-            or syms["LUT_LOGO_ROM"] + 256 > 0x8000):
+            or syms["LUT_LOGO_ROM"] + 256 > syms["BRAND_TILES"]
+            or syms["BRAND_TILES"] + syms["BRAND_TILES_LEN"] > syms["BRAND_CELLS"] or syms["BRAND_CELLS"] + 256 > 0x8000):
         raise PatchError("bank 8 table layout overlap")
     if syms["W2bEnd"] > syms["FIRE_OBJ"] or syms["BG_THEMES"] + 64 * MAX_THEMES > syms["UnloadedPal"]:
         raise PatchError(f"WRAM2 section wram2b overlaps BG_THEMES or ends past $E000 ({syms['W2bEnd']:#x})")
@@ -336,7 +339,32 @@ def build(original: bytes, pal_data: dict[str, Any], bg_cat: dict[str, Any], obj
     w2(syms["SLOTPAL"], bytes([t.metapal[0]] * 16), "SLOTPAL")
     put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["LUT_TITLE_ROM"]), t.lut_title, "LUT_TITLE_ROM")
     w2(syms["LUT_GAME"], t.lut_game, "LUT_GAME")
-    put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["LUT_LOGO_ROM"]), t.lut_logo, "LUT_LOGO_ROM")
+    lut_logo = bytearray(t.lut_logo)
+    brand_tiles, brand_cells = (b"", [])
+    if brand:
+        try:
+            brand_tiles, brand_cells = BR.build(original, brand)
+        except BR.BrandingError as e:
+            raise PatchError(f"branding: {e}") from None
+        if int(brand.get("first_tile", 0xA0)) != 0xA0:
+            raise PatchError("branding first_tile must be $A0 (dx.asm BRAND_VRAM)")
+        if len(brand_tiles) > syms["BRAND_TILES_LEN"]:
+            raise PatchError("branding tiles exceed BRAND_TILES_LEN")
+        bg_names = P.names(pal_data, "bg_palettes")
+        set_by: dict[int, str] = {}
+        for _row, _col, tile, pal in brand_cells:
+            if set_by.setdefault(tile, pal) != pal:
+                raise PatchError(f"branding tile {tile:#x} used with two palettes")
+            lut_logo[tile] = _index(bg_names, pal, "branding")
+    cells = bytearray()
+    for row, col, tile, _pal in brand_cells:
+        addr = 0x9800 + 32 * row + col
+        cells += bytes([addr & 0xFF, addr >> 8, tile])
+    cells += b"\0\0"
+    put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["BRAND_TILES"]),
+        brand_tiles + bytes(syms["BRAND_TILES_LEN"] - len(brand_tiles)), "BRAND_TILES")
+    put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["BRAND_CELLS"]), bytes(cells), "BRAND_CELLS")
+    put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["LUT_LOGO_ROM"]), bytes(lut_logo), "LUT_LOGO_ROM")
     w2(syms["LUT"], t.lut_game, "LUT")
     put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["METAPAL"]), t.metapal, "METAPAL")
 

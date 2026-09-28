@@ -173,6 +173,22 @@ class RealRomBuildTest(unittest.TestCase):
         for bank, addr in GL.TITLE_LCD_ON_SITES:
             self.assertEqual(self.out[GL.file_offset(bank, addr)], 0xF7)
 
+    def test_branding_on_logo(self):
+        # palettes/branding.yaml: credit tiles in bank 8, cells for row 17 of the logo map
+        from ultima_rov_dx import branding, dx_patch
+        from ultima_rov_dx.sm83asm import assemble
+        import yaml
+        _, syms = assemble([("dx.asm", dx_patch._asm_source())])
+        spec = yaml.safe_load((ROOT / "palettes" / "branding.yaml").read_text())
+        tiles, cells = branding.build(self.original, spec)
+        self.assertGreater(len(tiles), 0)
+        tbl = GL.file_offset(GL.DX_RUNTIME_BANK, syms["BRAND_TILES"])
+        self.assertEqual(self.out[tbl:tbl + len(tiles)], tiles)
+        cel = GL.file_offset(GL.DX_RUNTIME_BANK, syms["BRAND_CELLS"])
+        self.assertEqual(self.out[cel + 3 * len(cells) + 1], 0)          # terminator (hi = 0)
+        rows = {r for r, _c, _t, _p in cells}
+        self.assertEqual(rows, {spec["credit"]["row"], spec["plate"]["row"], spec["plate"]["row"] + 1})
+
     def test_ips_roundtrip(self):
         ips = patch_builder.build_ips_patch(self.original, self.out)
         self.assertEqual(patch_builder.apply_ips_patch(self.original, ips), self.out)
