@@ -75,6 +75,12 @@ MAP_THEME       equ $D707   ; area theme of the play field (set by Slot, restore
 UI_THEME        equ $D710   ; theme of text screens, dialogs and the start menu (set by builder)
 LIVE_K          equ $D711   ; frame counter: start-menu slot pair refreshed this frame
 LIVE_R          equ $D712   ; next side-panel cell (0-35) refreshed after the OAM DMA
+SHIP_PAL        equ $D713   ; OBJ palette of the ship sprite while sailing (set by builder)
+SWEEP_LO        equ $D714   ; map attribute sweep: next $98xx/$9Bxx cell, SWEEP_HI = 0 idle
+SWEEP_HI        equ $D715
+SWEEP_CELLS     equ 16      ; cells per frame (replaces the 4-cell side-panel refresh)
+STAND_G         equ $FF96   ; graphic under the player ($2B = ship, bank 0 $2331)
+SHIP_G          equ $2B
 MENU_OBJ        equ $D718   ; 4 colours of the start-menu cursor (OBJ palette 7 in menu mode)
 HR_BACKUP       equ $D720   ; 12: HRAM bytes under HELPER while it is installed
 TEXT_RANGES     equ $D72C   ; 20: text screens, then champion select: count, (first, last, palette)*
@@ -89,7 +95,7 @@ LUT_MENU        equ $DC00   ; 256: start menu (items overlaid from ITEM_PAL at L
 LUT_GAME        equ $DD00   ; 256 (entries $00-$3F unused: from SLOTPAL)
 BG_THEMES       equ $DE00   ; 8 x 64: BG base colours per theme
 W2_IMAGE_LEN    equ $1000
-MAX_THEMES      equ 8
+MAX_THEMES      equ 4           ; BG_THEMES $DE00-$DEFF; $DF00-$DFFF holds W2 code (section wram2b)
 HELPER          equ $FFF3   ; 12 bytes of HRAM: reads WRAM bank 1 for WRAM2 code (installed only while used)
 CURSOR_PAL      equ 7
 PLAYER_PAL      equ 0
@@ -502,6 +508,13 @@ Slot:
         ld [hl+], a
         ld [hl+], a
         ld [hl], a
+        ldh a, [rLCDC]                  ; LCD on: cells already on the map keep
+        bit 7, a                        ; the old palette -> sweep them
+        jr z, .done
+        xor a
+        ld [SWEEP_LO], a
+        ld a, $98
+        ld [SWEEP_HI], a
 .done:
         ld a, 1
         ldh [rSVBK], a
@@ -646,6 +659,9 @@ W2AfterDmaBody:
         call SlotCells
 .hud:
         call HudItemsLut
+        ld a, [SWEEP_HI]                ; map attribute sweep pending (slots
+        or a                            ; reloaded with the LCD on): it takes
+        jp nz, Sweep                    ; the side-panel refresh's VBlank time
 ; 4 side-panel cells per frame (36 cells: rows 0-17, 2 columns)
         ld a, [LIVE_R]
         ld c, a
@@ -700,9 +716,9 @@ W2Pal:
         and $0F
         ld e, a                         ; slot at or past the loaded count ($C539):
         ld a, [SPRITE_COUNT]            ; not a monster. The champion's attack
-        cp e                            ; pose uses tiles $E0-$EF (slots 12-13)
-        jr c, .player
-        jr z, .player
+        cp e                            ; pose uses tiles $E0-$EF (slots 12-13),
+        jr c, .unl                      ; the sailing ship $B8-$BF (slot 7)
+        jr z, .unl
         ld a, e
         or low(SPRITE_IDS)
         ld e, a
@@ -720,6 +736,9 @@ W2Pal:
         ld e, a
         ld d, high(OBJPAL)
         ld a, [de]
+        jr .apply
+.unl:
+        call UnloadedPal
         jr .apply
 .player:
         ld a, [LCD_MODE]                ; start menu: cursor (tiles 0-3) gets
@@ -972,6 +991,8 @@ W2LcdOnBody:
         ret
 ; Recompute attributes of both BG maps from their tile ids (LCD off).
 FillAttrs:
+        xor a                           ; full recompute: no sweep needed
+        ld [SWEEP_HI], a
         ld hl, $9800
         ld d, high(LUT)
 .loop:
@@ -1414,6 +1435,63 @@ W2Hud:
         ld a, 1
         jp HudExit
 
+W2CodeEnd:
+
+; ======================================================== WRAM bank 2, $DF00-$DFFF
+section wram2b, $21300, $DF00
+
+; A = OBJ palette of a sprite tile in a slot the loader has not filled
+; ($C539 count): the champion (attack pose), or the ship while sailing.
+UnloadedPal:
+        ldh a, [STAND_G]
+        cp SHIP_G
+        ld a, PLAYER_PAL
+        ret nz
+        ld a, [SHIP_PAL]
+        ret
+
+; Map attributes after metatile slots were reloaded with the LCD on (ship
+; voyage into a new area, bank 8 Slot): the whole $9800 area map still
+; carries the old slots' palettes. Rewrites SWEEP_CELLS cells per frame from
+; the LUT while in VBlank (A = SWEEP_HI on entry). About one second per sweep.
+Sweep:
+        ld h, a
+        ld a, [SWEEP_LO]
+        ld l, a
+        ld d, high(LUT)
+        ld c, SWEEP_CELLS
+.c:
+        ldh a, [rLY]                    ; VBlank over: stop, resume next frame
+        cp 144
+        jr c, .save
+        xor a
+        ldh [rVBK], a
+        ld e, [hl]
+        ld a, [de]
+        ld b, a
+        ld a, 1
+        ldh [rVBK], a
+        ld [hl], b
+        inc hl
+        ld a, h
+        cp $9C
+        jr z, .done
+        dec c
+        jr nz, .c
+.save:
+        xor a
+        ldh [rVBK], a
+        ld a, l
+        ld [SWEEP_LO], a
+        ld a, h
+        ld [SWEEP_HI], a
+        ret
+.done:
+        xor a
+        ldh [rVBK], a
+        ld [SWEEP_HI], a
+        ret
+
 W2MetaW:
         push hl
         push bc
@@ -1471,4 +1549,4 @@ W2Meta:
         xor a
         ldh [rVBK], a
         ret
-W2CodeEnd:
+W2bEnd:

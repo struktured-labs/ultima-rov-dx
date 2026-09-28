@@ -80,6 +80,14 @@ area_themes:
 
 # Theme used by dungeon title cards (bank 7 $4619) and the entrance cutscene
 # (bank 7 $4692); the area theme returns when the next area loads.
+# Areas drawn from the surface/overworld atlas (bank 1 $7E8B list, plus
+# $7E95 `03 4C` and $7E98 `45 46` used under the $C511/$D13E flags, see the
+# slot loader at bank 1 $4F26). Every other area id is a dungeon level and gets
+# dungeon_theme unless an area_themes entry lists it (the eight dungeons,
+# Zoltan's and the Lycaeum basement: all drawn from the dungeon atlas).
+surface_areas: [0x00, 0x02, 0x03, 0x04, 0x05, 0x32, 0x33, 0x45, 0x46, 0x4C, 0x4E, 0x51]
+dungeon_theme: cavern
+
 entrance_theme: entrance
 # Theme of text screens, in-play dialogs and the start menu. Its palettes all
 # share the parchment colour 0 so item icons sit on the menu boxes.

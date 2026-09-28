@@ -19,7 +19,7 @@ from .sm83asm import assemble
 
 DX_SIZE = 0x40000
 RST28, RST30 = 0xEF, 0xF7
-MAX_THEMES = 8    # dx.asm MAX_THEMES / BG_THEMES size
+MAX_THEMES = 4    # dx.asm MAX_THEMES / BG_THEMES size
 
 # Windows that assembled sections may occupy (file offsets, inclusive-exclusive).
 FREE_WINDOWS = [(0x0003, 0x0038), (0x0061, 0x0100), (0x20000, 0x40000)]
@@ -48,6 +48,7 @@ class Tables:
     item_pal: bytes = bytes(64)       # BG palette per item id (inventory + side-panel icons)
     ui_theme: int = 0                 # theme of text screens, dialogs and the start menu
     menu_obj: bytes = bytes(8)        # start-menu cursor colours (OBJ palette 7 in menu mode)
+    ship_pal: int = 0                 # OBJ palette of the sailing ship (sprite in an unloaded slot)
     text_ranges: bytes = b"\0\0"   # text screens, then champion select: count, (first, last, pal)*
 
 
@@ -134,6 +135,19 @@ def build_tables(pal_data: dict[str, Any], bg_cat: dict[str, Any], obj_cat: dict
             if area_theme[area]:
                 raise PatchError(f"area {area:#x} in two themes")
             area_theme[area] = t
+    # every area the game draws from the dungeon atlas (not in surface_areas)
+    # and not listed above gets dungeon_theme
+    dungeon = bg_cat.get("dungeon_theme")
+    if dungeon is not None:
+        names_t = ["base"] + list((bg_cat.get("area_themes") or {}).keys())
+        if dungeon not in names_t[1:]:
+            raise PatchError(f"dungeon_theme {dungeon!r} is not an area_themes entry")
+        surface = set(bg_cat.get("surface_areas") or [])
+        if not surface:
+            raise PatchError("dungeon_theme needs surface_areas")
+        for area in range(256):
+            if area not in surface and not area_theme[area]:
+                area_theme[area] = names_t.index(dungeon)
     for name in color_themes:
         if name not in (bg_cat.get("area_themes") or {}):
             raise PatchError(f"bg_themes.{name} has no area_themes entry")
@@ -190,9 +204,10 @@ def build_tables(pal_data: dict[str, Any], bg_cat: dict[str, Any], obj_cat: dict
     if len(cursor) != 4:
         raise PatchError("menu_cursor needs 4 colours")
     menu_obj = b"".join(P.bgr555(c).to_bytes(2, "little") for c in cursor)
+    ship_pal = _index(obj_names, obj_cat.get("ship", obj_cat.get("player", obj_names[0])), "ship")
     return Tables(bytes(objpal), enc["bg"], enc["obj"], lut_title, bytes(lut_game), lut_logo,
                   b"".join(metapals), bytes(area_theme), bg_themes, picture_lut, entrance_theme, flat_bg, bytes(fix),
-                  lut_menu, bytes(item_pal), ui_theme, menu_obj, bytes(text_ranges))
+                  lut_menu, bytes(item_pal), ui_theme, menu_obj, ship_pal, bytes(text_ranges))
 
 
 def _asm_source() -> str:
@@ -245,6 +260,8 @@ def build(original: bytes, pal_data: dict[str, Any], bg_cat: dict[str, Any], obj
             or syms["METAPAL"] + 128 * MAX_THEMES > syms["LUT_TITLE_ROM"] or syms["LUT_TITLE_ROM"] + 256 > syms["LUT_LOGO_ROM"]
             or syms["LUT_LOGO_ROM"] + 256 > 0x8000):
         raise PatchError("bank 8 table layout overlap")
+    if syms["W2bEnd"] > 0xE000 or syms["BG_THEMES"] + 64 * MAX_THEMES > syms["UnloadedPal"]:
+        raise PatchError(f"WRAM2 section wram2b overlaps BG_THEMES or ends past $E000 ({syms['W2bEnd']:#x})")
     if syms["W2CodeEnd"] > syms["OBJPAL"]:
         raise PatchError(f"WRAM2 code too large (ends {syms['W2CodeEnd']:#x})")
 
@@ -298,6 +315,7 @@ def build(original: bytes, pal_data: dict[str, Any], bg_cat: dict[str, Any], obj
     w2(syms["BASE_OBJ"], t.base_obj, "BASE_OBJ")
     w2(syms["LAST_BGP"], bytes([0xFF, 0xFF, 0xFF, 0xFF, 0x00, t.entrance_theme, 0x00, 0x00]), "vars")   # force first sync + LUT build; CUR_THEME 0, MAP_THEME 0
     w2(syms["UI_THEME"], bytes([t.ui_theme, 0, 0]), "UI_THEME/LIVE")
+    w2(syms["SHIP_PAL"], bytes([t.ship_pal, 0, 0]), "SHIP_PAL/SWEEP")
     w2(syms["MENU_OBJ"], t.menu_obj, "MENU_OBJ")
     if len(t.text_ranges) > syms["TEXT_RANGES_LEN"]:
         raise PatchError(f"text_screen + champion_screen ranges: {len(t.text_ranges)} bytes > {syms['TEXT_RANGES_LEN']}")
