@@ -5,6 +5,14 @@
 rom/**/*.gb
 rom/**/*.gbc
 
+# Everything under rom/ is local-only (ROM dumps, patched builds, saves,
+# IPS outputs) except the README and the working/ placeholder.
+rom/*
+!rom/README.md
+!rom/working/
+rom/working/*
+!rom/working/.gitkeep
+
 # Save data and emulator states (penta-dragon-dx tracked many of these by
 # accident; keep them out from the start)
 *.sav
@@ -27,8 +35,6 @@ node_modules/
 
 # Build artifacts
 /dist/
-rom/working/*
-!rom/working/.gitkeep
 
 # Temporary files (see AGENTS.md: never use system /tmp)
 tmp/
