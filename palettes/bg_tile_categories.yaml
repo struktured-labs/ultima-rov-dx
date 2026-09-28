@@ -85,6 +85,19 @@ entrance_theme: entrance
 # share the parchment colour 0 so item icons sit on the menu boxes.
 ui_theme: menu
 
+# Text screens (story, dialogs, champion select, title cards): every tile uses
+# the UI palette except these (same colours as the start menu). Tile ids from
+# the map dumps of the champion select and Lord British's dialog (tmp/probe).
+text_screen:
+  ranges:
+    - { first: 0x02, last: 0x0B, palette: gold }   # box frames: gold-brown lines
+    - { first: 0xD4, last: 0xE3, palette: earth }  # speaker portrait (skin tones)
+# Champion select only (mode byte $7F): the four portraits.
+champion_screen:
+  ranges:
+    - { first: 0x10, last: 0x3F, palette: earth }  # Mariah, Iolo, Dupre
+    - { first: 0x80, last: 0x8F, palette: earth }  # Shamino
+
 # Start menu LUT (bank 0 $10A8, notes/menu.md). Tiles $0C-$8B (item grid),
 # $BC-$BF (armour) and $F8-$FF (A/B icons) are overwritten at run time from
 # item_palettes; dialogs reuse entries $E4-$FF (side panel, digits).

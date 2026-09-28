@@ -165,6 +165,8 @@ class RealRomBuildTest(unittest.TestCase):
                 mode = 0x64                      # ld h,h: start menu
             elif (bank, addr) in GL.DIALOG_LCD_ON_SITES:
                 mode = 0x6D                      # ld l,l: dialog text screen
+            elif (bank, addr) in GL.CHAMPION_LCD_ON_SITES:
+                mode = 0x7F                      # ld a,a: champion select
             else:
                 mode = 0x40                      # ld b,b: text screen
             self.assertEqual(self.out[off + 1], mode)

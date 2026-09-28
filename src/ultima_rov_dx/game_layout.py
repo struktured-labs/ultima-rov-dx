@@ -130,6 +130,10 @@ MAP_LCD_ON_SITES: frozenset[tuple[int, int]] = frozenset({
 MENU_LCD_ON_SITES: frozenset[tuple[int, int]] = frozenset({(0, 0x10A8)})
 # In-play dialog box screen (e.g. Lord British): text + side panel.
 DIALOG_LCD_ON_SITES: frozenset[tuple[int, int]] = frozenset({(0, 0x1323)})
+# Champion select (bank 3; scripts/capture_screens.py CHARACTER_SELECT_LCD_ON
+# and the tile-map dump in tmp/probe/textscreens.py): text screen whose four
+# portraits use tiles $10-$1F, $20-$2F, $30-$3F and $80-$8F (4x4 each).
+CHAMPION_LCD_ON_SITES: frozenset[tuple[int, int]] = frozenset({(3, 0x78F8), (3, 0x7954), (3, 0x79C7)})
 # Dungeon entrance sequence (bank 7, reverse_engineering/notes/cutscene.md):
 # $4619 title card ("The Cavern of Hatred"), $4692 the entrance cutscene
 # (cliff, cave mouth, the champion walking in; LCDC $87, art from bank 7

@@ -48,6 +48,7 @@ EXEC_RETURN     equ $4B8F   ; bank1: tile program returns here (restores SP)
 META_CONT       equ $066E   ; body of the metatile writer after 3 bytes
 COPY64          equ $01A9   ; wait vblank + copy 64 bytes DE->HL
 SPRITE_IDS      equ $C580   ; 16 sprite-slot graphic ids ($FF = continuation)
+SPRITE_COUNT    equ $C539   ; sprite slots in use (bank 0 $291B loader)
 TILE_PROG       equ $D800   ; WRAM bank 1: generated tile program
 MBC_BANK        equ $2100
 
@@ -76,6 +77,8 @@ LIVE_K          equ $D711   ; frame counter: start-menu slot pair refreshed this
 LIVE_R          equ $D712   ; next side-panel cell (0-35) refreshed after the OAM DMA
 MENU_OBJ        equ $D718   ; 4 colours of the start-menu cursor (OBJ palette 7 in menu mode)
 HR_BACKUP       equ $D720   ; 12: HRAM bytes under HELPER while it is installed
+TEXT_RANGES     equ $D72C   ; 20: text screens, then champion select: count, (first, last, palette)*
+TEXT_RANGES_LEN equ 20
 ITEM_PAL        equ $D740   ; 64: BG palette per item id (inventory / side-panel icons)
 INV             equ $D780   ; 64: copy of WRAM1 $D100-$D13F (inventory $D100-$D11F, B $D125, A $D126, armour $D134)
 FLAT_BG         equ $D708   ; 4 colours used when a DMG palette maps every shade alike (blank/fade)
@@ -695,6 +698,12 @@ W2Pal:
         rrca
         rrca
         and $0F
+        ld e, a                         ; slot at or past the loaded count ($C539):
+        ld a, [SPRITE_COUNT]            ; not a monster. The champion's attack
+        cp e                            ; pose uses tiles $E0-$EF (slots 12-13)
+        jr c, .player
+        jr z, .player
+        ld a, e
         or low(SPRITE_IDS)
         ld e, a
         ld d, high(SPRITE_IDS)
@@ -1013,7 +1022,7 @@ SetTheme:
 BuildLut:
         ld a, [LCD_MODE]
         or a
-        jr z, .game
+        jp z, .game
         dec a
         jr z, .castle
         dec a
@@ -1080,14 +1089,19 @@ BuildLut:
         jr nz, .d
         call ReadInv
         jp HudItemsLut
-.text:                                  ; text screens: every tile uses the UI palette
-        ld a, [LUT_GAME + $FF]
-        ld hl, LUT
+.text:                                  ; text screens: UI palette, then box frames and
+        ld a, [LUT_GAME + $FF]          ; portraits from TEXT_RANGES (champion select:
+        ld hl, LUT                      ; its own ranges on top)
 .x:
         ld [hl], a
         inc l
         jr nz, .x
-        ret
+        ld hl, TEXT_RANGES
+        call TileRanges
+        ld a, [LCD_BYTE]
+        cp $7F
+        ret nz
+        jp TileRanges
 .game:
         ld hl, LUT_GAME + $40
         ld de, LUT + $40
@@ -1113,6 +1127,34 @@ BuildLut:
         jr nz, .s
         call ReadInv
         jp HudItemsLut
+
+; HL = count, (first, last, palette)*: LUT[first..last] = palette. Advances HL.
+TileRanges:
+        ld a, [hl+]
+        or a
+        ret z
+        ld b, a
+.r:
+        ld a, [hl+]
+        ld e, a
+        ld a, [hl+]
+        ld c, a
+        ld a, [hl+]
+        push hl
+        ld h, high(LUT)
+        ld l, e
+.f:
+        ld [hl], a
+        ld d, a
+        ld a, l                         ; A = this tile (flags from cp, not inc)
+        inc l
+        cp c
+        ld a, d
+        jr nz, .f
+        pop hl
+        dec b
+        jr nz, .r
+        ret
 
 ; ---- inventory helpers. WRAM2 code cannot see WRAM bank 1 ($D1xx), so a
 ; 12-byte reader is placed in HRAM while needed (the bytes under it are

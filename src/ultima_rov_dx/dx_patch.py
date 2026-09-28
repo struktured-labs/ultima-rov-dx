@@ -48,6 +48,7 @@ class Tables:
     item_pal: bytes = bytes(64)       # BG palette per item id (inventory + side-panel icons)
     ui_theme: int = 0                 # theme of text screens, dialogs and the start menu
     menu_obj: bytes = bytes(8)        # start-menu cursor colours (OBJ palette 7 in menu mode)
+    text_ranges: bytes = b"\0\0"   # text screens, then champion select: count, (first, last, pal)*
 
 
 def _index(names: list[str], name: str, what: str) -> int:
@@ -177,13 +178,21 @@ def build_tables(pal_data: dict[str, Any], bg_cat: dict[str, Any], obj_cat: dict
                 raise PatchError(f"item {i:#x} in both {seen_i[i]} and {name}")
             seen_i[i] = name
             item_pal[i] = idx
-    cursor = pal_data.get("menu_cursor") or ["#FFFFFF", "#F8E080", "#F09838", "#D83020"]
+    text_ranges = bytearray()
+    for key in ("text_screen", "champion_screen"):
+        rngs = (bg_cat.get(key) or {}).get("ranges") or []
+        text_ranges.append(len(rngs))
+        for rng in rngs:
+            if not 0 <= rng["first"] <= rng["last"] <= 0xFF:
+                raise PatchError(f"{key}: bad tile range {rng}")
+            text_ranges += bytes([rng["first"], rng["last"], _index(bg_names, rng["palette"], f"{key}.ranges")])
+        cursor = pal_data.get("menu_cursor") or ["#FFFFFF", "#F8E080", "#F09838", "#D83020"]
     if len(cursor) != 4:
         raise PatchError("menu_cursor needs 4 colours")
     menu_obj = b"".join(P.bgr555(c).to_bytes(2, "little") for c in cursor)
     return Tables(bytes(objpal), enc["bg"], enc["obj"], lut_title, bytes(lut_game), lut_logo,
                   b"".join(metapals), bytes(area_theme), bg_themes, picture_lut, entrance_theme, flat_bg, bytes(fix),
-                  lut_menu, bytes(item_pal), ui_theme, menu_obj)
+                  lut_menu, bytes(item_pal), ui_theme, menu_obj, bytes(text_ranges))
 
 
 def _asm_source() -> str:
@@ -241,7 +250,8 @@ def build(original: bytes, pal_data: dict[str, Any], bg_cat: dict[str, Any], obj
 
     if syms["PICTURE_BANK"] != syms["TITLE_BANK"] or any(b != syms["TITLE_BANK"] for b, _ in GL.TITLE_LCD_ON_SITES):
         raise PatchError("title/picture LCD-on sites must all be in TITLE_BANK (LUTs are copied from bank 8)")
-    if syms["INV"] + 64 > syms["SLOTG"] or syms["ITEM_PAL"] + 64 > syms["INV"] or syms["HR_BACKUP"] + 12 > syms["ITEM_PAL"]:
+    if (syms["INV"] + 64 > syms["SLOTG"] or syms["ITEM_PAL"] + 64 > syms["INV"] or syms["HR_BACKUP"] + 12 > syms["TEXT_RANGES"]
+            or syms["TEXT_RANGES"] + syms["TEXT_RANGES_LEN"] > syms["ITEM_PAL"]):
         raise PatchError("WRAM2 variable layout overlap")
 
     # 3. LCD-on sites
@@ -266,6 +276,8 @@ def build(original: bytes, pal_data: dict[str, Any], bg_cat: dict[str, Any], obj
                 mode = 0x64                  # ld h,h: start menu
             elif (bank, addr) in GL.DIALOG_LCD_ON_SITES:
                 mode = 0x6D                  # ld l,l: dialog (text + side panel)
+            elif (bank, addr) in GL.CHAMPION_LCD_ON_SITES:
+                mode = 0x7F                  # ld a,a: champion select (text + portraits)
             else:
                 mode = 0x40                  # ld b,b: text screen
             off = GL.file_offset(bank, addr)
@@ -287,6 +299,9 @@ def build(original: bytes, pal_data: dict[str, Any], bg_cat: dict[str, Any], obj
     w2(syms["LAST_BGP"], bytes([0xFF, 0xFF, 0xFF, 0xFF, 0x00, t.entrance_theme, 0x00, 0x00]), "vars")   # force first sync + LUT build; CUR_THEME 0, MAP_THEME 0
     w2(syms["UI_THEME"], bytes([t.ui_theme, 0, 0]), "UI_THEME/LIVE")
     w2(syms["MENU_OBJ"], t.menu_obj, "MENU_OBJ")
+    if len(t.text_ranges) > syms["TEXT_RANGES_LEN"]:
+        raise PatchError(f"text_screen + champion_screen ranges: {len(t.text_ranges)} bytes > {syms['TEXT_RANGES_LEN']}")
+    w2(syms["TEXT_RANGES"], t.text_ranges, "TEXT_RANGES")
     w2(syms["ITEM_PAL"], t.item_pal, "ITEM_PAL")
     w2(syms["LUT_MENU"], t.lut_menu, "LUT_MENU")
     w2(syms["FLAT_BG"], t.flat_bg, "FLAT_BG")
