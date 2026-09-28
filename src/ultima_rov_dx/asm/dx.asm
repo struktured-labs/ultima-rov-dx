@@ -78,6 +78,9 @@ LIVE_R          equ $D712   ; next side-panel cell (0-35) refreshed after the OA
 SHIP_PAL        equ $D713   ; OBJ palette of the ship sprite while sailing (set by builder)
 SWEEP_LO        equ $D714   ; map attribute sweep: next $98xx/$9Bxx cell, SWEEP_HI = 0 idle
 SWEEP_HI        equ $D715
+FIRE_OBJ        equ $DFF0   ; 4 colours of the wand's fireball (OBJ palette 7 on map screens, via OBP0)
+FIRE_TILES      equ $38     ; wand projectile tiles $38-$47 (items $06-$08, either button)
+FIRE_PAL        equ 7
 SWEEP_CELLS     equ 16      ; cells per frame (replaces the 4-cell side-panel refresh)
 STAND_G         equ $FF96   ; graphic under the player ($2B = ship, bank 0 $2331)
 SHIP_G          equ $2B
@@ -741,17 +744,29 @@ W2Pal:
         call UnloadedPal
         jr .apply
 .player:
-        ld a, [LCD_MODE]                ; start menu: cursor (tiles 0-3) gets
-        cp 4                            ; its own palette
-        ld a, PLAYER_PAL
-        jr nz, .apply
         dec l
-        ld a, [hl]
+        ld a, [hl]                      ; E = tile
         inc l
+        ld e, a
+        ld a, [LCD_MODE]
         cp 4
-        ld a, PLAYER_PAL
-        jr nc, .apply
+        jr z, .menu
+        or a
+        jr nz, .pl
+        ld a, e                         ; map: the wand's fireball
+        sub FIRE_TILES
+        cp 16
+        jr nc, .pl
+        ld a, FIRE_PAL
+        jr .apply
+.menu:
+        ld a, e                         ; start menu: cursor (tiles 0-3) gets
+        cp 4                            ; its own palette
+        jr nc, .pl
         ld a, CURSOR_PAL
+        jr .apply
+.pl:
+        ld a, PLAYER_PAL
 .apply:
         ld c, a
         ld a, [hl]
@@ -800,10 +815,16 @@ SyncOBJ:
         ld a, [LAST_OBP1]
         ld d, a
         ld b, 1
-        ld a, [LCD_MODE]                ; start menu: palette 7 = cursor colours
-        cp 4                            ; mapped through OBP0
+        ld a, [LCD_MODE]                ; start menu: palette 7 = cursor colours,
+        cp 4                            ; map: fireball colours, both mapped
+        jr z, .menu                     ; through OBP0
+        or a
         jr nz, SyncGroup
+        ld hl, FIRE_OBJ
+        jr .o0
+.menu:
         ld hl, MENU_OBJ
+.o0:
         ld a, [LAST_OBP0]
         ld d, a
 ; HL = base colours (4 per palette, index = DMG shade), B = count,

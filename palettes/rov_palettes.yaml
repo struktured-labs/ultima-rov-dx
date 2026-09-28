@@ -74,6 +74,10 @@ bg_themes:
 # shade index through OBP0).
 menu_cursor: ["#FFFFFF", "#F8E080", "#F09838", "#D83020"]
 
+# The wand's fireball (sprite tiles $38-$47 on map screens, OBJ palette 7,
+# shade index through OBP0): yellow core, orange flame, red edge.
+wand_fire: ["#FFFFFF", "#FFE070", "#F88828", "#D82810"]
+
 # Colours for a DMG palette whose four shades are alike (BGP/OBP $00 = blank
 # white, $FF = black): every CGB palette gets the same colour, so blanking
 # frames are uniform instead of showing each palette's colour 0.
