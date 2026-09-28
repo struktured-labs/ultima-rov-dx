@@ -53,3 +53,6 @@ rom/**/*.png
 # scripts/build_dx.py and scripts/capture_screens.py
 rom/*.ips
 artifacts/
+
+# Generated branding mockups/tile dumps contain ROM-derived glyphs; never commit
+palettes/branding.json
