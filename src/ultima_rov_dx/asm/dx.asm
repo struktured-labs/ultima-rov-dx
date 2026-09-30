@@ -78,6 +78,8 @@ LIVE_R          equ $D712   ; next side-panel cell (0-35) refreshed after the OA
 SHIP_PAL        equ $D713   ; OBJ palette of the ship sprite while sailing (set by builder)
 SWEEP_LO        equ $D714   ; map attribute sweep: next $98xx/$9Bxx cell, SWEEP_HI = 0 idle
 SWEEP_HI        equ $D715
+THEME_OBJ       equ $DFD0   ; 4 themes x 4 colours of OBJ palette THEME_OBJ_SLOT (dungeon black knights: steel)
+THEME_OBJ_SLOT  equ 5       ; royal
 FIRE_OBJ        equ $DFF0   ; 4 colours of the wand's fireball (OBJ palette 7 on map screens, via OBP0)
 FIRE_TILES      equ $38     ; wand projectile tiles $38-$47 (items $06-$08, either button)
 FIRE_PAL        equ 7
@@ -1062,7 +1064,7 @@ SetTheme:
         ld a, [LAST_BGP]
         cpl
         ld [LAST_BGP], a
-        ret
+        jp ThemeObj                     ; and the theme's colours of OBJ palette THEME_OBJ_SLOT
 
 ; Rebuild the live LUT for LCD_MODE.
 BuildLut:
@@ -1607,4 +1609,28 @@ Brand:
         ld a, [hl+]
         ld [de], a
         jr .c
+
+; CUR_THEME was just set: OBJ palette THEME_OBJ_SLOT takes that theme's
+; colours (royal red on the surface, steel for the dungeon black knights),
+; resynced at the next OAM DMA.
+ThemeObj:
+        ld a, [CUR_THEME]
+        add a
+        add a
+        add a
+        add low(THEME_OBJ)
+        ld e, a
+        ld d, high(THEME_OBJ)
+        ld hl, BASE_OBJ + THEME_OBJ_SLOT * 8
+        ld b, 8
+.c:
+        ld a, [de]
+        ld [hl+], a
+        inc e
+        dec b
+        jr nz, .c
+        ld a, [LAST_OBP0]
+        cpl
+        ld [LAST_OBP0], a
+        ret
 W2bEnd:

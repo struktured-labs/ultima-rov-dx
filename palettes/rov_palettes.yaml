@@ -70,6 +70,13 @@ bg_themes:
     earth:  { colors: ["#FFF8E8", "#F0C0A0", "#A86848", "#301810"] }  # portrait skin, food, rock
     grass:  { colors: ["#FFF8E8", "#A0D070", "#408838", "#102010"] }  # green potion, rune of justice
 
+# Per-theme colours of OBJ palette 5 (royal). Lord British and his court
+# never appear in dungeons, where palette 5's knights (sprite $52) are the
+# Black Knight's men: dark steel instead of Lord British's red.
+obj_themes:
+  cavern:
+    royal:  { colors: ["#FFFFFF", "#C8CCD8", "#707488", "#181824"] }
+
 # Start-menu cursor (sprite tiles 0-3, OBJ palette 7 while the menu is up;
 # shade index through OBP0).
 menu_cursor: ["#FFFFFF", "#F8E080", "#F09838", "#D83020"]

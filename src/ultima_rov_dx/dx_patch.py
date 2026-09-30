@@ -49,6 +49,7 @@ class Tables:
     item_pal: bytes = bytes(64)       # BG palette per item id (inventory + side-panel icons)
     ui_theme: int = 0                 # theme of text screens, dialogs and the start menu
     menu_obj: bytes = bytes(8)        # start-menu cursor colours (OBJ palette 7 in menu mode)
+    theme_obj: bytes = bytes(32)      # per theme: 4 colours of OBJ palette THEME_OBJ_SLOT
     fire_obj: bytes = bytes(8)        # wand fireball colours (OBJ palette 7 on map screens)
     ship_pal: int = 0                 # OBJ palette of the sailing ship (sprite in an unloaded slot)
     text_ranges: bytes = b"\0\0"   # text screens, then champion select: count, (first, last, pal)*
@@ -210,10 +211,23 @@ def build_tables(pal_data: dict[str, Any], bg_cat: dict[str, Any], obj_cat: dict
     if len(fire) != 4:
         raise PatchError("wand_fire needs 4 colours")
     fire_obj = b"".join(P.bgr555(c).to_bytes(2, "little") for c in fire)
+    slot_name = obj_names[5]
+    ot = pal_data.get("obj_themes") or {}
+    for tname in ot:
+        if tname not in theme_names[1:]:
+            raise PatchError(f"obj_themes.{tname} is not an area_themes entry")
+        for pname in ot[tname]:
+            if pname != slot_name:
+                raise PatchError(f"obj_themes.{tname}.{pname}: only {slot_name!r} (OBJ palette 5) can follow the theme")
+    theme_obj = bytearray()
+    for tname in theme_names + [None] * (MAX_THEMES - len(theme_names)):
+        spec = (ot.get(tname) or {}).get(slot_name) if tname else None
+        spec = spec or pal_data["obj_palettes"][slot_name]
+        theme_obj += b"".join(P.bgr555(c).to_bytes(2, "little") for c in spec["colors"])
     ship_pal = _index(obj_names, obj_cat.get("ship", obj_cat.get("player", obj_names[0])), "ship")
     return Tables(bytes(objpal), enc["bg"], enc["obj"], lut_title, bytes(lut_game), lut_logo,
                   b"".join(metapals), bytes(area_theme), bg_themes, picture_lut, entrance_theme, flat_bg, bytes(fix),
-                  lut_menu, bytes(item_pal), ui_theme, menu_obj, fire_obj, ship_pal, bytes(text_ranges))
+                  lut_menu, bytes(item_pal), ui_theme, menu_obj, bytes(theme_obj), fire_obj, ship_pal, bytes(text_ranges))
 
 
 def _asm_source() -> str:
@@ -268,7 +282,7 @@ def build(original: bytes, pal_data: dict[str, Any], bg_cat: dict[str, Any], obj
             or syms["LUT_LOGO_ROM"] + 256 > syms["BRAND_TILES"]
             or syms["BRAND_TILES"] + syms["BRAND_TILES_LEN"] > syms["BRAND_CELLS"] or syms["BRAND_CELLS"] + 256 > 0x8000):
         raise PatchError("bank 8 table layout overlap")
-    if syms["W2bEnd"] > syms["FIRE_OBJ"] or syms["BG_THEMES"] + 64 * MAX_THEMES > syms["UnloadedPal"]:
+    if syms["W2bEnd"] > syms["THEME_OBJ"] or syms["BG_THEMES"] + 64 * MAX_THEMES > syms["UnloadedPal"]:
         raise PatchError(f"WRAM2 section wram2b overlaps BG_THEMES or ends past $E000 ({syms['W2bEnd']:#x})")
     if syms["W2CodeEnd"] > syms["OBJPAL"]:
         raise PatchError(f"WRAM2 code too large (ends {syms['W2CodeEnd']:#x})")
@@ -326,6 +340,9 @@ def build(original: bytes, pal_data: dict[str, Any], bg_cat: dict[str, Any], obj
     w2(syms["SHIP_PAL"], bytes([t.ship_pal, 0, 0]), "SHIP_PAL/SWEEP")
     w2(syms["MENU_OBJ"], t.menu_obj, "MENU_OBJ")
     w2(syms["FIRE_OBJ"], t.fire_obj, "FIRE_OBJ")
+    if syms["THEME_OBJ_SLOT"] != 5 or syms["THEME_OBJ"] + len(t.theme_obj) > syms["FIRE_OBJ"]:
+        raise PatchError("THEME_OBJ layout")
+    w2(syms["THEME_OBJ"], t.theme_obj, "THEME_OBJ")
     if len(t.text_ranges) > syms["TEXT_RANGES_LEN"]:
         raise PatchError(f"text_screen + champion_screen ranges: {len(t.text_ranges)} bytes > {syms['TEXT_RANGES_LEN']}")
     w2(syms["TEXT_RANGES"], t.text_ranges, "TEXT_RANGES")
