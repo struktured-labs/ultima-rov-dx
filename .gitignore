@@ -5,10 +5,11 @@
 rom/**/*.gb
 rom/**/*.gbc
 
-# Everything under rom/ is local-only (ROM dumps, patched builds, saves,
-# IPS outputs) except the README and the working/ placeholder.
+# Everything under rom/ is local-only (ROM dumps, patched builds, saves)
+# except the README, the distribution IPS and the working/ placeholder.
 rom/*
 !rom/README.md
+!rom/ultima_rov_dx.ips
 !rom/working/
 rom/working/*
 !rom/working/.gitkeep
@@ -49,7 +50,9 @@ tests/results/
 # mGBA-emitted screenshots next to ROMs
 rom/**/*.png
 
-# Generated outputs (IPS patch, screenshots); regenerate with
-# scripts/build_dx.py and scripts/capture_screens.py
+# Generated outputs; regenerate with scripts/build_dx.py and
+# scripts/capture_screens.py. Only the ROM-free distribution patch
+# rom/ultima_rov_dx.ips is committed (like penta-dragon-dx).
 rom/*.ips
+!rom/ultima_rov_dx.ips
 artifacts/

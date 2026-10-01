@@ -63,7 +63,9 @@ palettes. Download the patch from
    | CRC32 | `c44a0f1e` |
 
 2. Download `ultima_rov_dx.ips` from
-   [Releases](https://github.com/struktured-labs/ultima-rov-dx/releases).
+   [Releases](https://github.com/struktured-labs/ultima-rov-dx/releases), or
+   take the latest build committed at
+   [`rom/ultima_rov_dx.ips`](rom/ultima_rov_dx.ips).
 3. Apply the patch with [Floating IPS (Flips)](https://github.com/Alcaro/Flips)
    or the in-browser [RomPatcher.js](https://www.marcrobledo.com/RomPatcher.js/).
 4. Give the output a `.gbc` extension, for example
@@ -85,10 +87,10 @@ uv run python scripts/build_dx.py           # build the patched ROM and the IPS
 scripts/launch_mgba.sh rom/working/ultima_rov_dx.gbc   # guarded headed play
 ```
 
-Outputs (both gitignored):
+Outputs:
 
-- `rom/working/ultima_rov_dx.gbc`: the patched ROM
-- `rom/ultima_rov_dx.ips`: the ROM-free patch
+- `rom/working/ultima_rov_dx.gbc`: the patched ROM (gitignored)
+- `rom/ultima_rov_dx.ips`: the ROM-free patch (committed)
 
 The launcher is deliberate: it goes through a project-wide single-flight
 lock so emulator processes never pile up (see `AGENTS.md`).
@@ -125,10 +127,10 @@ to `artifacts/`, which is gitignored.
 
 ## Distribution
 
-This repository contains source code, palette data, and verification tools.
-The IPS patch is published on GitHub Releases. Neither the repository nor its
-releases contain the original or modified game ROM, save files, or emulator
-states.
+This repository contains source code, palette data, verification tools, and
+the ROM-free IPS patch (committed at `rom/ultima_rov_dx.ips` and also attached
+to GitHub Releases). Neither the repository nor its releases contain the
+original or modified game ROM, save files, or emulator states.
 
 *Ultima: Runes of Virtue* is owned by its original rights holders. Ultima:
 Runes of Virtue DX is an unofficial fan project.
