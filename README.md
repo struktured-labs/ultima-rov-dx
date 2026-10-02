@@ -14,16 +14,19 @@ own dump of the original cartridge.
 ## Current status
 
 **Beta — work in progress.** The castle, the overworld, and the first dungeon
-(the Cavern of Hatred) are colorized. The other dungeons still use the base
-palettes. Download the patch from
+(the Cavern of Hatred) are colorized, and each of the eight dungeons has its
+own color theme. Download the patch from
 [Releases](https://github.com/struktured-labs/ultima-rov-dx/releases).
 
 ### What is colorized
 
 - Title screen (castle picture and logo), menus, and story/text screens
 - Per-area color themes: the overworld and Lord British's castle use the base
-  Ultima palettes (grass, water, stone, brick, wood...), and the Cavern of
-  Hatred has its own dusty-cave theme
+  Ultima palettes (grass, water, stone, brick, wood...), and every dungeon
+  has its own theme based on its name: dusty Hatred, misty sea-green Deceit,
+  sickly-moss Cowardice, prison-steel Injustice, rust-and-blood Dishonor,
+  sand-and-gold Selfishness, marble-and-purple Pride, and the ash-and-lava
+  Great Stygian Abyss (`palettes/rov_palettes.yaml` `bg_themes`)
 - Player, monster, and NPC sprites, with the original DMG fades mirrored in
   color
 - The Cavern of Hatred (all three levels): cobbled rock, wood furniture and
@@ -40,8 +43,10 @@ palettes. Download the patch from
 
 ### Known gaps
 
-- The other 7 dungeons reuse the Cavern of Hatred theme (not yet checked in
-  every dungeon). Their title cards reuse the navy/gold entrance card.
+- Dungeons 2-8 have their own themes, but only their tile palettes and the
+  black-knight palette were tuned; monster colors and the per-graphic palette
+  choices still come from the Cavern of Hatred. Their title cards reuse the
+  navy/gold entrance card.
 - Floor pickups (map tiles `$40-$4F`) all share the heart's red palette.
 - The gold amount in the side panel is drawn in dark brown, because the
   original uses only its darkest shade.

@@ -78,7 +78,8 @@ LIVE_R          equ $D712   ; next side-panel cell (0-35) refreshed after the OA
 SHIP_PAL        equ $D713   ; OBJ palette of the ship sprite while sailing (set by builder)
 SWEEP_LO        equ $D714   ; map attribute sweep: next $98xx/$9Bxx cell, SWEEP_HI = 0 idle
 SWEEP_HI        equ $D715
-THEME_OBJ       equ $DFD0   ; 4 themes x 4 colours of OBJ palette THEME_OBJ_SLOT (dungeon black knights: steel)
+MAP_CACHED      equ $D716   ; ROM theme held in WRAM slot SLOT_MAP ($FF = none; set by bank-8 MapTheme)
+THEME_OBJ       equ $DFD0   ; 4 slots x 4 colours of OBJ palette THEME_OBJ_SLOT (dungeon black knights: steel)
 THEME_OBJ_SLOT  equ 5       ; royal
 FIRE_OBJ        equ $DFF0   ; 4 colours of the wand's fireball (OBJ palette 7 on map screens, via OBP0)
 FIRE_TILES      equ $38     ; wand projectile tiles $38-$47 (items $06-$08, either button)
@@ -98,9 +99,12 @@ SLOTPAL         equ $D7F0   ; 16: palette of metatile slot s
 ATTR_PROG       equ $D800   ; translated attribute program
 LUT_MENU        equ $DC00   ; 256: start menu (items overlaid from ITEM_PAL at LCD-on)
 LUT_GAME        equ $DD00   ; 256 (entries $00-$3F unused: from SLOTPAL)
-BG_THEMES       equ $DE00   ; 8 x 64: BG base colours per theme
+BG_THEMES       equ $DE00   ; 4 slots x 64: BG base colours (0 surface, 1 current dungeon, 2 entrance, 3 UI)
 W2_IMAGE_LEN    equ $1000
-MAX_THEMES      equ 4           ; BG_THEMES $DE00-$DEFF; $DF00-$DFFF holds W2 code (section wram2b)
+MAX_THEMES      equ 4           ; WRAM theme slots: BG_THEMES $DE00-$DEFF; $DF00-$DFFF holds W2 code (section wram2b)
+SLOT_MAP        equ 1           ; WRAM slot that caches the current dungeon's ROM theme
+ROM_THEMES      equ 16          ; themes in bank 8 (THEME_BG_ROM, THEME_OBJ_ROM, METAPAL, RT_SLOT)
+AREA_FLAG       equ $D13E       ; WRAM bank 1: second area set (Injustice, Dishonor, Pride, Abyss; bank 0 $2355)
 HELPER          equ $FFF3   ; 12 bytes of HRAM: reads WRAM bank 1 for WRAM2 code (installed only while used)
 CURSOR_PAL      equ 7
 PLAYER_PAL      equ 0
@@ -108,17 +112,20 @@ OBP1_PAL        equ 7
 
 BANK8_ORG       equ $4000
 W2_IMAGE_ROM    equ $4400   ; bank 8 address of the WRAM2 image
-AREA_THEME      equ $5400   ; bank 8: theme index per area id [$D12F] (256)
 PICTURE_LUT     equ $5600   ; bank 8: tile -> BG palette for the dungeon-entrance cutscene (256)
 PICTURE_FIX     equ $5700   ; bank 8: attribute fixups (VRAM lo, hi, attr)..., hi = 0 ends (<= 256 bytes)
 PICTURE_BANK    equ 7       ; ROM bank of the (only) picture LCD-on site, restored after the copy
-METAPAL         equ $5800   ; bank 8: palette per metatile graphic, 128 per theme (8 themes)
 LUT_TITLE_ROM   equ $5C00   ; bank 8: castle title LUT (256), copied at the bank-7 title LCD-on
 LUT_LOGO_ROM    equ $5D00   ; bank 8: logo LUT (256)
 BRAND_TILES     equ $6000   ; bank 8: logo branding tile data (palettes/branding.yaml), BRAND_TILES_LEN bytes
 BRAND_CELLS     equ $6600   ; bank 8: (lo, hi, tile)*, hi = 0 ends: $9800 map cells of the branding
 BRAND_TILES_LEN equ $600    ; tiles $A0-$FF (all unused by the logo), zero-padded by the builder
 BRAND_VRAM      equ $8A00   ; tile $A0 with LCDC $89 (signed tile data, $80-$FF at $8800)
+AREA_THEME      equ $6800   ; bank 8: ROM theme per area id [$D12F], 256 with AREA_FLAG = 0, then 256 with 1
+METAPAL         equ $6A00   ; bank 8: palette per metatile graphic, 128 per ROM theme (ROM_THEMES)
+THEME_BG_ROM    equ $7200   ; bank 8: 64 bytes of BG base colours per ROM theme
+THEME_OBJ_ROM   equ $7600   ; bank 8: 8 bytes (OBJ palette THEME_OBJ_SLOT) per ROM theme
+RT_SLOT         equ $7680   ; bank 8: WRAM slot per ROM theme (0 surface, 1 dungeon cache, 2 entrance, 3 UI)
 TITLE_BANK      equ 7       ; ROM bank of the title and picture LCD-on sites
 AREA_ID         equ $D12F   ; WRAM bank 1: current area/map id
 
@@ -456,9 +463,14 @@ Slot:
         or e
         and $7F
         ldh [HR_SLOTG], a
-        ld a, [AREA_ID]                 ; theme of the current area
+        ld a, [AREA_ID]                 ; ROM theme of the current area
         ld l, a
         ld h, high(AREA_THEME)
+        ld a, [AREA_FLAG]               ; second area set: second half
+        or a
+        jr z, .t
+        inc h
+.t:
         ld a, [hl]
         push af
         ld b, a                         ; HL = METAPAL + theme*128 + g
@@ -476,6 +488,7 @@ Slot:
         ld a, 2
         ldh [rSVBK], a
         pop af
+        call MapTheme                   ; ROM theme -> WRAM slot (dungeon colours cached in SLOT_MAP)
         ld [MAP_THEME], a
         call SetTheme                   ; (WRAM2) new area theme -> BASE_BG
         pop hl
@@ -592,9 +605,69 @@ Bank8Boot:
         ld a, 1
         ldh [rSVBK], a
         jp GAME_INIT
+
+; A = ROM theme of the area being loaded (bank 8 mapped, SVBK = 2).
+; Returns the WRAM theme slot in A. Surface, entrance and UI themes have
+; fixed slots; a dungeon theme is copied into SLOT_MAP (BG base colours and
+; OBJ palette THEME_OBJ_SLOT) unless it is already there, and CUR_THEME is
+; invalidated so SetTheme reloads it. Keeps C.
+MapTheme:
+        ld e, a
+        add low(RT_SLOT)
+        ld l, a
+        ld h, high(RT_SLOT)
+        ld a, [hl]
+        cp SLOT_MAP
+        ret nz
+        ld hl, MAP_CACHED
+        ld a, e
+        cp [hl]
+        ld a, SLOT_MAP
+        ret z
+        ld [hl], e
+        ld a, $FF
+        ld [CUR_THEME], a
+        ld a, e                         ; HL = THEME_BG_ROM + theme*64
+        rrca
+        rrca
+        ld b, a
+        and $C0
+        ld l, a
+        ld a, b
+        and $3F
+        add high(THEME_BG_ROM)
+        ld h, a
+        push de
+        ld de, BG_THEMES + SLOT_MAP * 64
+        ld b, 64
+.bg:
+        ld a, [hl+]
+        ld [de], a
+        inc e
+        dec b
+        jr nz, .bg
+        pop de
+        ld a, e                         ; HL = THEME_OBJ_ROM + theme*8
+        add a
+        add a
+        add a
+        add low(THEME_OBJ_ROM)
+        ld l, a
+        ld h, high(THEME_OBJ_ROM)
+        ld de, THEME_OBJ + SLOT_MAP * 8
+        ld b, 8
+.obj:
+        ld a, [hl+]
+        ld [de], a
+        inc e
+        dec b
+        jr nz, .obj
+        ld a, SLOT_MAP
+        ret
 Bank8CodeEnd:
 
 ; ======================================================== WRAM bank 2 image
+
 section wram2, $20400, $D000
 
 ; -- after every OAM DMA (VBlank): palette sync on DMG-register change,

@@ -63,16 +63,47 @@ title_screens:
       - { first: 0x6A, last: 0x6C, palette: gold }
       - { first: 0x6D, last: 0x9B, palette: water }   # "Runes of Virtue" band
 
-# Per-area themes, selected by the area id at $D12F when metatile slots are
-# loaded (reverse_engineering/notes/dungeons.md). Each theme may override
-# metatile_palettes entries; its colors come from rov_palettes.yaml
-# bg_themes.<name>. Areas not listed use theme 0 (the tables above).
-# At most 3 themes (MAX_THEMES = 4 including theme 0).
+# Per-area themes, selected when metatile slots load by the area id at $D12F
+# and the second-area-set flag $D13E (bank 0 $2355 sets it on the stairs of
+# Injustice, Dishonor and Pride and on the way to the Abyss isle): `areas`
+# are ids with $D13E = 0, `areas_alt` ids with $D13E = 1. The two sets reuse
+# the same ids (0x18 is Hatred in one and Dishonor in the other).
+# Mapping: reverse_engineering/notes/dungeons.md (warp lists at $C560 walked
+# from each dungeon entrance, bank 1 $6888). Each theme may override
+# metatile_palettes entries; its colours come from rov_palettes.yaml
+# bg_themes.<name>. At most 15 themes (dx.asm ROM_THEMES = 16 incl. theme 0).
 area_themes:
-  cavern:
-    areas: [0x18, 0x19, 0x1A]    # Cavern of Hatred: 0x18 entrance, 0x19 second level, 0x1A third (shrine rooms)
+  cavern:                        # The Cavern of Hatred (dungeon 1, overworld 02 cell $66)
+    areas: [0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28]
     metatile_palettes:
       earth: [0x23]              # pebbles / rubble
+  deceit:                        # The Cavern of Deceit (2, overworld 02 cell $19)
+    areas: [0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x2A, 0x2B, 0x2C, 0x2D, 0x2E, 0x2F]
+    metatile_palettes: {earth: [0x23]}
+  cowardice:                     # The Cavern of Cowardice (3, area 03 cell $8B)
+    areas: [0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10, 0x11]
+    metatile_palettes: {earth: [0x23]}
+  injustice:                     # The Cavern of Injustice (4, area 05 cell $5D; $D13E = 1)
+    areas_alt: [0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x09, 0x0A, 0x0B, 0x0C, 0x0D,
+                0x0E, 0x0F, 0x10, 0x11, 0x12, 0x13]
+    metatile_palettes: {earth: [0x23]}
+  dishonor:                      # The Cavern of Dishonor (5, area 04 cell $51; $D13E = 1)
+    areas_alt: [0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F, 0x20,
+                0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28]
+    metatile_palettes: {earth: [0x23]}
+  selfishness:                   # The Cavern of Selfishness (6, area 03 cell $3B)
+    areas: [0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3A, 0x3B, 0x3C, 0x3D, 0x3E, 0x3F, 0x40,
+            0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48, 0x49, 0x4A, 0x4B, 0x4C, 0x4D]
+    metatile_palettes: {earth: [0x23]}
+  pride:                         # The Cavern of Pride (7, area 04 cell $ED and Abyss isle 46 cell $E1; $D13E = 1)
+    areas_alt: [0x29, 0x2A, 0x2B, 0x2C, 0x2D, 0x2E, 0x2F, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35,
+                0x36, 0x37, 0x38, 0x39, 0x3A, 0x3B, 0x3C, 0x3D, 0x3E, 0x3F, 0x40, 0x41, 0x42, 0x43]
+    metatile_palettes: {earth: [0x23]}
+  abyss:                         # The Great Stygian Abyss (8, Abyss isle 46 cell $2B; $D13E = 1)
+    areas_alt: [0x44, 0x47, 0x48, 0x49, 0x4A, 0x4B, 0x4C, 0x4D, 0x4E, 0x4F, 0x50, 0x51, 0x52,
+                0x53, 0x54, 0x55, 0x56, 0x57, 0x58, 0x59, 0x5A, 0x5B, 0x5C, 0x5D, 0x5E, 0x5F,
+                0x60, 0x61, 0x62, 0x63, 0x64, 0x65]
+    metatile_palettes: {earth: [0x23]}
   entrance:
     areas: []                    # no map area: selected by the entrance LCD-on sites
   menu:
@@ -80,12 +111,13 @@ area_themes:
 
 # Theme used by dungeon title cards (bank 7 $4619) and the entrance cutscene
 # (bank 7 $4692); the area theme returns when the next area loads.
-# Areas drawn from the surface/overworld atlas (bank 1 $7E8B list, plus
-# $7E95 `03 4C` and $7E98 `45 46` used under the $C511/$D13E flags, see the
-# slot loader at bank 1 $4F26). Every other area id is a dungeon level and gets
-# dungeon_theme unless an area_themes entry lists it (the eight dungeons,
-# Zoltan's and the Lycaeum basement: all drawn from the dungeon atlas).
-surface_areas: [0x00, 0x02, 0x03, 0x04, 0x05, 0x32, 0x33, 0x45, 0x46, 0x4C, 0x4E, 0x51]
+# Areas drawn from the surface/overworld atlas (bank 1 slot loader $4F1C):
+# with $D13E = 0 the list at bank 1 $7E8B, with $D13E = 1 the list at $7E98
+# (the Abyss isle 46 and 45; $7E95 `03 4C` is the two-player list). Every
+# other area is drawn from the dungeon atlas and gets dungeon_theme unless an
+# area_themes entry lists it (unvisited interiors keep the Hatred look).
+surface_areas: [0x00, 0x02, 0x03, 0x04, 0x05, 0x32, 0x33, 0x4E, 0x51]
+surface_areas_alt: [0x45, 0x46]
 dungeon_theme: cavern
 
 entrance_theme: entrance

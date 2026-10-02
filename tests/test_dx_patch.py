@@ -28,8 +28,12 @@ class TablesTest(unittest.TestCase):
         t = dx_patch.build_tables(self.inputs["palettes"], self.inputs["bg_categories"], self.inputs["obj_categories"])
         self.assertEqual((len(t.objpal), len(t.base_bg), len(t.base_obj)), (128, 64, 64))
         themes = 1 + len(self.inputs["bg_categories"].get("area_themes") or {})
-        self.assertEqual((len(t.lut_title), len(t.lut_game), len(t.lut_logo), len(t.metapal)), (256, 256, 256, 128 * themes))
-        self.assertEqual((len(t.area_theme), len(t.bg_themes)), (256, 64 * dx_patch.MAX_THEMES))
+        self.assertLessEqual(themes, dx_patch.ROM_THEMES)
+        self.assertEqual((len(t.lut_title), len(t.lut_game), len(t.lut_logo), len(t.metapal)),
+                         (256, 256, 256, 128 * dx_patch.ROM_THEMES))
+        self.assertEqual((len(t.area_theme), len(t.bg_themes)), (512, 64 * dx_patch.MAX_THEMES))
+        self.assertEqual((len(t.theme_bg_rom), len(t.theme_obj_rom), len(t.rt_slot)),
+                         (64 * dx_patch.ROM_THEMES, 8 * dx_patch.ROM_THEMES, dx_patch.ROM_THEMES))
         self.assertTrue(all(v < 8 for v in t.metapal + t.objpal + t.lut_game + t.lut_title + t.lut_logo))
         self.assertTrue(all(v < themes for v in t.area_theme))
         self.assertEqual(t.bg_themes[:64], t.base_bg)
@@ -49,7 +53,8 @@ class TablesTest(unittest.TestCase):
         bg = self.inputs["bg_categories"]
         names = list(bg["area_themes"])
         pal = list(self.inputs["palettes"]["bg_palettes"])
-        self.assertEqual(t.ui_theme, 1 + names.index(bg["ui_theme"]))
+        self.assertEqual(t.ui_theme, dx_patch.SLOT_UI)
+        self.assertEqual(t.rt_slot[1 + names.index(bg["ui_theme"])], dx_patch.SLOT_UI)
         self.assertEqual((len(t.lut_menu), len(t.item_pal), len(t.menu_obj)), (256, 64, 8))
         self.assertTrue(all(v < 8 for v in t.lut_menu + t.item_pal))
         # coin gold, heart red, bow wood, rope (item $2C) not the plain ui palette
@@ -78,7 +83,8 @@ class TablesTest(unittest.TestCase):
         from ultima_rov_dx import dx_patch
         t = dx_patch.build_tables(self.inputs["palettes"], self.inputs["bg_categories"], self.inputs["obj_categories"])
         names = list(self.inputs["bg_categories"]["area_themes"])
-        self.assertEqual(t.entrance_theme, 1 + names.index("entrance"))
+        self.assertEqual(t.entrance_theme, dx_patch.SLOT_ENTRANCE)
+        self.assertEqual(t.rt_slot[1 + names.index("entrance")], dx_patch.SLOT_ENTRANCE)
         self.assertEqual(len(t.picture_lut), 256)
         self.assertTrue(all(v < 8 for v in t.picture_lut))
         # the cutscene uses several palettes (cliff, sky, mountains, plain, ground)
@@ -92,6 +98,51 @@ class TablesTest(unittest.TestCase):
         self.assertEqual((fix[-2:], len(fix) % 3), (b"\0\0", 2))
         cells = {fix[i] | fix[i + 1] << 8: fix[i + 2] for i in range(0, len(fix) - 2, 3)}
         self.assertEqual(cells[0x9800 + 13 * 32 + 19], t.picture_lut[0x70])   # $1E at the ground edge
+
+    # one representative level per dungeon, (area id, $D13E flag)
+    DUNGEONS = {
+        "cavern": [(0x18, 0), (0x28, 0)], "deceit": [(0x12, 0), (0x2F, 0)],
+        "cowardice": [(0x06, 0), (0x11, 0)], "injustice": [(0x00, 1), (0x13, 1)],
+        "dishonor": [(0x14, 1), (0x28, 1)], "selfishness": [(0x34, 0), (0x45, 0), (0x4D, 0)],
+        "pride": [(0x29, 1), (0x43, 1)], "abyss": [(0x44, 1), (0x47, 1), (0x65, 1)],
+    }
+
+    def test_dungeon_area_mapping(self):
+        from ultima_rov_dx import dx_patch
+        t = dx_patch.build_tables(self.inputs["palettes"], self.inputs["bg_categories"], self.inputs["obj_categories"])
+        names = list(t.theme_names)
+        for theme, levels in self.DUNGEONS.items():
+            for area, flag in levels:
+                self.assertEqual(t.area_theme[256 * flag + area], names.index(theme), (theme, hex(area), flag))
+        # surface atlas areas stay on theme 0 in their own half
+        for area in (0x00, 0x02, 0x03, 0x04, 0x05, 0x32, 0x33, 0x4E, 0x51):
+            self.assertEqual(t.area_theme[area], 0, hex(area))
+        for area in (0x45, 0x46):
+            self.assertEqual(t.area_theme[256 + area], 0, hex(area))
+        # the same id differs between the halves: 00 castle / Injustice, 18 Hatred / Dishonor
+        self.assertNotEqual(t.area_theme[0x18], t.area_theme[0x118])
+        self.assertEqual(t.area_theme[0x100], names.index("injustice"))
+        # every dungeon has its own theme and its own colours
+        self.assertEqual(len({names.index(n) for n in self.DUNGEONS}), 8)
+        bgs = {t.theme_bg_rom[64 * names.index(n):64 * names.index(n) + 64] for n in self.DUNGEONS}
+        self.assertEqual(len(bgs), 8)
+        for n in self.DUNGEONS:
+            i = names.index(n)
+            self.assertEqual(t.rt_slot[i], dx_patch.SLOT_MAP)
+            pal = t.theme_bg_rom[64 * i:64 * i + 64]
+            self.assertEqual(len({pal[p * 8:p * 8 + 2] for p in range(8)}), 1, n)   # shared floor colour 0
+        self.assertEqual(t.rt_slot[0], dx_patch.SLOT_SURFACE)
+        self.assertEqual(t.rt_slot[t.first_map], dx_patch.SLOT_MAP)
+        # the Hatred look is the one cached in the dungeon slot at boot
+        self.assertEqual(t.bg_themes[64 * dx_patch.SLOT_MAP:64 * dx_patch.SLOT_MAP + 64],
+                         t.theme_bg_rom[64 * names.index("cavern"):64 * names.index("cavern") + 64])
+
+    def test_surface_area_in_theme_rejected(self):
+        from ultima_rov_dx import dx_patch
+        bg = dict(self.inputs["bg_categories"])
+        bg["area_themes"] = dict(bg["area_themes"], extra={"areas_alt": [0x46]})
+        with self.assertRaises(dx_patch.PatchError):
+            dx_patch.build_tables(self.inputs["palettes"], bg, self.inputs["obj_categories"])
 
     def test_obj_color0_is_white(self):
         from ultima_rov_dx import dx_patch
@@ -188,6 +239,23 @@ class RealRomBuildTest(unittest.TestCase):
         self.assertEqual(self.out[cel + 3 * len(cells) + 1], 0)          # terminator (hi = 0)
         rows = {r for r, _c, _t, _p in cells}
         self.assertEqual(rows, {spec["credit"]["row"], spec["plate"]["row"], spec["plate"]["row"] + 1})
+
+    def test_theme_tables_in_rom(self):
+        # bank 8 ROM theme tables: 512-byte area map (flag 0, flag 1), page aligned,
+        # and the per-theme colours / WRAM slots the MapTheme routine reads
+        import build_dx
+        from ultima_rov_dx import dx_patch
+        from ultima_rov_dx.sm83asm import assemble
+        inputs = build_dx.load_inputs()
+        t = dx_patch.build_tables(inputs["palettes"], inputs["bg_categories"], inputs["obj_categories"])
+        _, syms = assemble([("dx.asm", dx_patch._asm_source())])
+        self.assertEqual(syms["AREA_THEME"] & 0xFF, 0)
+        self.assertEqual(syms["METAPAL"] & 0x7F, 0)
+        for name, data in (("AREA_THEME", t.area_theme), ("METAPAL", t.metapal), ("THEME_BG_ROM", t.theme_bg_rom),
+                           ("THEME_OBJ_ROM", t.theme_obj_rom), ("RT_SLOT", t.rt_slot)):
+            off = GL.file_offset(GL.DX_RUNTIME_BANK, syms[name])
+            self.assertEqual(self.out[off:off + len(data)], data, name)
+            self.assertLessEqual(syms[name] + len(data), 0x8000, name)
 
     def test_ips_roundtrip(self):
         ips = patch_builder.build_ips_patch(self.original, self.out)

@@ -45,6 +45,76 @@ bg_themes:
     water:  { colors: ["#C8BCA0", "#58A0E8", "#2050A8", "#082050"] }  # fountains, pools
     fire:   { colors: ["#C8BCA0", "#F89828", "#C02810", "#400808"] }  # lava, fire traps
     gold:   { colors: ["#C8BCA0", "#E8C040", "#A06818", "#382008"] }  # arrow floors, switches
+  deceit:  # The Cavern of Deceit: illusion and treachery, misty sea-green rock, magenta traps
+    ui:     { colors: ["#BCC8C0", "#848C88", "#C82818", "#141C18"] }  # side panel
+    stone:  { colors: ["#BCC8C0", "#80A0A0", "#3C5C60", "#0C1C1C"] }  # floor + cobbled rock
+    wood:   { colors: ["#BCC8C0", "#B08860", "#684830", "#20140C"] }  # doors, chests, furniture, ladders
+    earth:  { colors: ["#BCC8C0", "#78A090", "#386050", "#0C2018"] }  # brick, rubble
+    grass:  { colors: ["#BCC8C0", "#88B860", "#3C7030", "#102010"] }  # plants
+    water:  { colors: ["#BCC8C0", "#50C0C8", "#207088", "#082430"] }  # fountains, pools
+    fire:   { colors: ["#BCC8C0", "#F890C0", "#B02870", "#380820"] }  # traps
+    gold:   { colors: ["#BCC8C0", "#D8C858", "#8C7020", "#302408"] }  # arrow floors, switches
+
+  cowardice:  # The Cavern of Cowardice: pale, sickly moss and craven yellow
+    ui:     { colors: ["#C8C8A4", "#8C8C78", "#C82818", "#1C1C10"] }  # side panel
+    stone:  { colors: ["#C8C8A4", "#9CA088", "#58604C", "#181C10"] }  # floor + cobbled rock
+    wood:   { colors: ["#C8C8A4", "#B89858", "#6C5428", "#201808"] }  # doors, chests, furniture, ladders
+    earth:  { colors: ["#C8C8A4", "#A0A070", "#5C6038", "#1C1C0C"] }  # brick, rubble
+    grass:  { colors: ["#C8C8A4", "#90C060", "#407828", "#102008"] }  # plants
+    water:  { colors: ["#C8C8A4", "#78B8B0", "#306C70", "#0C2024"] }  # fountains, pools
+    fire:   { colors: ["#C8C8A4", "#E8C030", "#A06010", "#382008"] }  # traps
+    gold:   { colors: ["#C8C8A4", "#E0D060", "#90801C", "#302808"] }  # arrow floors, switches
+
+  injustice:  # The Cavern of Injustice: cold prison iron, steel blue
+    ui:     { colors: ["#B4C0CC", "#7C8894", "#C82818", "#101820"] }  # side panel
+    stone:  { colors: ["#B4C0CC", "#7890B0", "#3C5070", "#0C1420"] }  # floor + cobbled rock
+    wood:   { colors: ["#B4C0CC", "#A08868", "#5C4C38", "#1C1810"] }  # doors, chests, furniture, ladders
+    earth:  { colors: ["#B4C0CC", "#8898A8", "#4C5868", "#141C24"] }  # brick, rubble
+    grass:  { colors: ["#B4C0CC", "#80B0A0", "#3C6C60", "#102018"] }  # plants
+    water:  { colors: ["#B4C0CC", "#4898E0", "#1C4C98", "#081838"] }  # fountains, pools
+    fire:   { colors: ["#B4C0CC", "#F0A048", "#B04018", "#401008"] }  # traps
+    gold:   { colors: ["#B4C0CC", "#D0C060", "#887020", "#2C2408"] }  # arrow floors, switches
+
+  dishonor:  # The Cavern of Dishonor: shame, rust and dried blood
+    ui:     { colors: ["#CCB0A4", "#94807C", "#B01818", "#241010"] }  # side panel
+    stone:  { colors: ["#CCB0A4", "#A88880", "#684844", "#201010"] }  # floor + cobbled rock
+    wood:   { colors: ["#CCB0A4", "#B88050", "#6C4024", "#241008"] }  # doors, chests, furniture, ladders
+    earth:  { colors: ["#CCB0A4", "#B07060", "#703428", "#240C08"] }  # brick, rubble
+    grass:  { colors: ["#CCB0A4", "#98A060", "#585C2C", "#181C08"] }  # plants
+    water:  { colors: ["#CCB0A4", "#7090C0", "#384C80", "#101830"] }  # fountains, pools
+    fire:   { colors: ["#CCB0A4", "#F07830", "#B02010", "#380404"] }  # traps
+    gold:   { colors: ["#CCB0A4", "#E0B048", "#986018", "#302008"] }  # arrow floors, switches
+
+  selfishness:  # The Cavern of Selfishness: greed, sand and hoarded gold
+    ui:     { colors: ["#D8CC98", "#9C9478", "#C82818", "#201808"] }  # side panel
+    stone:  { colors: ["#D8CC98", "#B8A070", "#705C38", "#201808"] }  # floor + cobbled rock
+    wood:   { colors: ["#D8CC98", "#C08840", "#704818", "#241404"] }  # doors, chests, furniture, ladders
+    earth:  { colors: ["#D8CC98", "#C09058", "#7C5428", "#281808"] }  # brick, rubble
+    grass:  { colors: ["#D8CC98", "#98C058", "#487828", "#142008"] }  # plants
+    water:  { colors: ["#D8CC98", "#58B0D8", "#286898", "#082034"] }  # fountains, pools
+    fire:   { colors: ["#D8CC98", "#F89020", "#C03808", "#401004"] }  # traps
+    gold:   { colors: ["#D8CC98", "#F8D830", "#B08808", "#403004"] }  # arrow floors, switches (bright gold)
+
+  pride:  # The Cavern of Pride: vain marble halls, royal purple and gold
+    ui:     { colors: ["#D4CCD8", "#948C9C", "#C82818", "#1C1424"] }  # side panel
+    stone:  { colors: ["#D4CCD8", "#A898C0", "#605078", "#1C1428"] }  # floor + cobbled rock
+    wood:   { colors: ["#D4CCD8", "#B88858", "#6C4828", "#20140C"] }  # doors, chests, furniture, ladders
+    earth:  { colors: ["#D4CCD8", "#B888B0", "#704870", "#241024"] }  # brick, rubble
+    grass:  { colors: ["#D4CCD8", "#88B878", "#3C7038", "#102010"] }  # plants
+    water:  { colors: ["#D4CCD8", "#68A0E8", "#2850A8", "#081838"] }  # fountains, pools
+    fire:   { colors: ["#D4CCD8", "#F89840", "#C02818", "#400808"] }  # traps
+    gold:   { colors: ["#D4CCD8", "#F0C840", "#A87818", "#382408"] }  # arrow floors, switches
+
+  abyss:  # The Great Stygian Abyss: ash, cinders and the dark Stygian water
+    ui:     { colors: ["#B4A49C", "#807068", "#D02010", "#180C08"] }  # side panel
+    stone:  { colors: ["#B4A49C", "#807070", "#403434", "#100808"] }  # floor + cobbled rock
+    wood:   { colors: ["#B4A49C", "#A07850", "#583820", "#180C04"] }  # doors, chests, furniture, ladders
+    earth:  { colors: ["#B4A49C", "#986058", "#582C28", "#180808"] }  # brick, rubble
+    grass:  { colors: ["#B4A49C", "#88A050", "#485C28", "#141808"] }  # plants
+    water:  { colors: ["#B4A49C", "#5C8C98", "#24485C", "#081820"] }  # Stygian water
+    fire:   { colors: ["#B4A49C", "#F88820", "#D02808", "#400404"] }  # lava, fire traps
+    gold:   { colors: ["#B4A49C", "#E8B838", "#A06010", "#381804"] }  # arrow floors, switches
+
   entrance:  # dungeon title cards (UI palette: night-blue card, gold letters)
              # and the cave-entrance cutscene (dusk sky, violet mountains,
              # misty green plain, brown cliff, ochre ground; shared colour 0)
@@ -74,8 +144,14 @@ bg_themes:
 # never appear in dungeons, where palette 5's knights (sprite $52) are the
 # Black Knight's men: dark steel instead of Lord British's red.
 obj_themes:
-  cavern:
-    royal:  { colors: ["#FFFFFF", "#C8CCD8", "#707488", "#181824"] }
+  cavern:      { royal: { colors: ["#FFFFFF", "#C8CCD8", "#707488", "#181824"] } }
+  deceit:      { royal: { colors: ["#FFFFFF", "#C8CCD8", "#707488", "#181824"] } }
+  cowardice:   { royal: { colors: ["#FFFFFF", "#C8CCD8", "#707488", "#181824"] } }
+  injustice:   { royal: { colors: ["#FFFFFF", "#C8CCD8", "#707488", "#181824"] } }
+  dishonor:    { royal: { colors: ["#FFFFFF", "#C8CCD8", "#707488", "#181824"] } }
+  selfishness: { royal: { colors: ["#FFFFFF", "#C8CCD8", "#707488", "#181824"] } }
+  pride:       { royal: { colors: ["#FFFFFF", "#D0C8E0", "#706088", "#181428"] } }   # violet-tinged plate
+  abyss:       { royal: { colors: ["#FFFFFF", "#A8A0A8", "#504450", "#100810"] } }   # blackened plate
 
 # Start-menu cursor (sprite tiles 0-3, OBJ palette 7 while the menu is up;
 # shade index through OBP0).

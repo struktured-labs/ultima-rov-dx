@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+### Added (per-dungeon themes, 2026-10-02)
+
+- Each of the eight dungeons has its own color theme; the areas of each one were decoded from
+  the warp lists (`reverse_engineering/notes/dungeons.md`). Themes are picked by the area id
+  `$D12F` and the second-area-set flag `$D13E`, so Injustice, Dishonor, Pride and the Abyss
+  (which reuse area ids) are mapped correctly. Hatred looks unchanged.
+- Theme table expanded from 4 to 16 ROM themes: colors live in bank 8 (`THEME_BG_ROM`,
+  `THEME_OBJ_ROM`, `METAPAL` 16x128, `AREA_THEME` 512) and the active dungeon theme is copied
+  into WRAM slot 1 by `MapTheme` when an area loads.
+- `surface_areas_alt` (`45 46`, the Abyss isle). Areas `45 46 4C` with `$D13E` = 0 are
+  Selfishness levels, not surface areas.
+
 ### Fixed (livestream issues #1-#6, PR #7, 2026-09-27)
 
 - #1 Champion select: portraits in skin tones (LCD-on sites bank 3 `$78F8/$7954/$79C7`, mode `$7F`).
