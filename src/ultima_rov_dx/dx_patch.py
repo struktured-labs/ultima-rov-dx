@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from importlib import resources
 from typing import Any
 
+from . import branding as BR
 from . import game_layout as GL
 from . import palettes as P
 from . import rom_utils
@@ -19,7 +20,7 @@ from .sm83asm import assemble
 
 DX_SIZE = 0x40000
 RST28, RST30 = 0xEF, 0xF7
-MAX_THEMES = 8    # dx.asm MAX_THEMES / BG_THEMES size
+MAX_THEMES = 4    # dx.asm MAX_THEMES / BG_THEMES size
 
 # Windows that assembled sections may occupy (file offsets, inclusive-exclusive).
 FREE_WINDOWS = [(0x0003, 0x0038), (0x0061, 0x0100), (0x20000, 0x40000)]
@@ -48,6 +49,10 @@ class Tables:
     item_pal: bytes = bytes(64)       # BG palette per item id (inventory + side-panel icons)
     ui_theme: int = 0                 # theme of text screens, dialogs and the start menu
     menu_obj: bytes = bytes(8)        # start-menu cursor colours (OBJ palette 7 in menu mode)
+    theme_obj: bytes = bytes(32)      # per theme: 4 colours of OBJ palette THEME_OBJ_SLOT
+    fire_obj: bytes = bytes(8)        # wand fireball colours (OBJ palette 7 on map screens)
+    ship_pal: int = 0                 # OBJ palette of the sailing ship (sprite in an unloaded slot)
+    text_ranges: bytes = b"\0\0"   # text screens, then champion select: count, (first, last, pal)*
 
 
 def _index(names: list[str], name: str, what: str) -> int:
@@ -133,6 +138,19 @@ def build_tables(pal_data: dict[str, Any], bg_cat: dict[str, Any], obj_cat: dict
             if area_theme[area]:
                 raise PatchError(f"area {area:#x} in two themes")
             area_theme[area] = t
+    # every area the game draws from the dungeon atlas (not in surface_areas)
+    # and not listed above gets dungeon_theme
+    dungeon = bg_cat.get("dungeon_theme")
+    if dungeon is not None:
+        names_t = ["base"] + list((bg_cat.get("area_themes") or {}).keys())
+        if dungeon not in names_t[1:]:
+            raise PatchError(f"dungeon_theme {dungeon!r} is not an area_themes entry")
+        surface = set(bg_cat.get("surface_areas") or [])
+        if not surface:
+            raise PatchError("dungeon_theme needs surface_areas")
+        for area in range(256):
+            if area not in surface and not area_theme[area]:
+                area_theme[area] = names_t.index(dungeon)
     for name in color_themes:
         if name not in (bg_cat.get("area_themes") or {}):
             raise PatchError(f"bg_themes.{name} has no area_themes entry")
@@ -177,20 +195,47 @@ def build_tables(pal_data: dict[str, Any], bg_cat: dict[str, Any], obj_cat: dict
                 raise PatchError(f"item {i:#x} in both {seen_i[i]} and {name}")
             seen_i[i] = name
             item_pal[i] = idx
+    text_ranges = bytearray()
+    for key in ("text_screen", "champion_screen"):
+        rngs = (bg_cat.get(key) or {}).get("ranges") or []
+        text_ranges.append(len(rngs))
+        for rng in rngs:
+            if not 0 <= rng["first"] <= rng["last"] <= 0xFF:
+                raise PatchError(f"{key}: bad tile range {rng}")
+            text_ranges += bytes([rng["first"], rng["last"], _index(bg_names, rng["palette"], f"{key}.ranges")])
     cursor = pal_data.get("menu_cursor") or ["#FFFFFF", "#F8E080", "#F09838", "#D83020"]
     if len(cursor) != 4:
         raise PatchError("menu_cursor needs 4 colours")
     menu_obj = b"".join(P.bgr555(c).to_bytes(2, "little") for c in cursor)
+    fire = pal_data.get("wand_fire") or cursor
+    if len(fire) != 4:
+        raise PatchError("wand_fire needs 4 colours")
+    fire_obj = b"".join(P.bgr555(c).to_bytes(2, "little") for c in fire)
+    slot_name = obj_names[5]
+    ot = pal_data.get("obj_themes") or {}
+    for tname in ot:
+        if tname not in theme_names[1:]:
+            raise PatchError(f"obj_themes.{tname} is not an area_themes entry")
+        for pname in ot[tname]:
+            if pname != slot_name:
+                raise PatchError(f"obj_themes.{tname}.{pname}: only {slot_name!r} (OBJ palette 5) can follow the theme")
+    theme_obj = bytearray()
+    for tname in theme_names + [None] * (MAX_THEMES - len(theme_names)):
+        spec = (ot.get(tname) or {}).get(slot_name) if tname else None
+        spec = spec or pal_data["obj_palettes"][slot_name]
+        theme_obj += b"".join(P.bgr555(c).to_bytes(2, "little") for c in spec["colors"])
+    ship_pal = _index(obj_names, obj_cat.get("ship", obj_cat.get("player", obj_names[0])), "ship")
     return Tables(bytes(objpal), enc["bg"], enc["obj"], lut_title, bytes(lut_game), lut_logo,
                   b"".join(metapals), bytes(area_theme), bg_themes, picture_lut, entrance_theme, flat_bg, bytes(fix),
-                  lut_menu, bytes(item_pal), ui_theme, menu_obj)
+                  lut_menu, bytes(item_pal), ui_theme, menu_obj, bytes(theme_obj), fire_obj, ship_pal, bytes(text_ranges))
 
 
 def _asm_source() -> str:
     return resources.files("ultima_rov_dx").joinpath("asm/dx.asm").read_text(encoding="utf-8")
 
 
-def build(original: bytes, pal_data: dict[str, Any], bg_cat: dict[str, Any], obj_cat: dict[str, Any]) -> tuple[bytes, dict[str, int]]:
+def build(original: bytes, pal_data: dict[str, Any], bg_cat: dict[str, Any], obj_cat: dict[str, Any],
+          brand: dict[str, Any] | None = None) -> tuple[bytes, dict[str, int]]:
     if len(original) != GL.ROM_BANKS * 0x4000:
         raise PatchError(f"expected a {GL.ROM_BANKS * 16} KiB ROM, got {len(original)} bytes")
     if original[0x147] != GL.CARTRIDGE_TYPE:
@@ -234,14 +279,18 @@ def build(original: bytes, pal_data: dict[str, Any], bg_cat: dict[str, Any], obj
     if (syms["W2_IMAGE_ROM"] + syms["W2_IMAGE_LEN"] > syms["AREA_THEME"] or syms["AREA_THEME"] + 256 > syms["PICTURE_LUT"]
             or syms["PICTURE_LUT"] + 256 > syms["PICTURE_FIX"] or syms["PICTURE_FIX"] + 256 > syms["METAPAL"]
             or syms["METAPAL"] + 128 * MAX_THEMES > syms["LUT_TITLE_ROM"] or syms["LUT_TITLE_ROM"] + 256 > syms["LUT_LOGO_ROM"]
-            or syms["LUT_LOGO_ROM"] + 256 > 0x8000):
+            or syms["LUT_LOGO_ROM"] + 256 > syms["BRAND_TILES"]
+            or syms["BRAND_TILES"] + syms["BRAND_TILES_LEN"] > syms["BRAND_CELLS"] or syms["BRAND_CELLS"] + 256 > 0x8000):
         raise PatchError("bank 8 table layout overlap")
+    if syms["W2bEnd"] > syms["THEME_OBJ"] or syms["BG_THEMES"] + 64 * MAX_THEMES > syms["UnloadedPal"]:
+        raise PatchError(f"WRAM2 section wram2b overlaps BG_THEMES or ends past $E000 ({syms['W2bEnd']:#x})")
     if syms["W2CodeEnd"] > syms["OBJPAL"]:
         raise PatchError(f"WRAM2 code too large (ends {syms['W2CodeEnd']:#x})")
 
     if syms["PICTURE_BANK"] != syms["TITLE_BANK"] or any(b != syms["TITLE_BANK"] for b, _ in GL.TITLE_LCD_ON_SITES):
         raise PatchError("title/picture LCD-on sites must all be in TITLE_BANK (LUTs are copied from bank 8)")
-    if syms["INV"] + 64 > syms["SLOTG"] or syms["ITEM_PAL"] + 64 > syms["INV"] or syms["HR_BACKUP"] + 12 > syms["ITEM_PAL"]:
+    if (syms["INV"] + 64 > syms["SLOTG"] or syms["ITEM_PAL"] + 64 > syms["INV"] or syms["HR_BACKUP"] + 12 > syms["TEXT_RANGES"]
+            or syms["TEXT_RANGES"] + syms["TEXT_RANGES_LEN"] > syms["ITEM_PAL"]):
         raise PatchError("WRAM2 variable layout overlap")
 
     # 3. LCD-on sites
@@ -266,6 +315,8 @@ def build(original: bytes, pal_data: dict[str, Any], bg_cat: dict[str, Any], obj
                 mode = 0x64                  # ld h,h: start menu
             elif (bank, addr) in GL.DIALOG_LCD_ON_SITES:
                 mode = 0x6D                  # ld l,l: dialog (text + side panel)
+            elif (bank, addr) in GL.CHAMPION_LCD_ON_SITES:
+                mode = 0x7F                  # ld a,a: champion select (text + portraits)
             else:
                 mode = 0x40                  # ld b,b: text screen
             off = GL.file_offset(bank, addr)
@@ -286,7 +337,15 @@ def build(original: bytes, pal_data: dict[str, Any], bg_cat: dict[str, Any], obj
     w2(syms["BASE_OBJ"], t.base_obj, "BASE_OBJ")
     w2(syms["LAST_BGP"], bytes([0xFF, 0xFF, 0xFF, 0xFF, 0x00, t.entrance_theme, 0x00, 0x00]), "vars")   # force first sync + LUT build; CUR_THEME 0, MAP_THEME 0
     w2(syms["UI_THEME"], bytes([t.ui_theme, 0, 0]), "UI_THEME/LIVE")
+    w2(syms["SHIP_PAL"], bytes([t.ship_pal, 0, 0]), "SHIP_PAL/SWEEP")
     w2(syms["MENU_OBJ"], t.menu_obj, "MENU_OBJ")
+    w2(syms["FIRE_OBJ"], t.fire_obj, "FIRE_OBJ")
+    if syms["THEME_OBJ_SLOT"] != 5 or syms["THEME_OBJ"] + len(t.theme_obj) > syms["FIRE_OBJ"]:
+        raise PatchError("THEME_OBJ layout")
+    w2(syms["THEME_OBJ"], t.theme_obj, "THEME_OBJ")
+    if len(t.text_ranges) > syms["TEXT_RANGES_LEN"]:
+        raise PatchError(f"text_screen + champion_screen ranges: {len(t.text_ranges)} bytes > {syms['TEXT_RANGES_LEN']}")
+    w2(syms["TEXT_RANGES"], t.text_ranges, "TEXT_RANGES")
     w2(syms["ITEM_PAL"], t.item_pal, "ITEM_PAL")
     w2(syms["LUT_MENU"], t.lut_menu, "LUT_MENU")
     w2(syms["FLAT_BG"], t.flat_bg, "FLAT_BG")
@@ -297,7 +356,32 @@ def build(original: bytes, pal_data: dict[str, Any], bg_cat: dict[str, Any], obj
     w2(syms["SLOTPAL"], bytes([t.metapal[0]] * 16), "SLOTPAL")
     put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["LUT_TITLE_ROM"]), t.lut_title, "LUT_TITLE_ROM")
     w2(syms["LUT_GAME"], t.lut_game, "LUT_GAME")
-    put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["LUT_LOGO_ROM"]), t.lut_logo, "LUT_LOGO_ROM")
+    lut_logo = bytearray(t.lut_logo)
+    brand_tiles, brand_cells = (b"", [])
+    if brand:
+        try:
+            brand_tiles, brand_cells = BR.build(brand)
+        except BR.BrandingError as e:
+            raise PatchError(f"branding: {e}") from None
+        if int(brand.get("first_tile", 0xA0)) != 0xA0:
+            raise PatchError("branding first_tile must be $A0 (dx.asm BRAND_VRAM)")
+        if len(brand_tiles) > syms["BRAND_TILES_LEN"]:
+            raise PatchError("branding tiles exceed BRAND_TILES_LEN")
+        bg_names = P.names(pal_data, "bg_palettes")
+        set_by: dict[int, str] = {}
+        for _row, _col, tile, pal in brand_cells:
+            if set_by.setdefault(tile, pal) != pal:
+                raise PatchError(f"branding tile {tile:#x} used with two palettes")
+            lut_logo[tile] = _index(bg_names, pal, "branding")
+    cells = bytearray()
+    for row, col, tile, _pal in brand_cells:
+        addr = 0x9800 + 32 * row + col
+        cells += bytes([addr & 0xFF, addr >> 8, tile])
+    cells += b"\0\0"
+    put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["BRAND_TILES"]),
+        brand_tiles + bytes(syms["BRAND_TILES_LEN"] - len(brand_tiles)), "BRAND_TILES")
+    put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["BRAND_CELLS"]), bytes(cells), "BRAND_CELLS")
+    put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["LUT_LOGO_ROM"]), bytes(lut_logo), "LUT_LOGO_ROM")
     w2(syms["LUT"], t.lut_game, "LUT")
     put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["METAPAL"]), t.metapal, "METAPAL")
 

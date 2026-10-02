@@ -2,6 +2,24 @@
 
 ## [Unreleased]
 
+### Fixed (livestream issues #1-#6, PR #7, 2026-09-27)
+
+- #1 Champion select: portraits in skin tones (LCD-on sites bank 3 `$78F8/$7954/$79C7`, mode `$7F`).
+- #2 Text screens and dialogs: gold box frames, skin-toned speaker portrait.
+- #3 The champion's attack pose keeps the player palette (sprites in slots past the loader count
+  `$C539` are not monsters).
+- #4 Map attributes are swept (16 cells per VBlank) after metatile slots reload with the LCD on,
+  so caves/trees no longer stay blue after a voyage.
+- #5 Every dungeon-atlas area (not in `surface_areas`) gets the cavern theme, including Deceit.
+- #6 The sailing ship is brown (`ship: folk`).
+
+### Added (PR #7)
+
+- Wand fireballs orange-red; trumpet icon gold; empty hearts/stars grey in every theme; dungeon
+  black knights in dark steel (per-theme OBJ palette 5, `obj_themes`).
+- Title logo: **STRUKTURED LABS** credit and a DX plate (`palettes/branding.yaml`), both original
+  hand-drawn art in `branding.py` (no ROM font data). MAX_THEMES 8 -> 4.
+
 ### Added (start menu + side panel, 2026-09-26)
 
 - Start menu (0:`$10A8`) has its own LCD mode and `menu` theme: paper background, gold-brown

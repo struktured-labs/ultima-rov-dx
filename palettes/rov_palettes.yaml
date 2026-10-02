@@ -11,7 +11,7 @@
 # (e.g. OBP0=$34 in the dungeon-entrance cutscene), so keep it white.
 
 bg_palettes:
-  ui:     { colors: ["#FFF0C0", "#E0CC98", "#D83020", "#281810"] }  # map side panel: parchment, pale (empty hearts/stars), red hearts, ink
+  ui:     { colors: ["#FFF0C0", "#C4BAB4", "#D83020", "#281810"] }  # map side panel: parchment, grey (empty hearts/stars: not gold), red hearts, ink
   grass:  { colors: ["#D8F0A0", "#80C050", "#307828", "#102010"] }  # plains, trees, plants
   water:  { colors: ["#C8ECFF", "#5898E8", "#2050A8", "#082050"] }  # sea, rivers, fountains
   stone:  { colors: ["#E8E8E0", "#A8A8B8", "#585870", "#181820"] }  # dungeon floor/walls, castle
@@ -37,7 +37,7 @@ obj_palettes:
 bg_themes:
   cavern:   # dungeons: every palette shares the dusty cave-floor color 0 so
             # furniture, doors and hazards sit on the floor instead of boxes
-    ui:     { colors: ["#C8BCA0", "#E8DCC0", "#C82818", "#201410"] }  # side panel on the cave floor
+    ui:     { colors: ["#C8BCA0", "#8E8884", "#C82818", "#201410"] }  # side panel on the cave floor (empty hearts/stars grey)
     stone:  { colors: ["#C8BCA0", "#8C90A0", "#4C5068", "#141420"] }  # cave floor + cobbled rock
     wood:   { colors: ["#C8BCA0", "#C08848", "#704820", "#241408"] }  # doors, chests, barrels, furniture, ladders
     earth:  { colors: ["#C8BCA0", "#A08060", "#604028", "#201408"] }  # rubble, pebbles
@@ -61,7 +61,7 @@ bg_themes:
 
   menu:  # text screens, dialogs and the start menu: parchment boxes (shared
          # colour 0), item colours for the inventory icons
-    ui:     { colors: ["#FFF8E8", "#C8B898", "#686050", "#181010"] }  # text, frames, letters
+    ui:     { colors: ["#FFF8E8", "#C4BCB4", "#686050", "#181010"] }  # text, frames, letters (empty hearts/stars grey)
     gold:   { colors: ["#FFF8E8", "#F0C848", "#B87C18", "#5A3808"] }  # box frames, coins, keys, digits
     fire:   { colors: ["#FFF8E8", "#F88060", "#D02818", "#401008"] }  # hearts, red potions
     water:  { colors: ["#FFF8E8", "#88B8F0", "#3060C0", "#101C48"] }  # blue flask, magic
@@ -70,9 +70,20 @@ bg_themes:
     earth:  { colors: ["#FFF8E8", "#F0C0A0", "#A86848", "#301810"] }  # portrait skin, food, rock
     grass:  { colors: ["#FFF8E8", "#A0D070", "#408838", "#102010"] }  # green potion, rune of justice
 
+# Per-theme colours of OBJ palette 5 (royal). Lord British and his court
+# never appear in dungeons, where palette 5's knights (sprite $52) are the
+# Black Knight's men: dark steel instead of Lord British's red.
+obj_themes:
+  cavern:
+    royal:  { colors: ["#FFFFFF", "#C8CCD8", "#707488", "#181824"] }
+
 # Start-menu cursor (sprite tiles 0-3, OBJ palette 7 while the menu is up;
 # shade index through OBP0).
 menu_cursor: ["#FFFFFF", "#F8E080", "#F09838", "#D83020"]
+
+# The wand's fireball (sprite tiles $38-$47 on map screens, OBJ palette 7,
+# shade index through OBP0): yellow core, orange flame, red edge.
+wand_fire: ["#FFFFFF", "#FFE070", "#F88828", "#D82810"]
 
 # Colours for a DMG palette whose four shades are alike (BGP/OBP $00 = blank
 # white, $FF = black): every CGB palette gets the same colour, so blanking

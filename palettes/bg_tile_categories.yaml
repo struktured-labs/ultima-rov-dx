@@ -80,10 +80,31 @@ area_themes:
 
 # Theme used by dungeon title cards (bank 7 $4619) and the entrance cutscene
 # (bank 7 $4692); the area theme returns when the next area loads.
+# Areas drawn from the surface/overworld atlas (bank 1 $7E8B list, plus
+# $7E95 `03 4C` and $7E98 `45 46` used under the $C511/$D13E flags, see the
+# slot loader at bank 1 $4F26). Every other area id is a dungeon level and gets
+# dungeon_theme unless an area_themes entry lists it (the eight dungeons,
+# Zoltan's and the Lycaeum basement: all drawn from the dungeon atlas).
+surface_areas: [0x00, 0x02, 0x03, 0x04, 0x05, 0x32, 0x33, 0x45, 0x46, 0x4C, 0x4E, 0x51]
+dungeon_theme: cavern
+
 entrance_theme: entrance
 # Theme of text screens, in-play dialogs and the start menu. Its palettes all
 # share the parchment colour 0 so item icons sit on the menu boxes.
 ui_theme: menu
+
+# Text screens (story, dialogs, champion select, title cards): every tile uses
+# the UI palette except these (same colours as the start menu). Tile ids from
+# the map dumps of the champion select and Lord British's dialog (tmp/probe).
+text_screen:
+  ranges:
+    - { first: 0x02, last: 0x0B, palette: gold }   # box frames: gold-brown lines
+    - { first: 0xD4, last: 0xE3, palette: earth }  # speaker portrait (skin tones)
+# Champion select only (mode byte $7F): the four portraits.
+champion_screen:
+  ranges:
+    - { first: 0x10, last: 0x3F, palette: earth }  # Mariah, Iolo, Dupre
+    - { first: 0x80, last: 0x8F, palette: earth }  # Shamino
 
 # Start menu LUT (bank 0 $10A8, notes/menu.md). Tiles $0C-$8B (item grid),
 # $BC-$BF (armour) and $F8-$FF (A/B icons) are overwritten at run time from
@@ -104,10 +125,10 @@ menu_screen:
 # panel A/B icons in every theme (map themes: same palette names).
 item_palettes:
   stone: [0x00, 0x04, 0x08, 0x0A, 0x0B, 0x0F, 0x12, 0x15, 0x18, 0x19, 0x1A, 0x1B, 0x1C,
-          0x20, 0x29, 0x33, 0x34]                     # armour, blades, throwing stars, pick, chain, caltrops
+          0x20, 0x29, 0x33]                           # armour, blades, throwing stars, pick, chain, caltrops
   wood:  [0x01, 0x02, 0x03, 0x05, 0x11, 0x21, 0x2C, 0x2D, 0x2E, 0x30, 0x37]   # bows, arrows, boomerang, whip, chest, rope, boots, net, pipes
   water: [0x06, 0x07, 0x16, 0x24]                     # blue flask, magic staff, rain, rune of honesty (hand)
-  gold:  [0x09, 0x0C, 0x14, 0x17, 0x1D, 0x1E, 0x1F, 0x25, 0x2A, 0x31, 0x32, 0x36, 0x38, 0x3E]  # coins, keys, lamp, rings, chalice, ankh, compass, stars
+  gold:  [0x09, 0x0C, 0x14, 0x17, 0x1D, 0x1E, 0x1F, 0x25, 0x2A, 0x31, 0x32, 0x34, 0x36, 0x38, 0x3E]  # coins, keys, lamp, rings, chalice, trumpet (brass, as on the map), ankh, compass, stars
   fire:  [0x0D, 0x10, 0x23, 0x26, 0x28, 0x3F]         # fireballs, heart, red potion, runes of valour / sacrifice
   earth: [0x0E, 0x13, 0x22, 0x2F, 0x35]               # rock, food
   grass: [0x27, 0x3D]                                 # rune of justice, green potion

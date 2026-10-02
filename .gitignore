@@ -56,3 +56,6 @@ rom/**/*.png
 rom/*.ips
 !rom/ultima_rov_dx.ips
 artifacts/
+
+# Generated branding mockups/tile dumps (build output); never commit
+palettes/branding.json

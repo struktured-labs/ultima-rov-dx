@@ -10,6 +10,9 @@
 schema_version: 1
 player: avatar
 default: fiend
+# The ship while sailing: tiles $B8-$BF in a slot the loader never filled
+# (bank 0 $FF96 = $2B under the player). Brown hull.
+ship: folk
 # Verified in the Cavern of Hatred (areas 0x18/0x19): 0x0A bat, 0x14 rat,
 # 0x1A skeleton (large), 0x40 gremlin/imp, 0x46 hooded rogue.
 ids:

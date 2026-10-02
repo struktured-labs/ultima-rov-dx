@@ -37,6 +37,7 @@ EXIT_RE_INCOMPLETE = 78  # sysexits EX_CONFIG
 DEFAULT_PALETTES = ROOT / "palettes" / "rov_palettes.yaml"
 DEFAULT_BG_CATEGORIES = ROOT / "palettes" / "bg_tile_categories.yaml"
 DEFAULT_OBJ_CATEGORIES = ROOT / "palettes" / "obj_categories.yaml"
+DEFAULT_BRANDING = ROOT / "palettes" / "branding.yaml"
 DEFAULT_OUT = ROOT / "rom" / "working" / "ultima_rov_dx.gbc"
 DEFAULT_IPS = ROOT / "rom" / "ultima_rov_dx.ips"
 HEADER_ONLY_OUT = ROOT / "tmp" / "ultima_rov_dx_header_only.gb"
@@ -47,7 +48,7 @@ class IncompleteReverseEngineering(Exception):
 
 
 def load_inputs(pal_path: Path = DEFAULT_PALETTES, bg_path: Path = DEFAULT_BG_CATEGORIES,
-                obj_path: Path = DEFAULT_OBJ_CATEGORIES) -> dict:
+                obj_path: Path = DEFAULT_OBJ_CATEGORIES, brand_path: Path | None = DEFAULT_BRANDING) -> dict:
     """Load and validate the YAML inputs (ROM-free)."""
 
     pal = palettes.load(pal_path)
@@ -56,7 +57,11 @@ def load_inputs(pal_path: Path = DEFAULT_PALETTES, bg_path: Path = DEFAULT_BG_CA
     with open(obj_path, encoding="utf-8") as fh:
         obj = yaml.safe_load(fh) or {}
     dx_patch.build_tables(pal, bg, obj)  # raises on bad names/ranges
-    return {"palettes": pal, "bg_categories": bg, "obj_categories": obj}
+    brand = None
+    if brand_path is not None and brand_path.is_file():
+        with open(brand_path, encoding="utf-8") as fh:
+            brand = yaml.safe_load(fh) or None
+    return {"palettes": pal, "bg_categories": bg, "obj_categories": obj, "branding": brand}
 
 
 def build(original: bytes, inputs: dict, header_only: bool = False) -> bytes:
@@ -69,7 +74,8 @@ def build(original: bytes, inputs: dict, header_only: bool = False) -> bytes:
     missing = game_layout.missing_facts()
     if missing:
         raise IncompleteReverseEngineering("game-specific facts still unknown: " + ", ".join(missing))
-    out, _ = dx_patch.build(original, inputs["palettes"], inputs["bg_categories"], inputs["obj_categories"])
+    out, _ = dx_patch.build(original, inputs["palettes"], inputs["bg_categories"], inputs["obj_categories"],
+                            inputs.get("branding"))
     return out
 
 

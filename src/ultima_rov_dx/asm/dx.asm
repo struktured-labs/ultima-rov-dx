@@ -48,6 +48,7 @@ EXEC_RETURN     equ $4B8F   ; bank1: tile program returns here (restores SP)
 META_CONT       equ $066E   ; body of the metatile writer after 3 bytes
 COPY64          equ $01A9   ; wait vblank + copy 64 bytes DE->HL
 SPRITE_IDS      equ $C580   ; 16 sprite-slot graphic ids ($FF = continuation)
+SPRITE_COUNT    equ $C539   ; sprite slots in use (bank 0 $291B loader)
 TILE_PROG       equ $D800   ; WRAM bank 1: generated tile program
 MBC_BANK        equ $2100
 
@@ -74,8 +75,21 @@ MAP_THEME       equ $D707   ; area theme of the play field (set by Slot, restore
 UI_THEME        equ $D710   ; theme of text screens, dialogs and the start menu (set by builder)
 LIVE_K          equ $D711   ; frame counter: start-menu slot pair refreshed this frame
 LIVE_R          equ $D712   ; next side-panel cell (0-35) refreshed after the OAM DMA
+SHIP_PAL        equ $D713   ; OBJ palette of the ship sprite while sailing (set by builder)
+SWEEP_LO        equ $D714   ; map attribute sweep: next $98xx/$9Bxx cell, SWEEP_HI = 0 idle
+SWEEP_HI        equ $D715
+THEME_OBJ       equ $DFD0   ; 4 themes x 4 colours of OBJ palette THEME_OBJ_SLOT (dungeon black knights: steel)
+THEME_OBJ_SLOT  equ 5       ; royal
+FIRE_OBJ        equ $DFF0   ; 4 colours of the wand's fireball (OBJ palette 7 on map screens, via OBP0)
+FIRE_TILES      equ $38     ; wand projectile tiles $38-$47 (items $06-$08, either button)
+FIRE_PAL        equ 7
+SWEEP_CELLS     equ 16      ; cells per frame (replaces the 4-cell side-panel refresh)
+STAND_G         equ $FF96   ; graphic under the player ($2B = ship, bank 0 $2331)
+SHIP_G          equ $2B
 MENU_OBJ        equ $D718   ; 4 colours of the start-menu cursor (OBJ palette 7 in menu mode)
 HR_BACKUP       equ $D720   ; 12: HRAM bytes under HELPER while it is installed
+TEXT_RANGES     equ $D72C   ; 20: text screens, then champion select: count, (first, last, palette)*
+TEXT_RANGES_LEN equ 20
 ITEM_PAL        equ $D740   ; 64: BG palette per item id (inventory / side-panel icons)
 INV             equ $D780   ; 64: copy of WRAM1 $D100-$D13F (inventory $D100-$D11F, B $D125, A $D126, armour $D134)
 FLAT_BG         equ $D708   ; 4 colours used when a DMG palette maps every shade alike (blank/fade)
@@ -86,7 +100,7 @@ LUT_MENU        equ $DC00   ; 256: start menu (items overlaid from ITEM_PAL at L
 LUT_GAME        equ $DD00   ; 256 (entries $00-$3F unused: from SLOTPAL)
 BG_THEMES       equ $DE00   ; 8 x 64: BG base colours per theme
 W2_IMAGE_LEN    equ $1000
-MAX_THEMES      equ 8
+MAX_THEMES      equ 4           ; BG_THEMES $DE00-$DEFF; $DF00-$DFFF holds W2 code (section wram2b)
 HELPER          equ $FFF3   ; 12 bytes of HRAM: reads WRAM bank 1 for WRAM2 code (installed only while used)
 CURSOR_PAL      equ 7
 PLAYER_PAL      equ 0
@@ -101,6 +115,10 @@ PICTURE_BANK    equ 7       ; ROM bank of the (only) picture LCD-on site, restor
 METAPAL         equ $5800   ; bank 8: palette per metatile graphic, 128 per theme (8 themes)
 LUT_TITLE_ROM   equ $5C00   ; bank 8: castle title LUT (256), copied at the bank-7 title LCD-on
 LUT_LOGO_ROM    equ $5D00   ; bank 8: logo LUT (256)
+BRAND_TILES     equ $6000   ; bank 8: logo branding tile data (palettes/branding.yaml), BRAND_TILES_LEN bytes
+BRAND_CELLS     equ $6600   ; bank 8: (lo, hi, tile)*, hi = 0 ends: $9800 map cells of the branding
+BRAND_TILES_LEN equ $600    ; tiles $A0-$FF (all unused by the logo), zero-padded by the builder
+BRAND_VRAM      equ $8A00   ; tile $A0 with LCDC $89 (signed tile data, $80-$FF at $8800)
 TITLE_BANK      equ 7       ; ROM bank of the title and picture LCD-on sites
 AREA_ID         equ $D12F   ; WRAM bank 1: current area/map id
 
@@ -499,6 +517,13 @@ Slot:
         ld [hl+], a
         ld [hl+], a
         ld [hl], a
+        ldh a, [rLCDC]                  ; LCD on: cells already on the map keep
+        bit 7, a                        ; the old palette -> sweep them
+        jr z, .done
+        xor a
+        ld [SWEEP_LO], a
+        ld a, $98
+        ld [SWEEP_HI], a
 .done:
         ld a, 1
         ldh [rSVBK], a
@@ -643,6 +668,9 @@ W2AfterDmaBody:
         call SlotCells
 .hud:
         call HudItemsLut
+        ld a, [SWEEP_HI]                ; map attribute sweep pending (slots
+        or a                            ; reloaded with the LCD on): it takes
+        jp nz, Sweep                    ; the side-panel refresh's VBlank time
 ; 4 side-panel cells per frame (36 cells: rows 0-17, 2 columns)
         ld a, [LIVE_R]
         ld c, a
@@ -695,6 +723,12 @@ W2Pal:
         rrca
         rrca
         and $0F
+        ld e, a                         ; slot at or past the loaded count ($C539):
+        ld a, [SPRITE_COUNT]            ; not a monster. The champion's attack
+        cp e                            ; pose uses tiles $E0-$EF (slots 12-13),
+        jr c, .unl                      ; the sailing ship $B8-$BF (slot 7)
+        jr z, .unl
+        ld a, e
         or low(SPRITE_IDS)
         ld e, a
         ld d, high(SPRITE_IDS)
@@ -712,18 +746,33 @@ W2Pal:
         ld d, high(OBJPAL)
         ld a, [de]
         jr .apply
+.unl:
+        call UnloadedPal
+        jr .apply
 .player:
-        ld a, [LCD_MODE]                ; start menu: cursor (tiles 0-3) gets
-        cp 4                            ; its own palette
-        ld a, PLAYER_PAL
-        jr nz, .apply
         dec l
-        ld a, [hl]
+        ld a, [hl]                      ; E = tile
         inc l
+        ld e, a
+        ld a, [LCD_MODE]
         cp 4
-        ld a, PLAYER_PAL
-        jr nc, .apply
+        jr z, .menu
+        or a
+        jr nz, .pl
+        ld a, e                         ; map: the wand's fireball
+        sub FIRE_TILES
+        cp 16
+        jr nc, .pl
+        ld a, FIRE_PAL
+        jr .apply
+.menu:
+        ld a, e                         ; start menu: cursor (tiles 0-3) gets
+        cp 4                            ; its own palette
+        jr nc, .pl
         ld a, CURSOR_PAL
+        jr .apply
+.pl:
+        ld a, PLAYER_PAL
 .apply:
         ld c, a
         ld a, [hl]
@@ -772,10 +821,16 @@ SyncOBJ:
         ld a, [LAST_OBP1]
         ld d, a
         ld b, 1
-        ld a, [LCD_MODE]                ; start menu: palette 7 = cursor colours
-        cp 4                            ; mapped through OBP0
+        ld a, [LCD_MODE]                ; start menu: palette 7 = cursor colours,
+        cp 4                            ; map: fireball colours, both mapped
+        jr z, .menu                     ; through OBP0
+        or a
         jr nz, SyncGroup
+        ld hl, FIRE_OBJ
+        jr .o0
+.menu:
         ld hl, MENU_OBJ
+.o0:
         ld a, [LAST_OBP0]
         ld d, a
 ; HL = base colours (4 per palette, index = DMG shade), B = count,
@@ -963,6 +1018,8 @@ W2LcdOnBody:
         ret
 ; Recompute attributes of both BG maps from their tile ids (LCD off).
 FillAttrs:
+        xor a                           ; full recompute: no sweep needed
+        ld [SWEEP_HI], a
         ld hl, $9800
         ld d, high(LUT)
 .loop:
@@ -1007,13 +1064,13 @@ SetTheme:
         ld a, [LAST_BGP]
         cpl
         ld [LAST_BGP], a
-        ret
+        jp ThemeObj                     ; and the theme's colours of OBJ palette THEME_OBJ_SLOT
 
 ; Rebuild the live LUT for LCD_MODE.
 BuildLut:
         ld a, [LCD_MODE]
         or a
-        jr z, .game
+        jp z, .game
         dec a
         jr z, .castle
         dec a
@@ -1040,6 +1097,7 @@ BuildLut:
         ld [de], a
         inc e
         jr nz, .t
+        call Brand                      ; logo: DX plate + credit (bank 8 mapped)
         ld a, TITLE_BANK
         ld [MBC_BANK], a
         ret
@@ -1080,14 +1138,19 @@ BuildLut:
         jr nz, .d
         call ReadInv
         jp HudItemsLut
-.text:                                  ; text screens: every tile uses the UI palette
-        ld a, [LUT_GAME + $FF]
-        ld hl, LUT
+.text:                                  ; text screens: UI palette, then box frames and
+        ld a, [LUT_GAME + $FF]          ; portraits from TEXT_RANGES (champion select:
+        ld hl, LUT                      ; its own ranges on top)
 .x:
         ld [hl], a
         inc l
         jr nz, .x
-        ret
+        ld hl, TEXT_RANGES
+        call TileRanges
+        ld a, [LCD_BYTE]
+        cp $7F
+        ret nz
+        jp TileRanges
 .game:
         ld hl, LUT_GAME + $40
         ld de, LUT + $40
@@ -1113,6 +1176,34 @@ BuildLut:
         jr nz, .s
         call ReadInv
         jp HudItemsLut
+
+; HL = count, (first, last, palette)*: LUT[first..last] = palette. Advances HL.
+TileRanges:
+        ld a, [hl+]
+        or a
+        ret z
+        ld b, a
+.r:
+        ld a, [hl+]
+        ld e, a
+        ld a, [hl+]
+        ld c, a
+        ld a, [hl+]
+        push hl
+        ld h, high(LUT)
+        ld l, e
+.f:
+        ld [hl], a
+        ld d, a
+        ld a, l                         ; A = this tile (flags from cp, not inc)
+        inc l
+        cp c
+        ld a, d
+        jr nz, .f
+        pop hl
+        dec b
+        jr nz, .r
+        ret
 
 ; ---- inventory helpers. WRAM2 code cannot see WRAM bank 1 ($D1xx), so a
 ; 12-byte reader is placed in HRAM while needed (the bytes under it are
@@ -1372,6 +1463,63 @@ W2Hud:
         ld a, 1
         jp HudExit
 
+W2CodeEnd:
+
+; ======================================================== WRAM bank 2, $DF00-$DFFF
+section wram2b, $21300, $DF00
+
+; A = OBJ palette of a sprite tile in a slot the loader has not filled
+; ($C539 count): the champion (attack pose), or the ship while sailing.
+UnloadedPal:
+        ldh a, [STAND_G]
+        cp SHIP_G
+        ld a, PLAYER_PAL
+        ret nz
+        ld a, [SHIP_PAL]
+        ret
+
+; Map attributes after metatile slots were reloaded with the LCD on (ship
+; voyage into a new area, bank 8 Slot): the whole $9800 area map still
+; carries the old slots' palettes. Rewrites SWEEP_CELLS cells per frame from
+; the LUT while in VBlank (A = SWEEP_HI on entry). About one second per sweep.
+Sweep:
+        ld h, a
+        ld a, [SWEEP_LO]
+        ld l, a
+        ld d, high(LUT)
+        ld c, SWEEP_CELLS
+.c:
+        ldh a, [rLY]                    ; VBlank over: stop, resume next frame
+        cp 144
+        jr c, .save
+        xor a
+        ldh [rVBK], a
+        ld e, [hl]
+        ld a, [de]
+        ld b, a
+        ld a, 1
+        ldh [rVBK], a
+        ld [hl], b
+        inc hl
+        ld a, h
+        cp $9C
+        jr z, .done
+        dec c
+        jr nz, .c
+.save:
+        xor a
+        ldh [rVBK], a
+        ld a, l
+        ld [SWEEP_LO], a
+        ld a, h
+        ld [SWEEP_HI], a
+        ret
+.done:
+        xor a
+        ldh [rVBK], a
+        ld [SWEEP_HI], a
+        ret
+
 W2MetaW:
         push hl
         push bc
@@ -1429,4 +1577,60 @@ W2Meta:
         xor a
         ldh [rVBK], a
         ret
-W2CodeEnd:
+
+; Logo screen (LCD_MODE 9, LCD off, bank 8 mapped): copy the branding tiles
+; into VRAM and place their cells in the $9800 map; the dissolve copies them
+; to $9C00 with the rest of the logo. Attributes follow from the logo LUT.
+Brand:
+        ld a, [LCD_MODE]
+        cp 9
+        ret nz
+        xor a
+        ldh [rVBK], a
+        ld hl, BRAND_TILES
+        ld de, BRAND_VRAM
+        ld bc, BRAND_TILES_LEN
+.t:
+        ld a, [hl+]
+        ld [de], a
+        inc de
+        dec bc
+        ld a, b
+        or c
+        jr nz, .t
+        ld hl, BRAND_CELLS
+.c:
+        ld e, [hl]
+        inc hl
+        ld a, [hl+]
+        or a
+        ret z
+        ld d, a
+        ld a, [hl+]
+        ld [de], a
+        jr .c
+
+; CUR_THEME was just set: OBJ palette THEME_OBJ_SLOT takes that theme's
+; colours (royal red on the surface, steel for the dungeon black knights),
+; resynced at the next OAM DMA.
+ThemeObj:
+        ld a, [CUR_THEME]
+        add a
+        add a
+        add a
+        add low(THEME_OBJ)
+        ld e, a
+        ld d, high(THEME_OBJ)
+        ld hl, BASE_OBJ + THEME_OBJ_SLOT * 8
+        ld b, 8
+.c:
+        ld a, [de]
+        ld [hl+], a
+        inc e
+        dec b
+        jr nz, .c
+        ld a, [LAST_OBP0]
+        cpl
+        ld [LAST_OBP0], a
+        ret
+W2bEnd:

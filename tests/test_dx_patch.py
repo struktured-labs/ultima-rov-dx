@@ -165,11 +165,29 @@ class RealRomBuildTest(unittest.TestCase):
                 mode = 0x64                      # ld h,h: start menu
             elif (bank, addr) in GL.DIALOG_LCD_ON_SITES:
                 mode = 0x6D                      # ld l,l: dialog text screen
+            elif (bank, addr) in GL.CHAMPION_LCD_ON_SITES:
+                mode = 0x7F                      # ld a,a: champion select
             else:
                 mode = 0x40                      # ld b,b: text screen
             self.assertEqual(self.out[off + 1], mode)
         for bank, addr in GL.TITLE_LCD_ON_SITES:
             self.assertEqual(self.out[GL.file_offset(bank, addr)], 0xF7)
+
+    def test_branding_on_logo(self):
+        # palettes/branding.yaml: credit tiles in bank 8, cells for row 17 of the logo map
+        from ultima_rov_dx import branding, dx_patch
+        from ultima_rov_dx.sm83asm import assemble
+        import yaml
+        _, syms = assemble([("dx.asm", dx_patch._asm_source())])
+        spec = yaml.safe_load((ROOT / "palettes" / "branding.yaml").read_text())
+        tiles, cells = branding.build(spec)
+        self.assertGreater(len(tiles), 0)
+        tbl = GL.file_offset(GL.DX_RUNTIME_BANK, syms["BRAND_TILES"])
+        self.assertEqual(self.out[tbl:tbl + len(tiles)], tiles)
+        cel = GL.file_offset(GL.DX_RUNTIME_BANK, syms["BRAND_CELLS"])
+        self.assertEqual(self.out[cel + 3 * len(cells) + 1], 0)          # terminator (hi = 0)
+        rows = {r for r, _c, _t, _p in cells}
+        self.assertEqual(rows, {spec["credit"]["row"], spec["plate"]["row"], spec["plate"]["row"] + 1})
 
     def test_ips_roundtrip(self):
         ips = patch_builder.build_ips_patch(self.original, self.out)

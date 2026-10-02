@@ -40,8 +40,8 @@ palettes. Download the patch from
 
 ### Known gaps
 
-- The other 7 dungeons have no themes yet. Their title cards reuse the
-  navy/gold entrance card.
+- The other 7 dungeons reuse the Cavern of Hatred theme (not yet checked in
+  every dungeon). Their title cards reuse the navy/gold entrance card.
 - Floor pickups (map tiles `$40-$4F`) all share the heart's red palette.
 - The gold amount in the side panel is drawn in dark brown, because the
   original uses only its darkest shade.
