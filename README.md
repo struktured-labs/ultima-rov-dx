@@ -27,6 +27,10 @@ own color theme. Download the patch from
   sickly-moss Cowardice, prison-steel Injustice, rust-and-blood Dishonor,
   sand-and-gold Selfishness, marble-and-purple Pride, and the ash-and-lava
   Great Stygian Abyss (`palettes/rov_palettes.yaml` `bg_themes`)
+- Castles, shops and side caves have their own themes too: Lord British's
+  castle wings, Lord Simon's castle, the Lycaeum, Empath Abbey, Gnu Gnu's
+  and Utomo's shops, the Cat's Lair, Zoltan's gypsy camp, and the side caves
+  (`reverse_engineering/notes/areas.md`)
 - Player, monster, and NPC sprites, with the original DMG fades mirrored in
   color
 - The Cavern of Hatred (all three levels): cobbled rock, wood furniture and

@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+### Added (themes for castles, shops and side caves, 2026-10-02)
+
+- Every valid area outside the dungeons was identified from NPC dialog and warps
+  (`reverse_engineering/notes/areas.md`). Each now has a theme instead of the Hatred fallback:
+  `castle` (Lord British's castle wings), `simon` (Lord Simon's castle), `lycaeum_grounds` /
+  `lycaeum`, `town` (Gnu Gnu's shops, Utomo's armoury), `market` (Gnu Gnu's stall, the Isle of the
+  Avatar shop), `catslair`, `sidecave` (spider-web cave, Loubet's cave), `abbey` (Empath Abbey),
+  `gypsy` (Zoltan's camp). Lord British's throne room, the overworld and the dungeons are unchanged.
+- Theme table 16 -> 32 ROM themes; themes share up to 16 metatile palette maps through `MP_IDX`.
+  `surface: true` lets a theme claim surface-atlas areas.
+- Area `08*` mapped to Injustice; `22` (unreached copy of Hatred `23`) to Hatred.
+
 ### Added (per-dungeon themes, 2026-10-02)
 
 - Each of the eight dungeons has its own color theme; the areas of each one were decoded from

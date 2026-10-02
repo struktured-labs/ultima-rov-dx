@@ -30,10 +30,12 @@ class TablesTest(unittest.TestCase):
         themes = 1 + len(self.inputs["bg_categories"].get("area_themes") or {})
         self.assertLessEqual(themes, dx_patch.ROM_THEMES)
         self.assertEqual((len(t.lut_title), len(t.lut_game), len(t.lut_logo), len(t.metapal)),
-                         (256, 256, 256, 128 * dx_patch.ROM_THEMES))
+                         (256, 256, 256, 128 * dx_patch.MP_SETS))
         self.assertEqual((len(t.area_theme), len(t.bg_themes)), (512, 64 * dx_patch.MAX_THEMES))
         self.assertEqual((len(t.theme_bg_rom), len(t.theme_obj_rom), len(t.rt_slot)),
                          (64 * dx_patch.ROM_THEMES, 8 * dx_patch.ROM_THEMES, dx_patch.ROM_THEMES))
+        self.assertEqual(len(t.mp_idx), dx_patch.ROM_THEMES)
+        self.assertTrue(all(v < dx_patch.MP_SETS for v in t.mp_idx))
         self.assertTrue(all(v < 8 for v in t.metapal + t.objpal + t.lut_game + t.lut_title + t.lut_logo))
         self.assertTrue(all(v < themes for v in t.area_theme))
         self.assertEqual(t.bg_themes[:64], t.base_bg)
@@ -114,11 +116,10 @@ class TablesTest(unittest.TestCase):
         for theme, levels in self.DUNGEONS.items():
             for area, flag in levels:
                 self.assertEqual(t.area_theme[256 * flag + area], names.index(theme), (theme, hex(area), flag))
-        # surface atlas areas stay on theme 0 in their own half
-        for area in (0x00, 0x02, 0x03, 0x04, 0x05, 0x32, 0x33, 0x4E, 0x51):
+        # the overworld, Lord British's throne room and the Abyss isle stay on theme 0
+        for area in (0x00, 0x02, 0x03, 0x04, 0x05):
             self.assertEqual(t.area_theme[area], 0, hex(area))
-        for area in (0x45, 0x46):
-            self.assertEqual(t.area_theme[256 + area], 0, hex(area))
+        self.assertEqual(t.area_theme[256 + 0x46], 0)
         # the same id differs between the halves: 00 castle / Injustice, 18 Hatred / Dishonor
         self.assertNotEqual(t.area_theme[0x18], t.area_theme[0x118])
         self.assertEqual(t.area_theme[0x100], names.index("injustice"))
@@ -136,6 +137,55 @@ class TablesTest(unittest.TestCase):
         # the Hatred look is the one cached in the dungeon slot at boot
         self.assertEqual(t.bg_themes[64 * dx_patch.SLOT_MAP:64 * dx_patch.SLOT_MAP + 64],
                          t.theme_bg_rom[64 * names.index("cavern"):64 * names.index("cavern") + 64])
+
+    # places outside the dungeons: (area, flag) -> theme (reverse_engineering/notes/areas.md)
+    PLACES = {
+        "castle": [(0x30, 0), (0x31, 0)], "simon": [(0x32, 0), (0x33, 0)], "lycaeum_grounds": [(0x51, 0)],
+        "lycaeum": [(0x52, 0), (0x53, 0), (0x54, 0)], "town": [(0x1D, 0), (0x4F, 0), (0x20, 0)],
+        "market": [(0x4E, 0), (0x45, 1)], "catslair": [(0x1E, 0), (0x50, 0)], "sidecave": [(0x29, 0), (0x21, 0)],
+        "abbey": [(0x55, 0), (0x01, 0)], "gypsy": [(0x1F, 0)],
+    }
+
+    def test_place_area_mapping(self):
+        from ultima_rov_dx import dx_patch
+        t = dx_patch.build_tables(self.inputs["palettes"], self.inputs["bg_categories"], self.inputs["obj_categories"])
+        names = list(t.theme_names)
+        for theme, areas in self.PLACES.items():
+            for area, flag in areas:
+                self.assertEqual(t.area_theme[256 * flag + area], names.index(theme), (theme, hex(area), flag))
+        self.assertGreater(len(names), 16)               # the table outgrew the old 16-theme cap
+        self.assertEqual(t.area_theme[0x22], names.index("cavern"))        # unreached copy of Hatred 23
+        self.assertEqual(t.area_theme[0x108], names.index("injustice"))
+        # every valid area id ($D13E = 0: $00-$55, $D13E = 1: $00-$65) has an explicit theme or is surface
+        bg = self.inputs["bg_categories"]
+        listed = {(a, 0) for a in bg["surface_areas"]} | {(a, 1) for a in bg["surface_areas_alt"]}
+        for spec in bg["area_themes"].values():
+            listed |= {(a, 0) for a in spec.get("areas") or []} | {(a, 1) for a in spec.get("areas_alt") or []}
+        missing = [(hex(a), f) for f, top in ((0, 0x55), (1, 0x65)) for a in range(top + 1) if (a, f) not in listed]
+        self.assertEqual(missing, [])
+        # gold colours the side-panel stars and coin: it stays gold in every theme
+        gold = list(self.inputs["palettes"]["bg_palettes"]).index("gold")
+        for i, n in enumerate(names):
+            if n in ("entrance", "menu"):
+                continue
+            r, g, b = (lambda v: (v & 31, (v >> 5) & 31, v >> 10))(int.from_bytes(t.theme_bg_rom[64 * i + 8 * gold + 2:64 * i + 8 * gold + 4], "little"))
+            self.assertTrue(r > 20 and g > 15 and b < 14, (n, r, g, b))
+        # themes share metatile palette maps: fewer sets than themes
+        self.assertLess(len(set(t.mp_idx[:len(names)])), len(names))
+        self.assertEqual(t.mp_idx[0], 0)
+
+    def test_surface_theme_needs_flag(self):
+        from ultima_rov_dx import dx_patch
+        bg = dict(self.inputs["bg_categories"])
+        themes = dict(bg["area_themes"])
+        themes["simon"] = {k: v for k, v in themes["simon"].items() if k != "surface"}
+        bg["area_themes"] = themes
+        with self.assertRaises(dx_patch.PatchError):
+            dx_patch.build_tables(self.inputs["palettes"], bg, self.inputs["obj_categories"])
+        themes["simon"] = dict(themes["simon"], surface=True, areas=[0x30])   # 0x30 is not a surface area
+        themes["castle"] = {"areas": [0x31]}
+        with self.assertRaises(dx_patch.PatchError):
+            dx_patch.build_tables(self.inputs["palettes"], bg, self.inputs["obj_categories"])
 
     def test_surface_area_in_theme_rejected(self):
         from ultima_rov_dx import dx_patch
@@ -251,8 +301,10 @@ class RealRomBuildTest(unittest.TestCase):
         _, syms = assemble([("dx.asm", dx_patch._asm_source())])
         self.assertEqual(syms["AREA_THEME"] & 0xFF, 0)
         self.assertEqual(syms["METAPAL"] & 0x7F, 0)
+        for name, n in (("THEME_OBJ_ROM", 8 * dx_patch.ROM_THEMES), ("RT_SLOT", dx_patch.ROM_THEMES), ("MP_IDX", dx_patch.ROM_THEMES)):
+            self.assertLessEqual((syms[name] & 0xFF) + n, 0x100, name)   # indexed by low byte only
         for name, data in (("AREA_THEME", t.area_theme), ("METAPAL", t.metapal), ("THEME_BG_ROM", t.theme_bg_rom),
-                           ("THEME_OBJ_ROM", t.theme_obj_rom), ("RT_SLOT", t.rt_slot)):
+                           ("THEME_OBJ_ROM", t.theme_obj_rom), ("RT_SLOT", t.rt_slot), ("MP_IDX", t.mp_idx)):
             off = GL.file_offset(GL.DX_RUNTIME_BANK, syms[name])
             self.assertEqual(self.out[off:off + len(data)], data, name)
             self.assertLessEqual(syms[name] + len(data), 0x8000, name)

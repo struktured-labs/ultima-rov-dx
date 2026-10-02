@@ -103,7 +103,8 @@ BG_THEMES       equ $DE00   ; 4 slots x 64: BG base colours (0 surface, 1 curren
 W2_IMAGE_LEN    equ $1000
 MAX_THEMES      equ 4           ; WRAM theme slots: BG_THEMES $DE00-$DEFF; $DF00-$DFFF holds W2 code (section wram2b)
 SLOT_MAP        equ 1           ; WRAM slot that caches the current dungeon's ROM theme
-ROM_THEMES      equ 16          ; themes in bank 8 (THEME_BG_ROM, THEME_OBJ_ROM, METAPAL, RT_SLOT)
+ROM_THEMES      equ 32          ; themes in bank 8 (THEME_BG_ROM, THEME_OBJ_ROM, RT_SLOT, MP_IDX)
+MP_SETS         equ 16          ; metatile palette sets in METAPAL (themes share them via MP_IDX)
 AREA_FLAG       equ $D13E       ; WRAM bank 1: second area set (Injustice, Dishonor, Pride, Abyss; bank 0 $2355)
 HELPER          equ $FFF3   ; 12 bytes of HRAM: reads WRAM bank 1 for WRAM2 code (installed only while used)
 CURSOR_PAL      equ 7
@@ -122,10 +123,11 @@ BRAND_CELLS     equ $6600   ; bank 8: (lo, hi, tile)*, hi = 0 ends: $9800 map ce
 BRAND_TILES_LEN equ $600    ; tiles $A0-$FF (all unused by the logo), zero-padded by the builder
 BRAND_VRAM      equ $8A00   ; tile $A0 with LCDC $89 (signed tile data, $80-$FF at $8800)
 AREA_THEME      equ $6800   ; bank 8: ROM theme per area id [$D12F], 256 with AREA_FLAG = 0, then 256 with 1
-METAPAL         equ $6A00   ; bank 8: palette per metatile graphic, 128 per ROM theme (ROM_THEMES)
+METAPAL         equ $6A00   ; bank 8: palette per metatile graphic, 128 per set (MP_SETS)
 THEME_BG_ROM    equ $7200   ; bank 8: 64 bytes of BG base colours per ROM theme
-THEME_OBJ_ROM   equ $7600   ; bank 8: 8 bytes (OBJ palette THEME_OBJ_SLOT) per ROM theme
-RT_SLOT         equ $7680   ; bank 8: WRAM slot per ROM theme (0 surface, 1 dungeon cache, 2 entrance, 3 UI)
+THEME_OBJ_ROM   equ $7A00   ; bank 8: 8 bytes (OBJ palette THEME_OBJ_SLOT) per ROM theme
+RT_SLOT         equ $7B00   ; bank 8: WRAM slot per ROM theme (0 surface, 1 dungeon cache, 2 entrance, 3 UI)
+MP_IDX          equ $7B20   ; bank 8: METAPAL set per ROM theme
 TITLE_BANK      equ 7       ; ROM bank of the title and picture LCD-on sites
 AREA_ID         equ $D12F   ; WRAM bank 1: current area/map id
 
@@ -473,7 +475,11 @@ Slot:
 .t:
         ld a, [hl]
         push af
-        ld b, a                         ; HL = METAPAL + theme*128 + g
+        add low(MP_IDX)                 ; B = metatile palette set of the theme
+        ld l, a
+        ld h, high(MP_IDX)
+        ld a, [hl]
+        ld b, a                         ; HL = METAPAL + set*128 + g
         rrca
         and $80
         ld c, a

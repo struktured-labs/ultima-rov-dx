@@ -71,10 +71,13 @@ title_screens:
 # Mapping: reverse_engineering/notes/dungeons.md (warp lists at $C560 walked
 # from each dungeon entrance, bank 1 $6888). Each theme may override
 # metatile_palettes entries; its colours come from rov_palettes.yaml
-# bg_themes.<name>. At most 15 themes (dx.asm ROM_THEMES = 16 incl. theme 0).
+# bg_themes.<name>. At most 31 themes (dx.asm ROM_THEMES = 32 incl. theme 0)
+# and 16 distinct metatile palette maps (MP_SETS). A theme marked
+# `surface: true` may list surface-atlas areas (their colours must suit grass
+# and water too, so those themes do not share one floor colour).
 area_themes:
   cavern:                        # The Cavern of Hatred (dungeon 1, overworld 02 cell $66)
-    areas: [0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28]
+    areas: [0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28]   # 22: unreached copy of 23
     metatile_palettes:
       earth: [0x23]              # pebbles / rubble
   deceit:                        # The Cavern of Deceit (2, overworld 02 cell $19)
@@ -84,7 +87,7 @@ area_themes:
     areas: [0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10, 0x11]
     metatile_palettes: {earth: [0x23]}
   injustice:                     # The Cavern of Injustice (4, area 05 cell $5D; $D13E = 1)
-    areas_alt: [0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x09, 0x0A, 0x0B, 0x0C, 0x0D,
+    areas_alt: [0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D,
                 0x0E, 0x0F, 0x10, 0x11, 0x12, 0x13]
     metatile_palettes: {earth: [0x23]}
   dishonor:                      # The Cavern of Dishonor (5, area 04 cell $51; $D13E = 1)
@@ -104,6 +107,31 @@ area_themes:
                 0x53, 0x54, 0x55, 0x56, 0x57, 0x58, 0x59, 0x5A, 0x5B, 0x5C, 0x5D, 0x5E, 0x5F,
                 0x60, 0x61, 0x62, 0x63, 0x64, 0x65]
     metatile_palettes: {earth: [0x23]}
+  # --- places outside the eight dungeons (reverse_engineering/notes/areas.md) ---
+  castle:                        # Lord British's castle wings (00 cells $43 / $C3); the throne room 00 keeps theme 0
+    areas: [0x30, 0x31]
+  simon:                         # Lord Simon's castle (04 cell $16; 32 is an unreached copy of 33). Surface atlas.
+    surface: true
+    areas: [0x32, 0x33]
+  lycaeum_grounds:               # the Lycaeum on its island (03 cell $23). Surface atlas.
+    surface: true
+    areas: [0x51]
+  lycaeum:                       # Lycaeum halls (51 cells $55/$59) and puzzle rooms (51 cell $4A; 53 is a copy of 54)
+    areas: [0x52, 0x53, 0x54]
+  town:                          # Gnu Gnu's first shop (02 cell $A5), Gnu Gnu's back room (4E cell $17), Utomo's armoury (04 cell $25)
+    areas: [0x1D, 0x4F, 0x20]
+  market:                        # Gnu Gnu's market stall (02 cell $89) and the Isle of the Avatar shop (46* cell $CB). Surface atlas.
+    surface: true
+    areas: [0x4E]
+    areas_alt: [0x45]
+  catslair:                      # the Cat's Lair (03 cell $E8) and its cellar (1E cell $37)
+    areas: [0x1E, 0x50]
+  sidecave:                      # side caves: the spider-web cave (05 cell $B1) and Loubet's cave (05 cell $E2)
+    areas: [0x29, 0x21]
+  abbey:                         # Empath Abbey (05 cell $33) and its inner rooms (55 cell $23)
+    areas: [0x55, 0x01]
+  gypsy:                         # Zoltan, King of the Gypsies: the gypsy camp (03 cell $4C)
+    areas: [0x1F]
   entrance:
     areas: []                    # no map area: selected by the entrance LCD-on sites
   menu:
@@ -115,7 +143,7 @@ area_themes:
 # with $D13E = 0 the list at bank 1 $7E8B, with $D13E = 1 the list at $7E98
 # (the Abyss isle 46 and 45; $7E95 `03 4C` is the two-player list). Every
 # other area is drawn from the dungeon atlas and gets dungeon_theme unless an
-# area_themes entry lists it (unvisited interiors keep the Hatred look).
+# area_themes entry lists it (only unused area ids are left to it).
 surface_areas: [0x00, 0x02, 0x03, 0x04, 0x05, 0x32, 0x33, 0x4E, 0x51]
 surface_areas_alt: [0x45, 0x46]
 dungeon_theme: cavern

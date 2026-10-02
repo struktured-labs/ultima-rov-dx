@@ -56,17 +56,17 @@ mode `$C511`).
 
 | # | Dungeon | Entrance (area/cell) | Areas (`*` = `$D13E` = 1) |
 |---|---|---|---|
-| 1 | The Cavern of Hatred | `02/66` | `18 19 1A 1B 1C 23 24 25 26 27 28` |
+| 1 | The Cavern of Hatred | `02/66` | `18 19 1A 1B 1C 23 24 25 26 27 28` (and `22`, an unreached copy of `23`) |
 | 2 | The Cavern of Deceit | `02/19` | `12-17 2A-2F` |
 | 3 | The Cavern of Cowardice | `03/8B` | `06-11` |
-| 4 | The Cavern of Injustice | `05/5D` | `00*-07* 09*-13*` (`08*` not reached) |
+| 4 | The Cavern of Injustice | `05/5D` | `00*-13*` (`08*` links to `04*`/`0A*` but was not reached by walking) |
 | 5 | The Cavern of Dishonor | `04/51` | `14*-28*` |
 | 6 | The Cavern of Selfishness | `03/3B` | `34-4D` (includes `45 46 4C` with flag 0) |
 | 7 | The Cavern of Pride | `04/ED`, and the Abyss isle `46*/E1` | `29*-43*` |
 | 8 | The Great Stygian Abyss | Abyss isle `46*/2B` | `47*-65*`, plus `44*` (one room off the isle) |
 
-`45*`/`46*` are the Abyss isle, drawn from the surface atlas. Unlisted dungeon-atlas
-areas (castle interiors, towns, Zoltan's, the Lycaeum basement) fall back to
+`46*` is the Abyss isle and `45*` its shop, both drawn from the surface atlas. Castles, shops,
+side caves and the other places are in `areas.md`. Only unused ids fall back to
 `dungeon_theme` (Hatred). Teleporting straight into `29*` shows the death
 screen (the arrival cell is a hazard); `2D*` and `38*` were used for screenshots.
 

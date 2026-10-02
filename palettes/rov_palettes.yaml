@@ -115,6 +115,90 @@ bg_themes:
     fire:   { colors: ["#B4A49C", "#F88820", "#D02808", "#400404"] }  # lava, fire traps
     gold:   { colors: ["#B4A49C", "#E8B838", "#A06010", "#381804"] }  # arrow floors, switches
 
+  castle:  # Lord British's castle wings: the throne room's pale stone and brick, gold carpets
+    ui:     { colors: ["#E8E8E0", "#B4B0AC", "#D83020", "#281810"] }  # side panel
+    stone:  { colors: ["#E8E8E0", "#A8A8B8", "#585870", "#181820"] }  # floor + stone
+    wood:   { colors: ["#E8E8E0", "#C89050", "#785028", "#281808"] }  # doors, chests, furniture, ladders
+    earth:  { colors: ["#E8E8E0", "#C89868", "#885838", "#302010"] }  # brick walls
+    grass:  { colors: ["#E8E8E0", "#80C050", "#307828", "#102010"] }  # plants
+    water:  { colors: ["#E8E8E0", "#5898E8", "#2050A8", "#082050"] }  # fountains, pools
+    fire:   { colors: ["#E8E8E0", "#F8A020", "#C03010", "#401008"] }  # braziers, traps, floor items
+    gold:   { colors: ["#E8E8E0", "#E8C040", "#A06818", "#382008"] }  # carpets, banners (gold also colours the side-panel stars and coin)
+
+  simon:  # Lord Simon's castle (surface atlas): warm sandstone, emerald lawns
+    stone:  { colors: ["#F0E8D8", "#C8B898", "#786850", "#201810"] }  # floor + stone
+    earth:  { colors: ["#F0DCB8", "#C8A070", "#806040", "#302010"] }  # brick walls
+    gold:   { colors: ["#FFF0C0", "#E8C040", "#A06818", "#382008"] }  # ankhs, banners
+    grass:  { colors: ["#D0F0A0", "#70C060", "#2C7038", "#0C2010"] }  # lawns, hedges (emerald)
+
+  lycaeum_grounds:  # the Lycaeum on its island (surface atlas): blue-grey marble, lapis walls
+    stone:  { colors: ["#E8ECF4", "#A8B4D0", "#505C88", "#141828"] }  # floor + stone
+    earth:  { colors: ["#E0E4F4", "#98A4D8", "#46509C", "#101438"] }  # brick walls
+
+  lycaeum:  # Lycaeum halls: parchment marble, lapis and scholar's blue
+    ui:     { colors: ["#D8D0B8", "#A09C94", "#C82818", "#201810"] }  # side panel
+    stone:  { colors: ["#D8D0B8", "#8C98B8", "#3C4878", "#101828"] }  # floor + stone
+    wood:   { colors: ["#D8D0B8", "#B88C58", "#6C4C2C", "#201408"] }  # doors, chests, furniture, ladders
+    earth:  { colors: ["#D8D0B8", "#7888C0", "#34407C", "#0C1030"] }  # brick walls
+    grass:  { colors: ["#D8D0B8", "#88B868", "#3C7034", "#102010"] }  # plants
+    water:  { colors: ["#D8D0B8", "#60B0E8", "#2058A8", "#081C48"] }  # fountains, pools
+    fire:   { colors: ["#D8D0B8", "#F0A030", "#C03818", "#401008"] }  # braziers, traps, floor items
+    gold:   { colors: ["#D8D0B8", "#E8C848", "#A07020", "#382408"] }  # carpets, signs, shrines
+
+  town:  # merchants' shops: warm planks, terracotta and market gold
+    ui:     { colors: ["#E0CCA4", "#ACA08C", "#C82818", "#241810"] }  # side panel
+    stone:  { colors: ["#E0CCA4", "#C0A888", "#786048", "#201810"] }  # floor + stone
+    wood:   { colors: ["#E0CCA4", "#D89848", "#8C5420", "#2C1808"] }  # doors, chests, furniture, ladders
+    earth:  { colors: ["#E0CCA4", "#D0A080", "#90603C", "#2C1808"] }  # brick walls (soft terracotta)
+    grass:  { colors: ["#E0CCA4", "#90C850", "#3C8030", "#102010"] }  # plants
+    water:  { colors: ["#E0CCA4", "#58B8E0", "#2068A8", "#082048"] }  # fountains, pools
+    fire:   { colors: ["#E0CCA4", "#F8A030", "#D03818", "#401008"] }  # braziers, traps, floor items
+    gold:   { colors: ["#E0CCA4", "#F0C838", "#C06018", "#401C08"] }  # shop signs, awnings, carpets
+
+  market:  # Gnu Gnu's market and the Isle of the Avatar shop (surface atlas): bright stalls
+    wood:   { colors: ["#F8E0B0", "#E09848", "#985020", "#2C1808"] }  # stalls, doors, chests
+    gold:   { colors: ["#FFF0C0", "#F8B838", "#D05818", "#401808"] }  # awnings, shop signs
+
+  catslair:  # the Cat's Lair: a cosy tavern shop, plum stone and amber
+    ui:     { colors: ["#D8C8B8", "#A49890", "#C82818", "#201418"] }  # side panel
+    stone:  { colors: ["#D8C8B8", "#A898A8", "#5C4C64", "#181020"] }  # floor + stone
+    wood:   { colors: ["#D8C8B8", "#C88C50", "#7C4C24", "#241408"] }  # doors, chests, furniture, ladders
+    earth:  { colors: ["#D8C8B8", "#B07888", "#6C3848", "#240C14"] }  # brick walls
+    grass:  { colors: ["#D8C8B8", "#88B858", "#3C7030", "#102010"] }  # plants
+    water:  { colors: ["#D8C8B8", "#60A8D8", "#285C98", "#081C38"] }  # fountains, pools
+    fire:   { colors: ["#D8C8B8", "#F8A830", "#C84018", "#401008"] }  # braziers, traps, floor items
+    gold:   { colors: ["#D8C8B8", "#F0C040", "#A86818", "#382008"] }  # carpets, signs, shrines
+
+  sidecave:  # side caves: umber loam and olive moss, warmer than the dungeons
+    ui:     { colors: ["#BCA488", "#948878", "#C82818", "#201408"] }  # side panel
+    stone:  { colors: ["#BCA488", "#9C8460", "#5C4828", "#1C1408"] }  # floor + cave rock
+    wood:   { colors: ["#BCA488", "#C89048", "#7C5020", "#241408"] }  # doors, chests, furniture, ladders
+    earth:  { colors: ["#BCA488", "#A88C58", "#685028", "#201808"] }  # rubble, webs
+    grass:  { colors: ["#BCA488", "#98B050", "#4C6C24", "#141C08"] }  # plants
+    water:  { colors: ["#BCA488", "#5CA8C8", "#246880", "#08202C"] }  # fountains, pools
+    fire:   { colors: ["#BCA488", "#F89828", "#C83010", "#400808"] }  # braziers, traps, floor items
+    gold:   { colors: ["#BCA488", "#E0C048", "#9C7018", "#342408"] }  # carpets, signs, shrines
+
+  abbey:  # Empath Abbey: pale sandstone, stained-glass blue fountains, rose braziers for Compassion
+    ui:     { colors: ["#E8DCC8", "#B0A898", "#C82818", "#281C14"] }  # side panel
+    stone:  { colors: ["#E8DCC8", "#C8B8A0", "#807058", "#201C14"] }  # floor + stone
+    wood:   { colors: ["#E8DCC8", "#C89458", "#7C5428", "#281808"] }  # doors, chests, furniture, ladders
+    earth:  { colors: ["#E8DCC8", "#D0B490", "#8C6C48", "#2C2014"] }  # brick walls
+    grass:  { colors: ["#E8DCC8", "#90C060", "#3C7834", "#102010"] }  # plants
+    water:  { colors: ["#E8DCC8", "#78B0F0", "#3858C0", "#101C50"] }  # fountains, pools
+    fire:   { colors: ["#E8DCC8", "#F08890", "#C03850", "#401018"] }  # braziers, floor items (rose, for Compassion)
+    gold:   { colors: ["#E8DCC8", "#ECC050", "#A86C20", "#382008"] }  # carpets, shrine
+
+  gypsy:  # Zoltan's gypsy camp: meadow floor, forest greens, red-magenta painted wagons
+    ui:     { colors: ["#D4E4A8", "#A0A890", "#C82818", "#182010"] }  # side panel
+    stone:  { colors: ["#D4E4A8", "#98A088", "#545C48", "#141810"] }  # meadow + rocks
+    wood:   { colors: ["#D4E4A8", "#E07850", "#982C48", "#2C0818"] }  # wagons, chests, furniture (painted red-magenta)
+    earth:  { colors: ["#D4E4A8", "#A89070", "#685038", "#201810"] }  # brick walls
+    grass:  { colors: ["#D4E4A8", "#78B848", "#2C6C28", "#0C1C08"] }  # plants
+    water:  { colors: ["#D4E4A8", "#58B0D8", "#2068A0", "#082040"] }  # fountains, pools
+    fire:   { colors: ["#D4E4A8", "#F87830", "#C82858", "#400818"] }  # braziers, traps, floor items
+    gold:   { colors: ["#D4E4A8", "#F0C040", "#B06018", "#382008"] }  # carpets
+
   entrance:  # dungeon title cards (UI palette: night-blue card, gold letters)
              # and the cave-entrance cutscene (dusk sky, violet mountains,
              # misty green plain, brown cliff, ochre ground; shared colour 0)

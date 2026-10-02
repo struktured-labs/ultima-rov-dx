@@ -21,7 +21,8 @@ from .sm83asm import assemble
 DX_SIZE = 0x40000
 RST28, RST30 = 0xEF, 0xF7
 MAX_THEMES = 4    # dx.asm MAX_THEMES: WRAM theme slots (BG_THEMES / THEME_OBJ)
-ROM_THEMES = 16   # dx.asm ROM_THEMES: themes stored in bank 8
+ROM_THEMES = 32   # dx.asm ROM_THEMES: themes stored in bank 8
+MP_SETS = 16      # dx.asm MP_SETS: distinct metatile palette maps (METAPAL), shared via MP_IDX
 SLOT_SURFACE, SLOT_MAP, SLOT_ENTRANCE, SLOT_UI = 0, 1, 2, 3   # WRAM slots (dx.asm SLOT_MAP = 1)
 
 # Windows that assembled sections may occupy (file offsets, inclusive-exclusive).
@@ -40,7 +41,7 @@ class Tables:
     lut_title: bytes   # 256
     lut_game: bytes    # 256
     lut_logo: bytes    # 256
-    metapal: bytes     # 128 per theme
+    metapal: bytes     # 128 per metatile palette set (MP_SETS)
     area_theme: bytes  # 512: ROM theme per area id ($D12F), $D13E = 0 then $D13E = 1
     bg_themes: bytes   # MAX_THEMES x 64: BG base colours per WRAM slot
     picture_lut: bytes = bytes(256)   # entrance cutscene tile -> palette
@@ -60,6 +61,7 @@ class Tables:
     rt_slot: bytes = bytes(ROM_THEMES)             # WRAM slot per ROM theme
     theme_names: tuple = ()                        # ROM theme names, index = theme
     first_map: int = 0                             # ROM theme initially in WRAM slot SLOT_MAP
+    mp_idx: bytes = bytes(ROM_THEMES)              # METAPAL set per ROM theme
 
 
 def _index(names: list[str], name: str, what: str) -> int:
@@ -117,6 +119,7 @@ def build_tables(pal_data: dict[str, Any], bg_cat: dict[str, Any], obj_cat: dict
     metapals, bg_sets = [bytes(metapal)], [enc["bg"]]
     area_theme = bytearray(512)      # [flag * 256 + area], flag = $D13E (second area set)
     color_themes = pal_data.get("bg_themes") or {}
+    surface_claimed: set[int] = set()   # surface-atlas areas given a theme marked `surface: true`
     for tname, spec in (bg_cat.get("area_themes") or {}).items():
         t = len(metapals)
         if t >= ROM_THEMES:
@@ -146,6 +149,8 @@ def build_tables(pal_data: dict[str, Any], bg_cat: dict[str, Any], obj_cat: dict
                 if area_theme[half + area]:
                     raise PatchError(f"area {area:#x} ({key}) in two themes")
                 area_theme[half + area] = t
+                if spec.get("surface"):
+                    surface_claimed.add(half + area)
     # every area the game draws from the dungeon atlas (not in surface_areas)
     # and not listed above gets dungeon_theme
     dungeon = bg_cat.get("dungeon_theme")
@@ -163,8 +168,12 @@ def build_tables(pal_data: dict[str, Any], bg_cat: dict[str, Any], obj_cat: dict
                     area_theme[half + area] = names_t.index(dungeon)
     for half, key in ((0, "surface_areas"), (256, "surface_areas_alt")):
         for area in bg_cat.get(key) or []:
-            if area_theme[half + area]:
-                raise PatchError(f"{key}: area {area:#x} is also in an area theme")
+            if area_theme[half + area] and half + area not in surface_claimed:
+                raise PatchError(f"{key}: area {area:#x} is also in an area theme (mark the theme `surface: true`)")
+    for i in surface_claimed:
+        surf = set(bg_cat.get("surface_areas_alt" if i >= 256 else "surface_areas") or [])
+        if i % 256 not in surf:
+            raise PatchError(f"area {i % 256:#x}: `surface: true` themes may only list surface_areas")
     for name in color_themes:
         if name not in (bg_cat.get("area_themes") or {}):
             raise PatchError(f"bg_themes.{name} has no area_themes entry")
@@ -256,13 +265,22 @@ def build_tables(pal_data: dict[str, Any], bg_cat: dict[str, Any], obj_cat: dict
     pad = ROM_THEMES - len(theme_names)
     theme_bg_rom = b"".join(bg_sets) + bytes(64 * pad)
     theme_obj_rom = b"".join(obj_sets) + bytes(8 * pad)
-    metapals += [bytes(128)] * pad
+    sets: list[bytes] = []
+    mp_idx = bytearray(ROM_THEMES)
+    for t, mp in enumerate(metapals):
+        if mp not in sets:
+            sets.append(mp)
+        mp_idx[t] = sets.index(mp)
+    if len(sets) > MP_SETS:
+        raise PatchError(f"at most {MP_SETS} distinct metatile palette maps (have {len(sets)})")
+    metapals = sets + [bytes(128)] * (MP_SETS - len(sets))
     ship_pal = _index(obj_names, obj_cat.get("ship", obj_cat.get("player", obj_names[0])), "ship")
     return Tables(bytes(objpal), enc["bg"], enc["obj"], lut_title, bytes(lut_game), lut_logo,
                   b"".join(metapals), bytes(area_theme), bg_themes, picture_lut, SLOT_ENTRANCE if entrance_theme else 0,
                   flat_bg, bytes(fix),
                   lut_menu, bytes(item_pal), SLOT_UI if ui_theme else 0, menu_obj, bytes(theme_obj), fire_obj, ship_pal,
-                  bytes(text_ranges), theme_bg_rom, theme_obj_rom, bytes(rt_slot), tuple(theme_names), first_map)
+                  bytes(text_ranges), theme_bg_rom, theme_obj_rom, bytes(rt_slot), tuple(theme_names), first_map,
+                  bytes(mp_idx))
 
 
 def _asm_source() -> str:
@@ -311,19 +329,20 @@ def build(original: bytes, pal_data: dict[str, Any], bg_cat: dict[str, Any], obj
         raise PatchError("bank 8 code overlaps the WRAM2 image")
     if syms["MAX_THEMES"] != MAX_THEMES:
         raise PatchError("MAX_THEMES mismatch between dx.asm and dx_patch.py")
-    if syms["ROM_THEMES"] != ROM_THEMES or syms["SLOT_MAP"] != SLOT_MAP:
+    if syms["ROM_THEMES"] != ROM_THEMES or syms["SLOT_MAP"] != SLOT_MAP or syms["MP_SETS"] != MP_SETS:
         raise PatchError("ROM_THEMES / SLOT_MAP mismatch between dx.asm and dx_patch.py")
     if (syms["AREA_THEME"] & 0xFF or syms["METAPAL"] & 0xFF or syms["THEME_BG_ROM"] & 0xFF
-            or (syms["THEME_OBJ_ROM"] & 0xFF) + 8 * ROM_THEMES > 0x100 or (syms["RT_SLOT"] & 0xFF) + ROM_THEMES > 0x100):
+            or (syms["THEME_OBJ_ROM"] & 0xFF) + 8 * ROM_THEMES > 0x100 or (syms["RT_SLOT"] & 0xFF) + ROM_THEMES > 0x100
+            or (syms["MP_IDX"] & 0xFF) + ROM_THEMES > 0x100 or syms["METAPAL"] & 0x7F):
         raise PatchError("bank 8 theme tables must be page aligned (MapTheme / Slot index them by low byte)")
     if (syms["W2_IMAGE_ROM"] + syms["W2_IMAGE_LEN"] > syms["PICTURE_LUT"]
             or syms["PICTURE_LUT"] + 256 > syms["PICTURE_FIX"] or syms["PICTURE_FIX"] + 256 > syms["LUT_TITLE_ROM"]
             or syms["LUT_TITLE_ROM"] + 256 > syms["LUT_LOGO_ROM"]
             or syms["LUT_LOGO_ROM"] + 256 > syms["BRAND_TILES"]
             or syms["BRAND_TILES"] + syms["BRAND_TILES_LEN"] > syms["BRAND_CELLS"] or syms["BRAND_CELLS"] + 256 > syms["AREA_THEME"]
-            or syms["AREA_THEME"] + 512 > syms["METAPAL"] or syms["METAPAL"] + 128 * ROM_THEMES > syms["THEME_BG_ROM"]
+            or syms["AREA_THEME"] + 512 > syms["METAPAL"] or syms["METAPAL"] + 128 * MP_SETS > syms["THEME_BG_ROM"]
             or syms["THEME_BG_ROM"] + 64 * ROM_THEMES > syms["THEME_OBJ_ROM"]
-            or syms["THEME_OBJ_ROM"] + 8 * ROM_THEMES > syms["RT_SLOT"] or syms["RT_SLOT"] + ROM_THEMES > 0x8000):
+            or syms["THEME_OBJ_ROM"] + 8 * ROM_THEMES > syms["RT_SLOT"] or syms["RT_SLOT"] + ROM_THEMES > syms["MP_IDX"] or syms["MP_IDX"] + ROM_THEMES > 0x8000):
         raise PatchError("bank 8 table layout overlap")
     if syms["W2bEnd"] > syms["THEME_OBJ"] or syms["BG_THEMES"] + 64 * MAX_THEMES > syms["UnloadedPal"]:
         raise PatchError(f"WRAM2 section wram2b overlaps BG_THEMES or ends past $E000 ({syms['W2bEnd']:#x})")
@@ -399,6 +418,7 @@ def build(original: bytes, pal_data: dict[str, Any], bg_cat: dict[str, Any], obj
     put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["THEME_BG_ROM"]), t.theme_bg_rom, "THEME_BG_ROM")
     put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["THEME_OBJ_ROM"]), t.theme_obj_rom, "THEME_OBJ_ROM")
     put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["RT_SLOT"]), t.rt_slot, "RT_SLOT")
+    put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["MP_IDX"]), t.mp_idx, "MP_IDX")
     w2(syms["SLOTPAL"], bytes([t.metapal[0]] * 16), "SLOTPAL")
     put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["LUT_TITLE_ROM"]), t.lut_title, "LUT_TITLE_ROM")
     w2(syms["LUT_GAME"], t.lut_game, "LUT_GAME")

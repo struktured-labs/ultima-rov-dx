@@ -53,7 +53,9 @@ initials, difficulty; bank 7 `$4319/$438B/$4619` blank transition screens and ga
 `$D710` UI theme, `$D711/$D712` live-refresh counters, `$D718` menu cursor colours, `$D720` HRAM backup (12),
 `$D740` `ITEM_PAL` (64), `$D780` inventory copy (64). Tables `$DC00` `LUT_MENU`, `$DD00` `LUT_GAME`, `$DE00` `BG_THEMES` (8x64).
 HRAM `$FFF3-$FFFE`: WRAM1 reader installed only while used (see menu.md).
-Bank 8: `$5400` AREA_THEME, `$5600` PICTURE_LUT, `$5700` PICTURE_FIX, `$5800` METAPAL (8 themes), `$5C00` LUT_TITLE, `$5D00` LUT_LOGO.
+Bank 8: `$5600` PICTURE_LUT, `$5700` PICTURE_FIX, `$5C00` LUT_TITLE, `$5D00` LUT_LOGO, `$6000` BRAND_TILES, `$6600` BRAND_CELLS,
+`$6800` AREA_THEME (512: `$D13E` = 0, then 1), `$6A00` METAPAL (16 sets x 128), `$7200` THEME_BG_ROM (32 x 64), `$7A00` THEME_OBJ_ROM (32 x 8),
+`$7B00` RT_SLOT (WRAM slot per theme), `$7B20` MP_IDX (METAPAL set per theme).
 Inventory/side panel: `$D100-$D11F` bag, `$D125` B item, `$D126` A item, `$D134` armour (see menu.md).
 
 ## Palettes
