@@ -35,6 +35,8 @@ panel_digits: gold
 # Tiles $40-$4F hold the floor-item graphics of the current area (heart
 # pickups etc., drawn as BG tiles on the map; verified in the Cavern of
 # Hatred). They use `fire` so hearts read red and color 0 matches the floor.
+# $40-$7B are the floor-item tiles (item k uses $40+4k..$43+4k); on map screens the runtime
+# (FloorItems) recolours them per item with item_palettes, the fire entries are only the default.
 ui_overrides: {0x40: fire, 0x41: fire, 0x42: fire, 0x43: fire, 0x44: fire, 0x45: fire, 0x46: fire, 0x47: fire,
                0x48: fire, 0x49: fire, 0x4A: fire, 0x4B: fire, 0x4C: fire, 0x4D: fire, 0x4E: fire, 0x4F: fire,
                # side panel (window): $E4 full star and the coin $F5/$F7 in gold; hearts $F4,

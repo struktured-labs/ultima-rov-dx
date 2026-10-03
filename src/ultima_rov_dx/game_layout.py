@@ -75,7 +75,9 @@ FREE_SPACE: tuple[tuple[int, int], ...] = (
     (0x0028, 0x0010),
     (0x0061, 0x009F),
     (0x20000, 0x20000),      # banks 8-15 after expansion to 256 KiB
+    (file_offset(2, 0x7F34), 0xCC),   # bank 2 $7F34-$7FFF ($FF padding): AllocHook + TIER_TAB
 )
+BANK2_FREE = (file_offset(2, 0x7F34), file_offset(2, 0x8000))
 FREE_HRAM = ((0xFF98, 8), (0xFFE8, 0x17))
 # WRAM bank 2 ($D000-$DFFF with SVBK=2) is entirely unused by the DMG game.
 
@@ -93,6 +95,8 @@ HOOKS: tuple[Hook, ...] = (
          "tail of $04C1 (A/B item icons -> tiles $F8-$FF): call $01A9; ld a,1; ld [$2100],a; ret -> call $01A9; jp HudTramp"),
     Hook("logo_dissolve", file_offset(7, 0x4BD1), bytes.fromhex("7e12"),
          "title dissolve copies $98xx->$9Cxx with LCD on -> rst $20 (copies attribute too)"),
+    Hook("record_alloc", file_offset(2, 0x5FE6), bytes.fromhex("0100d0"),
+         "ld bc,$d000 at the object record allocator (spawner 0:$2895, cloner 2:$5B47) -> jp AllocHook (monster tier)"),
 )
 PALETTE_INIT_HOOK = HOOKS[0]
 VBLANK_HOOK = HOOKS[1]   # OAM DMA is called from ~10 sites, so the hook is the HRAM routine itself

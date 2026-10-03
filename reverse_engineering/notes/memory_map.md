@@ -59,7 +59,7 @@ End game, death, rune shrine, credits (ending.md): 7:`$40BF` rune shrine, 0:`$0A
 `$D700-$D702` last BGP/OBP0/OBP1, `$D703` LCD mode (0 map, 1 castle, 2 text, 3 picture, 4 menu, 5 dialog, 9 logo),
 `$D704` current theme, `$D705` entrance theme, `$D706` last mode byte, `$D707` map theme, `$D708-$D70F` `FLAT_BG`,
 `$D710` UI theme, `$D711/$D712` live-refresh counters, `$D716` MAP_CACHED, `$D717` HERO_CACHED (champion in OBJ palette 0), `$D718` menu cursor colours, `$D720` HRAM backup (12),
-`$D740` `ITEM_PAL` (64), `$D780` inventory copy (64). Tables `$DC00` `LUT_MENU`, `$DD00` `LUT_GAME` (`$DD00-$DD1F` = HERO_BG portrait colours), `$DE00` `BG_THEMES` (8x64).
+`$D740` `ITEM_PAL` (64), `$D780` inventory copy (64), `$D7C0` REC_TIER (16, colour tier per object record), `$D7D0` ITEM_CACHE (15, floor items `$C5B0+k` last coloured), `$DB10` ENTRY_TIER (40, tier per OAM entry), code section `wram2c` at `$DB40-$DBFF` (see monsters.md). Tables `$DC00` `LUT_MENU`, `$DD00` `LUT_GAME` (`$DD00-$DD1F` = HERO_BG portrait colours), `$DE00` `BG_THEMES` (8x64).
 HRAM `$FFF3-$FFFE`: WRAM1 reader installed only while used (see menu.md).
 Bank 8: `$5600` PICTURE_LUT, `$5700` PICTURE_FIX, `$5C00` LUT_TITLE, `$5D00` LUT_LOGO, `$6000` BRAND_TILES, `$6600` BRAND_CELLS,
 `$6800` AREA_THEME (512: `$D13E` = 0, then 1), `$6A00` METAPAL (16 sets x 128), `$7200` THEME_BG_ROM (32 x 64), `$7A00` THEME_OBJ_ROM (32 x 8),
@@ -67,6 +67,7 @@ Bank 8: `$5600` PICTURE_LUT, `$5700` PICTURE_FIX, `$5C00` LUT_TITLE, `$5D00` LUT
 Scenes (ending.md): `$5800` SCENE_LUTS (4 x 256), `$5E00` SCENES ((ret lo, ret hi, ROM theme or `$FF` = card tint, LUT, OBJ)*, hi = 0 ends),
 `$5F00` SCENE_OBJ (8 per scene OBJ palette 0), `$5FF0` BANK_SIG (byte at `$4001` of banks 1-7), `$7C00` CARD_TINT (16 x 8, title-card UI palette per `$FF8F`),
 `$7C80` CARD_UI (low byte of BASE_BG's UI palette), `$7D00` GOLD_DIGITS (160: side-panel digits `$E8-$F1` in gold for VRAM bank 1 `$8E80`).
+Bank 2: `$7F34-$7FB9` AllocHook (allocator `$5FE6` hook), `$7FBA` TIER_TAB (70: tier nibble per template). Object records `$D000-$D0FF` (WRAM1, 16 bytes; monsters.md).
 Inventory/side panel: `$D100-$D11F` bag, `$D125` B item, `$D126` A item, `$D134` armour (see menu.md).
 
 ## Palettes

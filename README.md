@@ -38,8 +38,7 @@ own color theme. Download the patch from
   Iolo in forest green, Dupre in steel armour with red trim, Shamino in a dark
   green ranger's cloak (`palettes/rov_palettes.yaml` `heroes`)
 - The Cavern of Hatred (all three levels): cobbled rock, wood furniture and
-  doors, gold arrow floors, blue fountains, and colored monsters (bat and
-  skeleton undead, rat folk, gremlin fiend)
+  doors, gold arrow floors, blue fountains, and colored monsters
 - The dungeon title cards, each tinted after its virtue (navy Hatred, blue
   Deceit, red Cowardice, green Injustice, purple Dishonor, orange
   Selfishness, grey Pride, ember-red Abyss), and the full-screen entrance
@@ -50,6 +49,10 @@ own color theme. Download the patch from
   parade, the rune shrine (marble and golden light) and the death screen
   (bone on blood-black with gold stars); see
   `reverse_engineering/notes/ending.md`
+- Monsters keep one colour everywhere; a tougher variant of the same sprite
+  (more HP or damage) is drawn in the next colour: green base, red stronger,
+  purple strongest (`reverse_engineering/notes/monsters.md`)
+- Floor pickups are colored by item type, like their menu icons
 - The start/item menu, with every item icon colored by type (wood bows, steel
   swords and armour, gold coins and keys, red potions and hearts, blue/green
   runes...)

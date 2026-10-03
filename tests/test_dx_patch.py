@@ -383,6 +383,7 @@ class RealRomBuildTest(unittest.TestCase):
         allowed = set(range(0x0003, 0x0038)) | set(range(0x0061, 0x0100)) | {0x143, 0x148, 0x14D, 0x14E, 0x14F}
         for h in GL.HOOKS:
             allowed |= set(range(h.offset, h.offset + len(h.preimage)))
+        allowed |= set(range(*GL.BANK2_FREE))           # AllocHook + TIER_TAB (was $FF fill)
         for bank, addr in GL.GAME_LCD_ON_SITES + GL.TITLE_LCD_ON_SITES:
             off = GL.file_offset(bank, addr)
             allowed |= {off, off + 1}
@@ -508,7 +509,7 @@ class RealRomBuildTest(unittest.TestCase):
                 for b, n, after in (("right", (hero - 1) % 4, 40), ("a", 6, 54), ("start", 3, 54), ("a", 15, 90)):
                     for _ in range(n):
                         pb.button_press(b); pb.tick(6, True); pb.button_release(b); pb.tick(after, True)
-                self.assertEqual(pb.memory[0xD133], hero)
+                self.assertEqual(pb.memory[1, 0xD133], hero)    # WRAM1 (SVBK may be 2 in VBlank)
                 pals.append(objpal(pb))
                 pb.stop(save=False)
         for hero, p in enumerate(pals):
@@ -592,7 +593,7 @@ class RealRomBuildTest(unittest.TestCase):
             ev = []
             for site in ((7, 0x4A40), (7, 0x4AE3), (7, 0x4C32), (7, 0x4C78)):
                 pb.hook_register(site[0], site[1], lambda _c, s=site: ev.append(s), None)
-            pb.memory[0xD135] = 0xFF
+            pb.memory[1, 0xD135] = 0xFF
             for f in range(3000):
                 pb.tick(1, True)
                 if ev and ev[-1] not in seen:

@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+### Changed (monster variants and floor pickups, 2026-10-02)
+
+- Monster templates decoded (`reverse_engineering/notes/monsters.md`). Each monster graphic keeps
+  one colour everywhere; variants of the same sprite with more HP/damage use the next tier:
+  `monster` green (OBJ 1), `monster_strong` red (OBJ 2), `monster_elite` purple (OBJ 3). Tiers
+  come from the template (bank-2 allocator hook, `monsters.py` at build time), never from the area:
+  red slimes (48/16 vs 64/8), strong gremlins, 25-damage skeletons, big rock beasts and worms,
+  three troll tiers.
+- Removed the per-dungeon steel tint of the black knights (`obj_themes`); they are `royal`
+  everywhere. Replaced the fiend/beast/undead OBJ palettes. Rat moved to `monster`, imp `$40` and
+  `$5E` (talking NPCs only) to `folk`.
+- Floor pickups (BG tiles `$40-$7B`) use their item's palette (gold coins/keys/stars, red hearts
+  and potions, steel swords/armour, wood bows, blue flasks/staffs, brown food) instead of all red.
+
 ### Added (end game and story screens, 2026-10-02)
 
 - The ending, credits, death screen and rune shrine are colorized

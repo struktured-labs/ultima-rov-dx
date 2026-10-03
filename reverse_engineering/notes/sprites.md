@@ -8,6 +8,6 @@
 * DMG OAM bit 4 (OBP1) is used on the title screen.
 
 Known ids (from sprite sheet dumps; palette choice in `palettes/obj_categories.yaml`):
-`$70` jester (folk), Cavern of Hatred: `$0A` bat and `$1A` skeleton (undead),
-`$14` rat (folk), `$40` gremlin (fiend), `$46` hooded rogue (folk), Lord British (royal), bats (undead), sea monster (fiend). Other ids are
-mapped by visual category and are best-effort.
+`$70` jester (folk), `$46` hooded rogue (folk), Lord British (royal). Monster graphics are all in
+the `monster` category and are coloured by variant tier (green / red / purple), see monsters.md for
+templates, stats and the tier rule.

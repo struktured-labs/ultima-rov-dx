@@ -68,8 +68,8 @@ palettes of that group get `FLAT_BG[shade]` (`$D708`, 4 colours from `rov_palett
 Blank transition frames are therefore uniform white instead of a mosaic of palette colour 0.
 
 ## Palettes
-`palettes/rov_palettes.yaml`: BG ui, grass, water, stone, wood, earth, fire, gold; OBJ avatar, fiend,
-beast, undead, folk, royal, item, obp1. `bg_tile_categories.yaml` maps graphic g -> BG palette and title
+`palettes/rov_palettes.yaml`: BG ui, grass, water, stone, wood, earth, fire, gold; OBJ avatar, monster,
+monster_strong, monster_elite (variant tiers, monsters.md), folk, royal, item, obp1. `bg_tile_categories.yaml` maps graphic g -> BG palette and title
 tile ranges; `obj_categories.yaml` maps sprite id -> OBJ palette.
 
 ## Timing

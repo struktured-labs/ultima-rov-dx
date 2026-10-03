@@ -80,7 +80,7 @@ SWEEP_LO        equ $D714   ; map attribute sweep: next $98xx/$9Bxx cell, SWEEP_
 SWEEP_HI        equ $D715
 MAP_CACHED      equ $D716   ; ROM theme held in WRAM slot SLOT_MAP ($FF = none; set by bank-8 MapTheme)
 HERO_CACHED     equ $D717   ; champion whose colours are in OBJ palette 0 ($FF = none; set by bank-8 HeroObj)
-THEME_OBJ       equ $DFD0   ; 4 slots x 4 colours of OBJ palette THEME_OBJ_SLOT (dungeon black knights: steel)
+THEME_OBJ       equ $DFD0   ; 4 slots x 4 colours of OBJ palette THEME_OBJ_SLOT (per-theme override; no obj_themes are set: knights stay royal everywhere)
 THEME_OBJ_SLOT  equ 5       ; royal
 FIRE_OBJ        equ $DFF0   ; 4 colours of the wand's fireball (OBJ palette 7 on map screens, via OBP0)
 FIRE_TILES      equ $38     ; wand projectile tiles $38-$47 (items $06-$08, either button)
@@ -98,6 +98,19 @@ FLAT_BG         equ $D708   ; 4 colours used when a DMG palette maps every shade
 SLOTG           equ $D7E0   ; 16: graphic index g of metatile slot s (debug/inspection)
 SLOTPAL         equ $D7F0   ; 16: palette of metatile slot s
 ATTR_PROG       equ $D800   ; translated attribute program
+REC_TIER        equ $D7C0   ; 16: colour tier 0-2 of object record i ($D000+16i), set by the bank-2 AllocHook
+MONSTER_PAL     equ 1       ; OBJ palettes 1-3: monster tiers base / stronger / strongest (TierPal adds the tier)
+ENTRY_TIER      equ $DB10   ; 40: tier per OAM entry (TierEnd, from REC_TIER and [record+3]; read by TierPal)
+ITEM_IDS        equ $C5B0   ; WRAM0: item id of floor-item slot k (BG tiles $40+4k-$43+4k; $FF = empty)
+ITEM_CACHE      equ $D7D0   ; 15: ITEM_IDS as last coloured (low byte = low(ITEM_IDS) + $20)
+FLOOR_TILES     equ $40
+FLOOR_SLOTS     equ 15      ; bank 0 $1450/$2721: slots $C5B0-$C5BE -> tiles $40-$7B
+W2C_ORG         equ $DB40   ; WRAM2 code section wram2c (past the longest attribute program, $DB0F)
+TEMPLATE_BASE   equ $55AF   ; bank 1: 9-byte object templates (alt group at $580A = template 67)
+SPAWN_RET       equ $2898   ; return address of the template spawner's call $5FE6 (bank 0 $2895)
+CLONE_RET       equ $5B4A   ; return address of the record cloner's call $5FE6 (bank 2 $5B47)
+ALLOC_REST      equ $5FE9   ; bank 2 allocator after its first instruction (ld bc,$d000)
+TIER_TAB        equ $7FBA   ; bank 2: nibble per template (monsters.tier_table), after section bank2_alloc
 LUT_MENU        equ $DC00   ; 256: start menu (items overlaid from ITEM_PAL at LCD-on)
 LUT_GAME        equ $DD00   ; 256 (entries $00-$3F unused: from SLOTPAL)
 BG_THEMES       equ $DE00   ; 4 slots x 64: BG base colours (0 surface, 1 current dungeon, 2 entrance, 3 UI)
@@ -925,7 +938,7 @@ W2AfterDma:
         push bc
         push de
         push hl
-        call W2AfterDmaBody
+        call W2AfterDmaT                ; W2AfterDmaBody, then the OAM entry tiers
         pop hl
         pop de
         pop bc
@@ -1000,7 +1013,7 @@ W2AfterDmaBody:
 .n:
         push bc
         ld a, c
-        call HudCell
+        call HudCellLy                  ; HudCell while still in VBlank
         pop bc
         inc c
         ld a, c
@@ -1067,7 +1080,7 @@ W2Pal:
         ld e, a
         ld d, high(OBJPAL)
         ld a, [de]
-        jr .apply
+        jp TierPal                      ; monster palette + the entry's tier
 .unl:
         call UnloadedPal
         jr .apply
@@ -1268,7 +1281,7 @@ W2LcdOnBody:
         ld a, b
 .have:
         ld [LCD_MODE], a
-        call BuildLut
+        call BuildLutT                  ; forget OAM entry tiers, BuildLut
         ld a, [LCD_MODE]                ; theme for the new screen
         or a
         jr z, .map                      ; map: the area theme
@@ -1513,7 +1526,7 @@ BuildLut:
         cp $40
         jr nz, .s
         call ReadInv
-        jp HudItemsLut
+        jp MapItemsLut                  ; side-panel A/B icons + floor items by type
 
 ; HL = count, (first, last, palette)*: LUT[first..last] = palette. Advances HL.
 TileRanges:
@@ -1593,7 +1606,7 @@ ReadInv:
         ld a, l
         cp $40
         jr nz, .r
-        jp HelperOff
+        jr HelperOff
 ; A = item id -> A = BG palette. Clobbers HL.
 ItemPal:
         cp $FF
@@ -1937,7 +1950,7 @@ SceneTramp:
         ret
 
 ; CUR_THEME was just set: OBJ palette THEME_OBJ_SLOT takes that theme's
-; colours (royal red on the surface, steel for the dungeon black knights),
+; colours (all royal now: obj_themes is empty, sprites never follow the area),
 ; resynced at the next OAM DMA.
 ThemeObj:
         ld a, [CUR_THEME]
@@ -1959,4 +1972,276 @@ ThemeObj:
         cpl
         ld [LAST_OBP0], a
         ret
+; Side-panel refresh step (from the 4-cell loop, stack: [loop][bc]): draw
+; cell A only while LY is still in VBlank, else end the batch here and
+; resume from this cell next frame (VRAM writes in mode 3 are lost).
+HudCellLy:
+        ld e, a
+        ldh a, [rLY]
+        cp 144
+        ld a, e
+        jp nc, HudCell
+        pop hl
+        pop bc
+        ld a, c
+        ld [LIVE_R], a
+        ret
 W2bEnd:
+
+; ======================================================== WRAM bank 2, $DB40-$DBFF
+; Monster tiers and floor-item colours (reverse_engineering/notes/monsters.md).
+; $DB40 is past the longest translated attribute program (TILE_PROG reads stop
+; at $DB00; the output is at most 9 bytes longer).
+section wram2c, $20F40, W2C_ORG
+
+; BuildLut, map screens: side-panel A/B icons, then every floor item.
+MapItemsLut:
+        call HudItemsLut
+        ld hl, ITEM_CACHE               ; forget the cache: all slots recoloured
+        ld a, $FE
+        ld b, FLOOR_SLOTS
+.i:
+        ld [hl+], a
+        dec b
+        jr nz, .i
+; LUT[$40+4k..$43+4k] = BG palette of the item in floor slot k (ITEM_IDS,
+; item_palettes) for each slot whose id changed since the last call; empty
+; slots keep their entry. NZ if a slot was recoloured.
+FloorItems:
+        ld de, ITEM_IDS
+        ld c, 0
+.k:
+        ld a, e
+        add low(ITEM_CACHE) - low(ITEM_IDS)
+        ld l, a
+        ld h, high(ITEM_CACHE)
+        ld a, [de]
+        cp [hl]
+        jr z, .n
+        ld [hl], a
+        cp $FF
+        jr z, .n
+        call ItemPal                    ; A = palette (clobbers HL)
+        ld b, a
+        ld a, e
+        sub low(ITEM_IDS)
+        add a
+        add a
+        add FLOOR_TILES
+        ld l, a
+        ld h, high(LUT)
+        ld a, b
+        ld [hl+], a
+        ld [hl+], a
+        ld [hl+], a
+        ld [hl], a
+        inc c
+.n:
+        inc e
+        ld a, e
+        cp low(ITEM_IDS) + FLOOR_SLOTS
+        jr nz, .k
+        ld a, c
+        or a
+        ret
+
+; Map screens, after every DMA (outside the VBlank-critical live refresh:
+; no VRAM access): an item dropped with the LCD on (bank 0 $145E fills a
+; free ITEM_IDS slot) gets its colour: the LUT changes and the attribute
+; sweep rewrites the map from it.
+LiveFloor:
+        call FloorItems
+        ret z
+        xor a
+        ld [SWEEP_LO], a
+        ld a, $98
+        ld [SWEEP_HI], a
+        ret
+
+; W2Pal, per OAM entry whose sprite id has OBJ palette A: monsters
+; (MONSTER_PAL) get MONSTER_PAL + the entry's tier. HL = attribute byte.
+TierPal:
+        cp MONSTER_PAL
+        jp nz, W2Pal.apply
+        ld a, l
+        rrca
+        rrca
+        and $3F
+        add low(ENTRY_TIER)
+        ld e, a
+        ld d, high(ENTRY_TIER)
+        ld a, [de]
+        and 3
+        add MONSTER_PAL
+        jp W2Pal.apply
+
+; After every DMA: W2AfterDmaBody, then (map screens) rebuild ENTRY_TIER,
+; which W2Pal uses right after the next DMA (OAM writes must land in
+; VBlank; record -> OAM offsets are stable from frame to frame). Runs on
+; every exit of the body: its live refresh is skipped whenever W2Pal ends
+; after VBlank (busy screens), the tiers must not be. Each live object
+; record draws two 8x16 entries from [record+3]; both take the record's
+; REC_TIER (0 included, so no clearing is needed).
+W2AfterDmaT:
+        call W2AfterDmaBody
+        ld a, [LCD_MODE]
+        or a
+        ret nz
+        call LiveFloor
+        di
+        call HelperOn
+        ld de, REC_TIER
+.r:
+        ld a, e
+        swap a
+        and $F0
+        ld l, a
+        ld h, $D0
+        call HELPER                     ; A = [record+0] ($FF = free), HL -> +1
+        inc a
+        jr z, .n
+        inc l
+        inc l
+        call HELPER                     ; A = [record+3]: its shadow-OAM offset
+        or a
+        jr z, .n                        ; not drawn
+        cp $A0
+        jr nc, .n
+        and $FC                         ; (not always a multiple of 4 while
+        rrca                            ; the record is being set up)
+        rrca
+        add low(ENTRY_TIER)
+        ld l, a
+        ld h, high(ENTRY_TIER)
+        ld a, [de]
+        ld [hl+], a
+        ld [hl], a
+.n:
+        inc e
+        ld a, e
+        cp low(REC_TIER) + 16
+        jr nz, .r
+        call HelperOff
+        ei
+        ret
+
+; LCD-on: no stale tiers on the new screen.
+BuildLutT:
+        call TierClear
+        jp BuildLut
+TierClear:
+        ld hl, ENTRY_TIER
+        xor a
+        ld b, 40
+.c:
+        ld [hl+], a
+        dec b
+        jr nz, .c
+        ret
+W2cEnd:
+
+; ======================================================== bank 2 hooks
+; bank 2 $5FE6 (object record allocator, both callers run with bank 2
+; mapped): ld bc,$d000 -> jp AllocHook.
+section patch_alloc, $9FE6, $5FE6
+        jp AllocHook
+
+; Free bank-2 space ($7F33-$7FFF is $FF padding in the original; $7F34 on).
+; On success (Z, BC = new record) the record's colour tier goes to
+; REC_TIER: from the template when the spawner called (its stack holds the
+; template pointer + 1), copied from the source record when the cloner did
+; (monster splitting). Returns like the original: Z and A = $FF, or NZ.
+; Preserves DE and HL.
+section bank2_alloc, $BF34, $7F34
+AllocHook:
+        call .alloc
+        ret nz
+        ldh a, [HR_CGB]
+        or a
+        jr z, .ok
+        push hl
+        push de
+        ld a, 2                         ; REC_TIER is in WRAM bank 2 (the stack
+        ldh [rSVBK], a                  ; is not in $D000-$DFFF)
+        ld hl, sp+4
+        ld a, [hl+]
+        ld e, a
+        ld a, [hl+]
+        ld d, a                         ; DE = caller's return, HL = caller's stack
+        ld a, e
+        cp low(SPAWN_RET)
+        jr nz, .clone
+        ld a, d
+        cp high(SPAWN_RET)
+        jr nz, .done
+        ld hl, sp+10                    ; caller's [bc][bc][template + 1]
+        ld a, [hl+]
+        ld h, [hl]
+        ld l, a
+        ld de, $10000 - (TEMPLATE_BASE + 1)
+        add hl, de                      ; HL = 9 * U
+        ld d, $FF
+.div:
+        inc d
+        ld a, l
+        sub 9
+        ld l, a
+        ld a, h
+        sbc 0
+        ld h, a
+        jr nc, .div                     ; D = U
+        ld a, d
+        srl a
+        ld e, a
+        ld a, 0
+        rla
+        ld d, a                         ; D = U & 1, E = U / 2
+        ld a, e
+        add low(TIER_TAB)
+        ld l, a
+        ld a, high(TIER_TAB)
+        adc 0
+        ld h, a
+        ld a, [hl]
+        bit 0, d
+        jr z, .lo
+        swap a
+.lo:
+        and $0F
+        jr .store
+.clone:
+        ld a, d
+        cp high(CLONE_RET)
+        jr nz, .done
+        ld a, e
+        cp low(CLONE_RET)
+        jr nz, .done
+        ld a, [hl]                      ; source record (low byte)
+        swap a
+        and $0F
+        add low(REC_TIER)
+        ld l, a
+        ld h, high(REC_TIER)
+        ld a, [hl]
+.store:
+        ld d, a
+        ld a, c
+        swap a
+        and $0F
+        add low(REC_TIER)
+        ld l, a
+        ld h, high(REC_TIER)
+        ld [hl], d
+.done:
+        ld a, 1
+        ldh [rSVBK], a
+        pop de
+        pop hl
+.ok:
+        ld a, $FF
+        cp a
+        ret
+.alloc:
+        ld bc, $D000
+        jp ALLOC_REST
+Bank2End:

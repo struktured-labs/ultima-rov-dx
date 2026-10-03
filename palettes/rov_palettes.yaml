@@ -22,9 +22,9 @@ bg_palettes:
 
 obj_palettes:
   avatar:  { colors: ["#FFFFFF", "#FFE0C0", "#3870D8", "#101830"] }  # the player (tiles < $80)
-  fiend:   { colors: ["#FFFFFF", "#FFC8A0", "#E04030", "#481010"] }  # dragons, daemons, imps
-  beast:   { colors: ["#FFFFFF", "#D0F090", "#58A838", "#183010"] }  # orcs, trolls, snakes, slimes
-  undead:  { colors: ["#FFFFFF", "#F0E8FF", "#A080D0", "#302050"] }  # skeletons, spiders, bats
+  monster:        { colors: ["#FFFFFF", "#C8F088", "#48A030", "#102808"] }  # tier 0: every monster's base (green)
+  monster_strong: { colors: ["#FFFFFF", "#FFC0A0", "#E03828", "#400C08"] }  # tier 1: stronger variant (red)
+  monster_elite:  { colors: ["#FFFFFF", "#E8C8FF", "#9048D8", "#200838"] }  # tier 2: strongest variant (purple)
   folk:    { colors: ["#FFFFFF", "#FFD8B0", "#C07840", "#402010"] }  # townsfolk, animals
   royal:   { colors: ["#FFFFFF", "#FFE0B0", "#D03838", "#302058"] }  # guards, Lord British
   item:    { colors: ["#FFFFFF", "#FFF8A0", "#E8B030", "#704010"] }  # chests, sparkles, missiles
@@ -291,19 +291,6 @@ card_tints:
 scene_obj:
   stars:  ["#FFFFFF", "#FFF4C0", "#E8C860", "#806020"]   # death screen stars (drawn with OBP0 $1B)
   parade: ["#FFFFFF", "#F0D0A8", "#B06840", "#2C1810"]   # friends and foes (all OBJ palette 0 there)
-
-# Per-theme colours of OBJ palette 5 (royal). Lord British and his court
-# never appear in dungeons, where palette 5's knights (sprite $52) are the
-# Black Knight's men: dark steel instead of Lord British's red.
-obj_themes:
-  cavern:      { royal: { colors: ["#FFFFFF", "#C8CCD8", "#707488", "#181824"] } }
-  deceit:      { royal: { colors: ["#FFFFFF", "#C8CCD8", "#707488", "#181824"] } }
-  cowardice:   { royal: { colors: ["#FFFFFF", "#C8CCD8", "#707488", "#181824"] } }
-  injustice:   { royal: { colors: ["#FFFFFF", "#C8CCD8", "#707488", "#181824"] } }
-  dishonor:    { royal: { colors: ["#FFFFFF", "#C8CCD8", "#707488", "#181824"] } }
-  selfishness: { royal: { colors: ["#FFFFFF", "#C8CCD8", "#707488", "#181824"] } }
-  pride:       { royal: { colors: ["#FFFFFF", "#D0C8E0", "#706088", "#181428"] } }   # violet-tinged plate
-  abyss:       { royal: { colors: ["#FFFFFF", "#A8A0A8", "#504450", "#100810"] } }   # blackened plate
 
 # Start-menu cursor (sprite tiles 0-3, OBJ palette 7 while the menu is up;
 # shade index through OBP0).

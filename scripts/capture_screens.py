@@ -58,6 +58,15 @@ CHARACTER_SELECT_LCD_ON = 0x78F8   # bank 3: `ldh [rLCDC],a` (DX: rst $28) of th
 DIRS = {"R": "right", "L": "left", "D": "down", "U": "up"}
 
 
+def area_id(pb) -> int:
+    """$D12F in WRAM bank 1: on CGB the DX runtime switches SVBK to 2 inside
+    its VBlank code, so a plain read at a frame boundary can hit WRAM2."""
+    try:
+        return pb.memory[1, 0xD12F]
+    except Exception:                         # DMG: no WRAM banks
+        return pb.memory[0xD12F]
+
+
 def settle(pb, limit: int = 60) -> None:
     """Let the current step finish: wait until scroll and player sprite stop moving."""
     mem = pb.memory
@@ -76,19 +85,19 @@ def nav(pb, path: str) -> None:
     for move in path.split(","):
         button = DIRS[move[0]]
         for _ in range(int(move[1:])):
-            start, area = mem[0xFF91], mem[0xD12F]
+            start, area = mem[0xFF91], area_id(pb)
             for _attempt in range(30):
                 t = 0
                 pb.button_press(button)
                 pos = (mem[0xFF42], mem[0xFF43], mem[0xFE00], mem[0xFE01])
                 # release as soon as the step starts (cell, scroll or sprite moves)
-                while (mem[0xFF91] == start and mem[0xD12F] == area and t < 120
+                while (mem[0xFF91] == start and area_id(pb) == area and t < 120
                        and (mem[0xFF42], mem[0xFF43], mem[0xFE00], mem[0xFE01]) == pos):
                     pb.tick(1, True)
                     t += 1
                 pb.button_release(button)
                 settle(pb)
-                if mem[0xFF91] != start or mem[0xD12F] != area:
+                if mem[0xFF91] != start or area_id(pb) != area:
                     break
                 if t < 120:
                     continue          # moved on screen without changing cell yet: press again
@@ -96,7 +105,7 @@ def nav(pb, path: str) -> None:
                 pb.tick(6, True)
                 pb.button_release("b")
                 pb.tick(60, True)
-            if mem[0xD12F] != area:
+            if area_id(pb) != area:
                 return                        # area changed (door, ladder, cave mouth)
 
 
@@ -140,7 +149,7 @@ def run_route(rom: Path, cgb: bool, route, states: Path | None) -> dict:
                     pb.button_release(button)
                 pb.tick(max(after, 1), True)
             shots[scene] = pb.screen.image.convert("RGB").copy()
-            shots[scene + "@area"] = pb.memory[0xD12F]
+            shots[scene + "@area"] = area_id(pb)
             if states is not None and scene.startswith("cavern"):
                 states.mkdir(parents=True, exist_ok=True)
                 with open(states / f"{'dx' if cgb else 'og'}_{scene}.state", "wb") as f:

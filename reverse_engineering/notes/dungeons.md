@@ -72,4 +72,4 @@ screen (the arrival cell is a hazard); `2D*` and `38*` were used for screenshots
 
 The themes are in `palettes/bg_tile_categories.yaml` `area_themes` (`areas` for
 flag 0, `areas_alt` for flag 1) and their colors are in `palettes/rov_palettes.yaml`
-`bg_themes`/`obj_themes`.
+`bg_themes`. Sprites do not follow the dungeon theme (monsters.md).

@@ -39,7 +39,9 @@ proved it (static disassembly offset list, emulator trace, etc.).
 - [ ] Remaining 7 dungeons: find entrances/area ids, add themes (lava/ice...). Max 3 themes besides theme 0 (grow BG_THEMES if needed).
 - [ ] Decode the per-area header in bank 4 (graphics list + compressed map) to enumerate all area ids statically.
 - [x] Classify $0AEB (rune text) and $14FF (2-player wait): dialog sites (ending.md). 1:$4126, 1:$54E9 still assumed map (2-player only).
-- [ ] Per-sprite-id palette tuning.
+- [x] Per-sprite-id palette tuning: monster templates decoded, one colour per type, variant tiers by template (monsters.md).
+- [ ] Tier-0 `$32` worm (B21, Hatred `$24`) not seen in an emulator capture (area does not teleport).
+- [x] Floor pickups coloured by item type (FloorItems, monsters.md).
 - [x] HUD/side panel (hearts, stars, coin, A/B icons) and start menu colored, see menu.md.
 - [ ] Side-panel A/B icons on theme-0 maps sit on a tinted square (item palette colour 0). Gold digits: now bright gold on map screens (VRAM bank 1 redraw); the coin icon and the digits on dialog/menu screens keep their colours.
 - [x] Observe 0:`$14FF` (2-player "Please wait", forced via 0:`$14BD`): dialog colours.

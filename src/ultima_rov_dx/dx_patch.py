@@ -14,6 +14,7 @@ from typing import Any
 
 from . import branding as BR
 from . import game_layout as GL
+from . import monsters as MON
 from . import palettes as P
 from . import rom_utils
 from .sm83asm import assemble
@@ -27,7 +28,7 @@ MP_SETS = 16      # dx.asm MP_SETS: distinct metatile palette maps (METAPAL), sh
 SLOT_SURFACE, SLOT_MAP, SLOT_ENTRANCE, SLOT_UI = 0, 1, 2, 3   # WRAM slots (dx.asm SLOT_MAP = 1)
 
 # Windows that assembled sections may occupy (file offsets, inclusive-exclusive).
-FREE_WINDOWS = [(0x0003, 0x0038), (0x0061, 0x0100), (0x20000, 0x40000)]
+FREE_WINDOWS = [(0x0003, 0x0038), (0x0061, 0x0100), GL.BANK2_FREE, (0x20000, 0x40000)]
 
 
 class PatchError(Exception):
@@ -146,6 +147,9 @@ def build_tables(pal_data: dict[str, Any], bg_cat: dict[str, Any], obj_cat: dict
             if not 0 <= i < 128 or i & 1:
                 raise PatchError(f"sprite id {i:#x} must be even and < $80")
             objpal[i] = objpal[i | 1] = idx
+    tier_pals = [_index(obj_names, n, "tier_palettes") for n in obj_cat.get("tier_palettes") or []]
+    if tier_pals != [1, 2, 3]:
+        raise PatchError("tier_palettes must name OBJ palettes 1, 2, 3 (base, stronger, strongest; dx.asm MONSTER_PAL)")
     player = _index(obj_names, obj_cat.get("player", obj_names[0]), "player")
     if player != 0:
         raise PatchError("the player palette must be OBJ palette 0 (PLAYER_PAL in dx.asm)")
@@ -491,6 +495,18 @@ def build(original: bytes, pal_data: dict[str, Any], bg_cat: dict[str, Any], obj
         raise PatchError(f"WRAM2 section wram2b overlaps BG_THEMES or ends past $E000 ({syms['W2bEnd']:#x})")
     if syms["W2CodeEnd"] > syms["OBJPAL"]:
         raise PatchError(f"WRAM2 code too large (ends {syms['W2CodeEnd']:#x})")
+    if (syms["ENTRY_TIER"] < syms["ATTR_PROG"] + 0x300 + 6 + 3 or syms["ENTRY_TIER"] + 40 + 1 > syms["W2C_ORG"]
+            or (syms["ENTRY_TIER"] & 0xFF) + 41 > 0x100 or syms["W2cEnd"] > syms["LUT_MENU"]):
+        raise PatchError(f"WRAM2 section wram2c must sit between the attribute program and LUT_MENU (ends {syms['W2cEnd']:#x})")
+    if (syms["REC_TIER"] < syms["INV"] + 64 or syms["REC_TIER"] + 16 > syms["ITEM_CACHE"]
+            or syms["ITEM_CACHE"] + syms["FLOOR_SLOTS"] > syms["SLOTG"]
+            or (syms["ITEM_CACHE"] & 0xFF) != (syms["ITEM_IDS"] & 0xFF) + 0x20
+            or syms["FLOOR_TILES"] + 4 * syms["FLOOR_SLOTS"] > 0x80
+            or syms["MONSTER_PAL"] != 1 or syms["TEMPLATE_BASE"] != MON.TEMPLATE_ADDR):
+        raise PatchError("REC_TIER / MONSTER_PAL / TEMPLATE_BASE layout")
+    tier_len = (MON.COUNT + 1) // 2
+    if syms["Bank2End"] > syms["TIER_TAB"] or syms["TIER_TAB"] + tier_len > 0x8000:
+        raise PatchError(f"bank 2 hook ({syms['Bank2End']:#x}) and TIER_TAB overlap or overflow")
 
     if syms["PICTURE_BANK"] != syms["TITLE_BANK"] or any(b != syms["TITLE_BANK"] for b, _ in GL.TITLE_LCD_ON_SITES):
         raise PatchError("title/picture LCD-on sites must all be in TITLE_BANK (LUTs are copied from bank 8)")
@@ -538,6 +554,16 @@ def build(original: bytes, pal_data: dict[str, Any], bg_cat: dict[str, Any], obj
         put(w2_rom + (addr - syms["W2_BASE"]), data, what)
 
     w2(syms["OBJPAL"], t.objpal, "OBJPAL")
+    w2(syms["ENTRY_TIER"], bytes(41), "ENTRY_TIER")
+    w2(syms["REC_TIER"], bytes(16) + bytes([0xFE] * syms["FLOOR_SLOTS"]), "REC_TIER/ITEM_CACHE")
+    # monster colour tiers per template (bank 2, read by AllocHook)
+    temps = MON.templates(original)
+    tiered = {i for i in range(0, 128, 2) if t.objpal[i] == syms["MONSTER_PAL"]}
+    tier_tab = MON.tier_table(temps, MON.tiers(temps, tiered))
+    tier_off = GL.file_offset(2, syms["TIER_TAB"])
+    if any(b != 0xFF for b in original[tier_off:tier_off + len(tier_tab)]):
+        raise PatchError("TIER_TAB overwrites non-free bytes")
+    put(tier_off, tier_tab, "TIER_TAB")
     w2(syms["BASE_BG"], t.base_bg, "BASE_BG")
     w2(syms["BASE_OBJ"], t.base_obj, "BASE_OBJ")
     w2(syms["LAST_BGP"], bytes([0xFF, 0xFF, 0xFF, 0xFF, 0x00, t.entrance_theme, 0x00, 0x00]), "vars")   # force first sync + LUT build; CUR_THEME 0, MAP_THEME 0
