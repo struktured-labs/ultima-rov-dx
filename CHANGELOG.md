@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+### Added (champion colours, 2026-10-02)
+
+- Each champion has its own sprite colours, picked from `$D133` (0 Mariah, 1 Iolo, 2 Dupre,
+  3 Shamino; `reverse_engineering/notes/heroes.md`): Mariah in violet robes, Iolo in forest
+  green, Dupre in steel armour with red trim, Shamino in a dark green cloak with leather brown.
+  Walking, the attack pose and weapon, and the entrance-cutscene champion all follow; monsters
+  and NPCs are unchanged.
+- The champion-select portraits each get their own palette (BG palettes 1-4) to match.
+- `rov_palettes.yaml` `heroes`; bank 8 `HERO_OBJ_ROM`, WRAM2 `HERO_CACHED`/`HERO_BG`.
+- Not handled: the 2-player (link cable) partner sprite.
+
 ### Added (themes for castles, shops and side caves, 2026-10-02)
 
 - Every valid area outside the dungeons was identified from NPC dialog and warps

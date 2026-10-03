@@ -62,6 +62,8 @@ class Tables:
     theme_names: tuple = ()                        # ROM theme names, index = theme
     first_map: int = 0                             # ROM theme initially in WRAM slot SLOT_MAP
     mp_idx: bytes = bytes(ROM_THEMES)              # METAPAL set per ROM theme
+    hero_obj: bytes = bytes(32)                    # OBJ palette 0 per champion (HERO_ID order)
+    hero_bg: bytes = bytes(32)                     # champion-select portrait colours: BG palettes 1-4
 
 
 def _index(names: list[str], name: str, what: str) -> int:
@@ -275,12 +277,29 @@ def build_tables(pal_data: dict[str, Any], bg_cat: dict[str, Any], obj_cat: dict
         raise PatchError(f"at most {MP_SETS} distinct metatile palette maps (have {len(sets)})")
     metapals = sets + [bytes(128)] * (MP_SETS - len(sets))
     ship_pal = _index(obj_names, obj_cat.get("ship", obj_cat.get("player", obj_names[0])), "ship")
+    # champions (WRAM1 $D133: 0 Mariah, 1 Iolo, 2 Dupre, 3 Shamino): player sprite colours
+    # (OBJ palette 0) and the matching portrait on the champion select (BG palettes 1-4)
+    def enc4(cols: list[str], what: str) -> bytes:
+        if len(cols) != 4:
+            raise PatchError(f"{what} needs 4 colours")
+        return b"".join(P.bgr555(c).to_bytes(2, "little") for c in cols)
+    heroes = pal_data.get("heroes") or []
+    if heroes:
+        if len(heroes) != 4:
+            raise PatchError("heroes: need the 4 champions in $D133 order (Mariah, Iolo, Dupre, Shamino)")
+        hero_obj = b"".join(enc4(h["sprite"], f"heroes.{h.get('name')}.sprite") for h in heroes)
+        hero_bg = b"".join(enc4(h["portrait"], f"heroes.{h.get('name')}.portrait") for h in heroes)
+        if any(hero_obj[8 * i:8 * i + 2] != enc["obj"][:2] for i in range(4)):
+            raise PatchError("heroes: sprite colour 0 must match the player palette's (transparent/white)")
+    else:
+        hero_obj = enc["obj"][:8] * 4
+        hero_bg = bytes(32)
     return Tables(bytes(objpal), enc["bg"], enc["obj"], lut_title, bytes(lut_game), lut_logo,
                   b"".join(metapals), bytes(area_theme), bg_themes, picture_lut, SLOT_ENTRANCE if entrance_theme else 0,
                   flat_bg, bytes(fix),
                   lut_menu, bytes(item_pal), SLOT_UI if ui_theme else 0, menu_obj, bytes(theme_obj), fire_obj, ship_pal,
                   bytes(text_ranges), theme_bg_rom, theme_obj_rom, bytes(rt_slot), tuple(theme_names), first_map,
-                  bytes(mp_idx))
+                  bytes(mp_idx), hero_obj, hero_bg)
 
 
 def _asm_source() -> str:
@@ -342,7 +361,8 @@ def build(original: bytes, pal_data: dict[str, Any], bg_cat: dict[str, Any], obj
             or syms["BRAND_TILES"] + syms["BRAND_TILES_LEN"] > syms["BRAND_CELLS"] or syms["BRAND_CELLS"] + 256 > syms["AREA_THEME"]
             or syms["AREA_THEME"] + 512 > syms["METAPAL"] or syms["METAPAL"] + 128 * MP_SETS > syms["THEME_BG_ROM"]
             or syms["THEME_BG_ROM"] + 64 * ROM_THEMES > syms["THEME_OBJ_ROM"]
-            or syms["THEME_OBJ_ROM"] + 8 * ROM_THEMES > syms["RT_SLOT"] or syms["RT_SLOT"] + ROM_THEMES > syms["MP_IDX"] or syms["MP_IDX"] + ROM_THEMES > 0x8000):
+            or syms["THEME_OBJ_ROM"] + 8 * ROM_THEMES > syms["RT_SLOT"] or syms["RT_SLOT"] + ROM_THEMES > syms["MP_IDX"] or syms["MP_IDX"] + ROM_THEMES > syms["HERO_OBJ_ROM"]
+            or (syms["HERO_OBJ_ROM"] & 0xFF) + 32 > 0x100 or syms["HERO_OBJ_ROM"] + 32 > 0x8000):
         raise PatchError("bank 8 table layout overlap")
     if syms["W2bEnd"] > syms["THEME_OBJ"] or syms["BG_THEMES"] + 64 * MAX_THEMES > syms["UnloadedPal"]:
         raise PatchError(f"WRAM2 section wram2b overlaps BG_THEMES or ends past $E000 ({syms['W2bEnd']:#x})")
@@ -399,7 +419,9 @@ def build(original: bytes, pal_data: dict[str, Any], bg_cat: dict[str, Any], obj
     w2(syms["BASE_OBJ"], t.base_obj, "BASE_OBJ")
     w2(syms["LAST_BGP"], bytes([0xFF, 0xFF, 0xFF, 0xFF, 0x00, t.entrance_theme, 0x00, 0x00]), "vars")   # force first sync + LUT build; CUR_THEME 0, MAP_THEME 0
     w2(syms["UI_THEME"], bytes([t.ui_theme, 0, 0]), "UI_THEME/LIVE")
-    w2(syms["SHIP_PAL"], bytes([t.ship_pal, 0, 0, t.first_map]), "SHIP_PAL/SWEEP/MAP_CACHED")
+    w2(syms["SHIP_PAL"], bytes([t.ship_pal, 0, 0, t.first_map, 0xFF]), "SHIP_PAL/SWEEP/MAP_CACHED/HERO_CACHED")
+    if syms["HERO_CACHED"] != syms["MAP_CACHED"] + 1:
+        raise PatchError("HERO_CACHED must follow MAP_CACHED")
     w2(syms["MENU_OBJ"], t.menu_obj, "MENU_OBJ")
     w2(syms["FIRE_OBJ"], t.fire_obj, "FIRE_OBJ")
     if syms["THEME_OBJ_SLOT"] != 5 or syms["THEME_OBJ"] + len(t.theme_obj) > syms["FIRE_OBJ"]:
@@ -419,9 +441,12 @@ def build(original: bytes, pal_data: dict[str, Any], bg_cat: dict[str, Any], obj
     put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["THEME_OBJ_ROM"]), t.theme_obj_rom, "THEME_OBJ_ROM")
     put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["RT_SLOT"]), t.rt_slot, "RT_SLOT")
     put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["MP_IDX"]), t.mp_idx, "MP_IDX")
+    put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["HERO_OBJ_ROM"]), t.hero_obj, "HERO_OBJ_ROM")
     w2(syms["SLOTPAL"], bytes([t.metapal[0]] * 16), "SLOTPAL")
     put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["LUT_TITLE_ROM"]), t.lut_title, "LUT_TITLE_ROM")
-    w2(syms["LUT_GAME"], t.lut_game, "LUT_GAME")
+    if syms["HERO_BG"] != syms["LUT_GAME"]:
+        raise PatchError("HERO_BG must sit in the unused LUT_GAME entries $00-$1F")
+    w2(syms["LUT_GAME"], t.hero_bg + t.lut_game[32:], "LUT_GAME (+HERO_BG in unused $00-$1F)")
     lut_logo = bytearray(t.lut_logo)
     brand_tiles, brand_cells = (b"", [])
     if brand:

@@ -32,6 +32,7 @@ restores bank 1 (the only bank the hooked callers run from) after far calls.
 | `$C580-$C58F` | sprite graphic id per sprite slot (bit7 large, bit6 people, `$FF` = continuation) |
 | `$C600-$C6FF` | current area map, 16x16 cells (bits 0-5 graphic g, 6-7 flags), see dungeons.md |
 | `$D12F` | area/map id (02 overworld, 00 Lord British's castle, 18/19/1A Cavern of Hatred) |
+| `$D133` | champion: 0 Mariah, 1 Iolo, 2 Dupre, 3 Shamino (select cursor too); 2-player partner `$D173` (see heroes.md) |
 | `$D800-` (bank 1) | generated tile program |
 | `$FF80-$FF8B` | OAM DMA routine |
 | `$FF8E` | VBlank-happened flag |
@@ -50,12 +51,12 @@ initials, difficulty; bank 7 `$4319/$438B/$4619` blank transition screens and ga
 ## DX runtime variables (WRAM bank 2)
 `$D700-$D702` last BGP/OBP0/OBP1, `$D703` LCD mode (0 map, 1 castle, 2 text, 3 picture, 4 menu, 5 dialog, 9 logo),
 `$D704` current theme, `$D705` entrance theme, `$D706` last mode byte, `$D707` map theme, `$D708-$D70F` `FLAT_BG`,
-`$D710` UI theme, `$D711/$D712` live-refresh counters, `$D718` menu cursor colours, `$D720` HRAM backup (12),
-`$D740` `ITEM_PAL` (64), `$D780` inventory copy (64). Tables `$DC00` `LUT_MENU`, `$DD00` `LUT_GAME`, `$DE00` `BG_THEMES` (8x64).
+`$D710` UI theme, `$D711/$D712` live-refresh counters, `$D716` MAP_CACHED, `$D717` HERO_CACHED (champion in OBJ palette 0), `$D718` menu cursor colours, `$D720` HRAM backup (12),
+`$D740` `ITEM_PAL` (64), `$D780` inventory copy (64). Tables `$DC00` `LUT_MENU`, `$DD00` `LUT_GAME` (`$DD00-$DD1F` = HERO_BG portrait colours), `$DE00` `BG_THEMES` (8x64).
 HRAM `$FFF3-$FFFE`: WRAM1 reader installed only while used (see menu.md).
 Bank 8: `$5600` PICTURE_LUT, `$5700` PICTURE_FIX, `$5C00` LUT_TITLE, `$5D00` LUT_LOGO, `$6000` BRAND_TILES, `$6600` BRAND_CELLS,
 `$6800` AREA_THEME (512: `$D13E` = 0, then 1), `$6A00` METAPAL (16 sets x 128), `$7200` THEME_BG_ROM (32 x 64), `$7A00` THEME_OBJ_ROM (32 x 8),
-`$7B00` RT_SLOT (WRAM slot per theme), `$7B20` MP_IDX (METAPAL set per theme).
+`$7B00` RT_SLOT (WRAM slot per theme), `$7B20` MP_IDX (METAPAL set per theme), `$7B40` HERO_OBJ_ROM (4 x 8, player palette per champion).
 Inventory/side panel: `$D100-$D11F` bag, `$D125` B item, `$D126` A item, `$D134` armour (see menu.md).
 
 ## Palettes

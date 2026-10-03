@@ -163,8 +163,12 @@ text_screen:
 # Champion select only (mode byte $7F): the four portraits.
 champion_screen:
   ranges:
-    - { first: 0x10, last: 0x3F, palette: earth }  # Mariah, Iolo, Dupre
-    - { first: 0x80, last: 0x8F, palette: earth }  # Shamino
+    # one portrait per BG palette 1-4, recoloured on this screen from
+    # rov_palettes.yaml `heroes` (portrait), in $D133 order
+    - { first: 0x10, last: 0x1F, palette: grass }  # Mariah  (palette 1)
+    - { first: 0x20, last: 0x2F, palette: water }  # Iolo    (palette 2)
+    - { first: 0x30, last: 0x3F, palette: stone }  # Dupre   (palette 3)
+    - { first: 0x80, last: 0x8F, palette: wood }   # Shamino (palette 4)
 
 # Start menu LUT (bank 0 $10A8, notes/menu.md). Tiles $0C-$8B (item grid),
 # $BC-$BF (armour) and $F8-$FF (A/B icons) are overwritten at run time from

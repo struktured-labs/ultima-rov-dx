@@ -79,6 +79,7 @@ SHIP_PAL        equ $D713   ; OBJ palette of the ship sprite while sailing (set 
 SWEEP_LO        equ $D714   ; map attribute sweep: next $98xx/$9Bxx cell, SWEEP_HI = 0 idle
 SWEEP_HI        equ $D715
 MAP_CACHED      equ $D716   ; ROM theme held in WRAM slot SLOT_MAP ($FF = none; set by bank-8 MapTheme)
+HERO_CACHED     equ $D717   ; champion whose colours are in OBJ palette 0 ($FF = none; set by bank-8 HeroObj)
 THEME_OBJ       equ $DFD0   ; 4 slots x 4 colours of OBJ palette THEME_OBJ_SLOT (dungeon black knights: steel)
 THEME_OBJ_SLOT  equ 5       ; royal
 FIRE_OBJ        equ $DFF0   ; 4 colours of the wand's fireball (OBJ palette 7 on map screens, via OBP0)
@@ -128,8 +129,11 @@ THEME_BG_ROM    equ $7200   ; bank 8: 64 bytes of BG base colours per ROM theme
 THEME_OBJ_ROM   equ $7A00   ; bank 8: 8 bytes (OBJ palette THEME_OBJ_SLOT) per ROM theme
 RT_SLOT         equ $7B00   ; bank 8: WRAM slot per ROM theme (0 surface, 1 dungeon cache, 2 entrance, 3 UI)
 MP_IDX          equ $7B20   ; bank 8: METAPAL set per ROM theme
+HERO_OBJ_ROM    equ $7B40   ; bank 8: 4 x 8 bytes, OBJ palette 0 (PLAYER_PAL) per champion (HERO_ID)
 TITLE_BANK      equ 7       ; ROM bank of the title and picture LCD-on sites
 AREA_ID         equ $D12F   ; WRAM bank 1: current area/map id
+HERO_ID         equ $D133   ; WRAM bank 1: champion 0 Mariah, 1 Iolo, 2 Dupre, 3 Shamino (also the select cursor)
+HERO_BG         equ $DD00   ; WRAM2, in unused LUT_GAME $00-$1F: champion-select portrait colours (BG palettes 1-4)
 
 ; ======================================================== bank 0 free space
 section bank0_a, $0003, $0003          ; $0003-$001F (29 bytes)
@@ -445,6 +449,7 @@ Slot:
         ldh a, [HR_CGB]
         or a
         ret z
+        call HeroObj                    ; champion colours in OBJ palette 0 (cached)
         push bc
         push de
         push hl
@@ -669,6 +674,50 @@ MapTheme:
         dec b
         jr nz, .obj
         ld a, SLOT_MAP
+        ret
+
+; Every metatile slot load (area entry), SVBK = 1: OBJ palette 0 (the player,
+; its attack pose and the entrance-cutscene champion) takes the colours of
+; the champion in HERO_ID, resynced at the next OAM DMA. Preserves all.
+HeroObj:
+        push af
+        push bc
+        push de
+        push hl
+        ld a, [HERO_ID]
+        and $03
+        ld e, a
+        ld a, 2
+        ldh [rSVBK], a
+        ld hl, HERO_CACHED
+        ld a, e
+        cp [hl]
+        jr z, .done
+        ld [hl], a
+        add a
+        add a
+        add a
+        add low(HERO_OBJ_ROM)
+        ld l, a
+        ld h, high(HERO_OBJ_ROM)
+        ld de, BASE_OBJ + PLAYER_PAL * 8
+        ld b, 8
+.c:
+        ld a, [hl+]
+        ld [de], a
+        inc e
+        dec b
+        jr nz, .c
+        ld a, [LAST_OBP0]
+        cpl
+        ld [LAST_OBP0], a
+.done:
+        ld a, 1
+        ldh [rSVBK], a
+        pop hl
+        pop de
+        pop bc
+        pop af
         ret
 Bank8CodeEnd:
 
@@ -1055,6 +1104,21 @@ W2LcdOnBody:
         ld a, [ENTRANCE_THEME]
 .set:
         call SetTheme
+        ld a, [LCD_BYTE]                ; champion select: BG palettes 1-4 =
+        cp $7F                          ; the four portraits (HERO_BG); the
+        jr nz, .synced                  ; next screen reloads its theme
+        ld hl, HERO_BG
+        ld de, BASE_BG + 8
+        ld b, 32
+.hb:
+        ld a, [hl+]
+        ld [de], a
+        inc e
+        dec b
+        jr nz, .hb
+        ld a, $FF
+        ld [CUR_THEME], a
+.synced:
         ldh a, [rBGP]
         call SyncBG
         call SyncOBJ

@@ -33,6 +33,10 @@ own color theme. Download the patch from
   (`reverse_engineering/notes/areas.md`)
 - Player, monster, and NPC sprites, with the original DMG fades mirrored in
   color
+- Each champion has their own colours, on the map, in the attack pose, in the
+  entrance cutscene and on the champion select screen: Mariah in violet robes,
+  Iolo in forest green, Dupre in steel armour with red trim, Shamino in a dark
+  green ranger's cloak (`palettes/rov_palettes.yaml` `heroes`)
 - The Cavern of Hatred (all three levels): cobbled rock, wood furniture and
   doors, gold arrow floors, blue fountains, and colored monsters (bat and
   skeleton undead, rat folk, gremlin fiend)
@@ -52,6 +56,8 @@ own color theme. Download the patch from
   choices still come from the Cavern of Hatred. Their title cards reuse the
   navy/gold entrance card.
 - Floor pickups (map tiles `$40-$4F`) all share the heart's red palette.
+- In 2-player (link cable) games the partner's sprite does not get its
+  champion colours.
 - The gold amount in the side panel is drawn in dark brown, because the
   original uses only its darkest shade.
 - On the overworld and in the castle, the A/B icons sit on a tinted square.

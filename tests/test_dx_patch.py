@@ -194,6 +194,41 @@ class TablesTest(unittest.TestCase):
         with self.assertRaises(dx_patch.PatchError):
             dx_patch.build_tables(self.inputs["palettes"], bg, self.inputs["obj_categories"])
 
+    def test_hero_palettes(self):
+        # one OBJ palette 0 per champion ($D133 order) + portrait colours for BG palettes 1-4
+        from ultima_rov_dx import dx_patch
+        t = dx_patch.build_tables(self.inputs["palettes"], self.inputs["bg_categories"], self.inputs["obj_categories"])
+        names = [h["name"] for h in self.inputs["palettes"]["heroes"]]
+        self.assertEqual(names, ["Mariah", "Iolo", "Dupre", "Shamino"])
+        self.assertEqual((len(t.hero_obj), len(t.hero_bg)), (32, 32))
+        objs = [t.hero_obj[8 * i:8 * i + 8] for i in range(4)]
+        self.assertEqual(len(set(objs)), 4, "each champion needs distinct sprite colours")
+        self.assertEqual(len({t.hero_bg[8 * i:8 * i + 8] for i in range(4)}), 4)
+        self.assertTrue(all(o[:2] == t.base_obj[:2] == b"\xff\x7f" for o in objs))
+
+    def test_champion_portraits_use_hero_palettes(self):
+        # portrait tiles on the select screen: Mariah $10-$1F, Iolo $20-$2F, Dupre $30-$3F, Shamino $80-$8F
+        from ultima_rov_dx import dx_patch
+        t = dx_patch.build_tables(self.inputs["palettes"], self.inputs["bg_categories"], self.inputs["obj_categories"])
+        tr = t.text_ranges
+        n_text = tr[0]
+        champ = tr[1 + 3 * n_text:]
+        rngs = {(champ[1 + 3 * i], champ[2 + 3 * i]): champ[3 + 3 * i] for i in range(champ[0])}
+        for hero, (first, last) in enumerate(((0x10, 0x1F), (0x20, 0x2F), (0x30, 0x3F), (0x80, 0x8F))):
+            self.assertEqual(rngs.get((first, last)), 1 + hero, f"champion {hero} portrait")
+
+    def test_heroes_need_four(self):
+        from ultima_rov_dx import dx_patch
+        pal = dict(self.inputs["palettes"])
+        pal["heroes"] = pal["heroes"][:3]
+        with self.assertRaises(dx_patch.PatchError):
+            dx_patch.build_tables(pal, self.inputs["bg_categories"], self.inputs["obj_categories"])
+        bad = [dict(h) for h in self.inputs["palettes"]["heroes"]]
+        bad[0]["sprite"] = ["#000000"] + bad[0]["sprite"][1:]
+        pal["heroes"] = bad
+        with self.assertRaises(dx_patch.PatchError):
+            dx_patch.build_tables(pal, self.inputs["bg_categories"], self.inputs["obj_categories"])
+
     def test_obj_color0_is_white(self):
         from ultima_rov_dx import dx_patch
         t = dx_patch.build_tables(self.inputs["palettes"], self.inputs["bg_categories"], self.inputs["obj_categories"])
@@ -308,6 +343,72 @@ class RealRomBuildTest(unittest.TestCase):
             off = GL.file_offset(GL.DX_RUNTIME_BANK, syms[name])
             self.assertEqual(self.out[off:off + len(data)], data, name)
             self.assertLessEqual(syms[name] + len(data), 0x8000, name)
+
+    def test_hero_tables_in_rom(self):
+        import build_dx
+        from ultima_rov_dx import dx_patch
+        from ultima_rov_dx.sm83asm import assemble
+        t = dx_patch.build_tables(*(build_dx.load_inputs()[k] for k in ("palettes", "bg_categories", "obj_categories")))
+        _, syms = assemble([("dx.asm", dx_patch._asm_source())])
+        self.assertEqual((syms["HERO_ID"], syms["HERO_BG"]), (0xD133, syms["LUT_GAME"]))
+        off = GL.file_offset(GL.DX_RUNTIME_BANK, syms["HERO_OBJ_ROM"])
+        self.assertEqual(self.out[off:off + 32], t.hero_obj)
+        w2 = GL.file_offset(GL.DX_RUNTIME_BANK, syms["W2_IMAGE_ROM"]) - syms["W2_BASE"]
+        self.assertEqual(self.out[w2 + syms["HERO_BG"]:w2 + syms["HERO_BG"] + 32], t.hero_bg)
+        self.assertEqual(self.out[w2 + syms["HERO_CACHED"]], 0xFF)            # first Slot always loads
+
+    def test_champion_sprite_colours(self):
+        # start a game as each champion: OBJ palette 0 (the player) follows $D133, palettes 1-7 don't
+        try:
+            from pyboy import PyBoy
+        except ImportError:
+            self.skipTest("pyboy not installed (uv sync --extra emu)")
+        import tempfile
+        import build_dx
+        import capture_screens as cs
+        from ultima_rov_dx import dx_patch
+        t = dx_patch.build_tables(*(build_dx.load_inputs()[k] for k in ("palettes", "bg_categories", "obj_categories")))
+
+        def objpal(pb):
+            out = bytearray()
+            for i in range(64):
+                pb.memory[0xFF6A] = i
+                out.append(pb.memory[0xFF6B])
+            return bytes(out)
+
+        pals = []
+        with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as d:
+            rom = Path(d) / "dx.gbc"
+            rom.write_bytes(self.out)
+            for hero in range(4):
+                pb = PyBoy(str(rom), window="null", cgb=True, sound_emulated=False)
+                pb.set_emulation_speed(0)
+                hit = []
+                pb.hook_register(3, cs.CHARACTER_SELECT_LCD_ON, lambda _c: hit.append(1), None)
+                for _scene, actions in cs.ROUTE[:3]:
+                    for button, hold, after in actions:
+                        if button:
+                            pb.button_press(button); pb.tick(hold, True); pb.button_release(button)
+                        pb.tick(max(after, 1), True)
+                for _ in range(60):
+                    pb.button_press("start"); pb.tick(6, True); pb.button_release("start")
+                    for _ in range(54):
+                        pb.tick(1, True)
+                        if hit:
+                            break
+                    if hit:
+                        break
+                pb.tick(54, True)
+                # select cursor = $D133; it starts on Shamino and each Right/A step moves it
+                for b, n, after in (("right", (hero - 1) % 4, 40), ("a", 6, 54), ("start", 3, 54), ("a", 15, 90)):
+                    for _ in range(n):
+                        pb.button_press(b); pb.tick(6, True); pb.button_release(b); pb.tick(after, True)
+                self.assertEqual(pb.memory[0xD133], hero)
+                pals.append(objpal(pb))
+                pb.stop(save=False)
+        for hero, p in enumerate(pals):
+            self.assertEqual(p[:8], t.hero_obj[8 * hero:8 * hero + 8], f"champion {hero}")
+        self.assertEqual(len({p[8:] for p in pals}), 1, "monster/NPC palettes must not depend on the champion")
 
     def test_ips_roundtrip(self):
         ips = patch_builder.build_ips_patch(self.original, self.out)

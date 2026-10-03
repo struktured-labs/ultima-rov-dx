@@ -30,6 +30,28 @@ obj_palettes:
   item:    { colors: ["#FFFFFF", "#FFF8A0", "#E8B030", "#704010"] }  # chests, sparkles, missiles
   obp1:    { colors: ["#FFFFFF", "#E0E0E0", "#909090", "#202020"] }  # sprites using DMG OBP1
 
+# The four champions, in the order of WRAM1 $D133 (0 Mariah, 1 Iolo, 2 Dupre,
+# 3 Shamino; reverse_engineering/notes/heroes.md). `sprite` replaces OBJ
+# palette 0 (avatar) once the game has started: walking, attack poses, the
+# entrance-cutscene champion. Shades follow the DMG sprite: 0 transparent,
+# 1 light (skin; Mariah's robe and hair, Dupre's armour), 2 mid (clothes,
+# trim), 3 dark (outline; Shamino's cloak, Iolo's hair and beard).
+# `portrait` colours that champion's portrait on the champion select (BG
+# palettes 1-4 on that screen only; colour 0 = the parchment behind it).
+heroes:
+  - name: Mariah     # Mariah the Mage of Moonglow: violet robes, pale lilac light shade
+    sprite:   ["#FFFFFF", "#F4E0F4", "#9048D0", "#281048"]
+    portrait: ["#FFF8E8", "#F8D8C8", "#B87898", "#401860"]
+  - name: Iolo       # Iolo the Bard of Britain: forest green, dark hair and beard
+    sprite:   ["#FFFFFF", "#FFE0C0", "#48A848", "#20281C"]
+    portrait: ["#FFF8E8", "#F0C8A0", "#A08050", "#1C4020"]
+  - name: Dupre      # Dupre the swordsman of Jhelom, the only champion in armour: steel and red
+    sprite:   ["#FFFFFF", "#E0E4F0", "#C83830", "#181828"]
+    portrait: ["#FFF8E8", "#F0C0A0", "#B05C48", "#481414"]
+  - name: Shamino    # Shamino the Ranger of Trinsic: dark green cloak, leather brown
+    sprite:   ["#FFFFFF", "#FFE0C0", "#B07838", "#1C3018"]
+    portrait: ["#FFF8E8", "#F0C8A0", "#A87048", "#382010"]
+
 # Per-area-theme BG color overrides (theme names come from
 # palettes/bg_tile_categories.yaml `area_themes`). Palettes not listed keep
 # the colors above. The runtime swaps the whole BG set when the player
