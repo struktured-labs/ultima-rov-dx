@@ -54,4 +54,5 @@ jumps past the cutscene (map restore, `$438B` blank, area entry). Buttons during
 * Exit back to the overworld (level 1 up-ladder, cell `$66`): LCD off -> overworld redraw at
   `$23E2`, no card or cutscene; theme 0 returns, no flashes.
 * Ladder `$18` -> `$19`: LCD off -> map, no card; cavern theme kept.
-* Unclassified `$87` sites 7:`$40BF` and 7:`$4AE3` (probably other pictures, e.g. the ending) still use text mode.
+* The other `$87` sites are the rune shrine (7:`$40BF`) and the ending throne room (7:`$4AE3`); both get
+  scene themes and picture LUTs (ending.md). Title cards are tinted per dungeon (`card_tints`).

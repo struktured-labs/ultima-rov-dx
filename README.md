@@ -40,21 +40,29 @@ own color theme. Download the patch from
 - The Cavern of Hatred (all three levels): cobbled rock, wood furniture and
   doors, gold arrow floors, blue fountains, and colored monsters (bat and
   skeleton undead, rat folk, gremlin fiend)
-- The dungeon entrance title card (navy card, gold letters) and the
-  full-screen entrance cutscene (brown cliff, violet mountains, misty green
-  plain, banded dusk sky)
+- The dungeon title cards, each tinted after its virtue (navy Hatred, blue
+  Deceit, red Cowardice, green Injustice, purple Dishonor, orange
+  Selfishness, grey Pride, ember-red Abyss), and the full-screen entrance
+  cutscene (brown cliff, violet mountains, misty green plain, banded dusk sky)
+- The end game: the congratulations text (royal purple on vellum), Lord
+  British's throne room (crimson banner, gold ankh, sky windows, red carpet),
+  the credits (cream on night blue), high scores, the friends-and-foes
+  parade, the rune shrine (marble and golden light) and the death screen
+  (bone on blood-black with gold stars); see
+  `reverse_engineering/notes/ending.md`
 - The start/item menu, with every item icon colored by type (wood bows, steel
   swords and armour, gold coins and keys, red potions and hearts, blue/green
   runes...)
-- The parchment side panel, with red hearts, gold stars, and A/B item icons
-  that match their bag colors. Equipping an item updates the icons right away.
+- The parchment side panel, with red hearts, gold stars, a bright gold gold
+  count, and A/B item icons that match their bag colors. Equipping an item updates the icons right away.
 
 ### Known gaps
 
 - Dungeons 2-8 have their own themes, but only their tile palettes and the
   black-knight palette were tuned; monster colors and the per-graphic palette
-  choices still come from the Cavern of Hatred. Their title cards reuse the
-  navy/gold entrance card.
+  choices still come from the Cavern of Hatred.
+- 2-player (link cable) screens keep the default text colours (the
+  "Please wait" screen uses the dialog colours).
 - Floor pickups (map tiles `$40-$4F`) all share the heart's red palette.
 - In 2-player (link cable) games the partner's sprite does not get its
   champion colours.

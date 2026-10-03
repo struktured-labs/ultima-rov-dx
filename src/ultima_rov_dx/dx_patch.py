@@ -22,6 +22,7 @@ DX_SIZE = 0x40000
 RST28, RST30 = 0xEF, 0xF7
 MAX_THEMES = 4    # dx.asm MAX_THEMES: WRAM theme slots (BG_THEMES / THEME_OBJ)
 ROM_THEMES = 32   # dx.asm ROM_THEMES: themes stored in bank 8
+MAX_SCENE_LUTS = 4   # dx.asm SCENE_LUTS: 4 x 256 bytes before LUT_TITLE_ROM
 MP_SETS = 16      # dx.asm MP_SETS: distinct metatile palette maps (METAPAL), shared via MP_IDX
 SLOT_SURFACE, SLOT_MAP, SLOT_ENTRANCE, SLOT_UI = 0, 1, 2, 3   # WRAM slots (dx.asm SLOT_MAP = 1)
 
@@ -64,12 +65,43 @@ class Tables:
     mp_idx: bytes = bytes(ROM_THEMES)              # METAPAL set per ROM theme
     hero_obj: bytes = bytes(32)                    # OBJ palette 0 per champion (HERO_ID order)
     hero_bg: bytes = bytes(32)                     # champion-select portrait colours: BG palettes 1-4
+    scenes: bytes = b"\0\0"                         # (ret lo, ret hi, ROM theme, LUT, OBJ)*, 0, 0 (bank 8 SCENES)
+    scene_luts: bytes = b""                        # 256 per scene picture (bank 8 SCENE_LUTS)
+    scene_obj: bytes = b""                         # 8 per scene OBJ palette 0 (bank 8 SCENE_OBJ)
+    scene_names: tuple = ()                        # scene name per SCENES entry (site order)
+    card_tint: bytes = bytes(128)                  # 16 x 8: title-card UI palette per dungeon (bank 8 CARD_TINT)
+    card_ui: int = 0                               # BG palette index of the UI palette (CARD_TINT target)
+    digit_pal: int = -1                            # BG palette of the gold side-panel digits (-1: off)
 
 
 def _index(names: list[str], name: str, what: str) -> int:
     if name not in names:
         raise PatchError(f"{what}: unknown palette {name!r} (have {names})")
     return names.index(name)
+
+
+def gold_digits(original: bytes) -> bytes:
+    """Side-panel digits $E8-$F1 redrawn for VRAM bank 1: the font's solid
+    colour-3 glyphs become colour 1 (bright gold) with a colour-3 drop shadow
+    one pixel right and down (the glyphs leave column 7 and row 7 free)."""
+    off = GL.file_offset(*GL.DIGIT_FONT)
+    src = original[off:off + 16 * len(GL.DIGIT_TILES)]
+    out = bytearray()
+    for t in range(len(GL.DIGIT_TILES)):
+        tile = src[16 * t:16 * t + 16]
+        rows = []
+        for y in range(8):
+            lo, hi = tile[2 * y], tile[2 * y + 1]
+            if lo != hi:
+                raise PatchError(f"digit font tile {t}: not a solid colour-3 glyph")
+            rows.append(lo)
+        if rows[7] or any(r & 1 for r in rows):
+            raise PatchError(f"digit font tile {t}: no room for the shadow")
+        for y in range(8):
+            body = rows[y]
+            shadow = ((rows[y - 1] >> 1) if y else 0) & ~body & 0xFF
+            out += bytes([body | shadow, shadow])   # colour 1 = lo only, colour 3 = both planes
+    return bytes(out)
 
 
 def build_tables(pal_data: dict[str, Any], bg_cat: dict[str, Any], obj_cat: dict[str, Any]) -> Tables:
@@ -294,12 +326,92 @@ def build_tables(pal_data: dict[str, Any], bg_cat: dict[str, Any], obj_cat: dict
     else:
         hero_obj = enc["obj"][:8] * 4
         hero_bg = bytes(32)
+    # scenes (bg_tile_categories.yaml `scenes`): LCD-on sites whose screen gets its own
+    # theme, picture LUT and OBJ palette 0 (ending, credits, death screen...)
+    scene_entries, scene_luts, scene_obj, scene_names = bytearray(), bytearray(), bytearray(), []
+    obj_specs = pal_data.get("scene_obj") or {}
+    obj_order: list[str] = []
+    seen_sites: dict[tuple[int, int], str] = {}
+    card_tint = bytearray(theme_bg_rom[64 * entrance_theme + 8 * ui:64 * entrance_theme + 8 * ui + 8] * 16)
+    tints = pal_data.get("card_tints") or {}
+    for key, spec in tints.items():
+        if not isinstance(key, int) or not 0 <= key < 16:
+            raise PatchError(f"card_tints: key {key!r} must be a card number 0-15")
+        card_tint[8 * key:8 * key + 8] = enc4(spec.get("colors"), f"card_tints.{key}")
+    tint_sites = 0
+    for sname, spec in (bg_cat.get("scenes") or {}).items():
+        if spec.get("tint"):
+            # title card: the entrance theme stays, the UI palette comes from card_tints
+            if any(spec.get(k) is not None for k in ("theme", "picture", "obj")):
+                raise PatchError(f"scenes.{sname}: a tint scene takes no theme, picture or obj")
+            if not entrance_theme:
+                raise PatchError(f"scenes.{sname}: tint needs entrance_theme")
+            for bank, addr in spec.get("sites") or []:
+                if (bank, addr) not in GL.CARD_LCD_ON_SITES:
+                    raise PatchError(f"scenes.{sname}: {bank}:{addr:04x} is not a title-card LCD-on site")
+                ret = addr + 1
+                scene_entries += bytes([ret & 0xFF, ret >> 8, 0xFF, 0xFF, 0xFF])
+                scene_names.append(sname)
+                tint_sites += 1
+            continue
+        tname = spec.get("theme")
+        if tname not in theme_names[1:]:
+            raise PatchError(f"scenes.{sname}: theme {tname!r} is not an area_themes entry")
+        theme = theme_names.index(tname)
+        if area_theme.count(theme):
+            raise PatchError(f"scenes.{sname}: theme {tname!r} is also an area theme")
+        lut = 0xFF
+        if spec.get("picture") is not None:
+            lut = len(scene_luts) // 256
+            if lut >= MAX_SCENE_LUTS:
+                raise PatchError(f"at most {MAX_SCENE_LUTS} scene pictures")
+            scene_luts += title_lut_from(spec["picture"], f"scenes.{sname}.picture")
+        obj = 0xFF
+        if spec.get("obj") is not None:
+            oname = spec["obj"]
+            if oname not in obj_specs:
+                raise PatchError(f"scenes.{sname}: obj {oname!r} is not a scene_obj entry")
+            if oname not in obj_order:
+                obj_order.append(oname)
+                scene_obj += enc4(obj_specs[oname], f"scene_obj.{oname}")
+            obj = obj_order.index(oname)
+        sites = spec.get("sites") or []
+        if not sites:
+            raise PatchError(f"scenes.{sname}: no sites")
+        for bank, addr in sites:
+            site = (bank, addr)
+            if site not in GL.GAME_LCD_ON_SITES or site in GL.MAP_LCD_ON_SITES:
+                raise PatchError(f"scenes.{sname}: {bank}:{addr:04x} is not a non-map game LCD-on site")
+            if site in seen_sites:
+                raise PatchError(f"scenes: site {bank}:{addr:04x} in {seen_sites[site]} and {sname}")
+            if any(a == addr and b != bank for b, a in GL.GAME_LCD_ON_SITES):
+                raise PatchError(f"scenes.{sname}: address {addr:04x} is used by sites in two banks")
+            seen_sites[site] = sname
+            ret = addr + 1    # rst $28 sits at the site; it returns to the mode byte
+            scene_entries += bytes([ret & 0xFF, ret >> 8, theme, lut, obj])
+            scene_names.append(sname)
+    if len(obj_order) * 8 > 0xF0:
+        raise PatchError("too many scene_obj palettes")
+    scene_entries += b"\0\0"
+    if len(scene_entries) > 256:
+        raise PatchError("too many scene sites")
+    for oname in obj_specs:
+        if oname not in obj_order:
+            raise PatchError(f"scene_obj.{oname} is not used by any scene")
+    if tints and not tint_sites:
+        raise PatchError("card_tints given but no tint scene uses them")
+    digit_pal = -1
+    if bg_cat.get("panel_digits") is not None:
+        digit_pal = _index(bg_names, bg_cat["panel_digits"], "panel_digits")
+        for tile in GL.DIGIT_TILES:
+            lut_game[tile] = digit_pal | 0x08        # attribute bit 3: tile data from VRAM bank 1
     return Tables(bytes(objpal), enc["bg"], enc["obj"], lut_title, bytes(lut_game), lut_logo,
                   b"".join(metapals), bytes(area_theme), bg_themes, picture_lut, SLOT_ENTRANCE if entrance_theme else 0,
                   flat_bg, bytes(fix),
                   lut_menu, bytes(item_pal), SLOT_UI if ui_theme else 0, menu_obj, bytes(theme_obj), fire_obj, ship_pal,
                   bytes(text_ranges), theme_bg_rom, theme_obj_rom, bytes(rt_slot), tuple(theme_names), first_map,
-                  bytes(mp_idx), hero_obj, hero_bg)
+                  bytes(mp_idx), hero_obj, hero_bg, bytes(scene_entries), bytes(scene_luts), bytes(scene_obj),
+                  tuple(scene_names), bytes(card_tint), ui, digit_pal)
 
 
 def _asm_source() -> str:
@@ -364,6 +476,17 @@ def build(original: bytes, pal_data: dict[str, Any], bg_cat: dict[str, Any], obj
             or syms["THEME_OBJ_ROM"] + 8 * ROM_THEMES > syms["RT_SLOT"] or syms["RT_SLOT"] + ROM_THEMES > syms["MP_IDX"] or syms["MP_IDX"] + ROM_THEMES > syms["HERO_OBJ_ROM"]
             or (syms["HERO_OBJ_ROM"] & 0xFF) + 32 > 0x100 or syms["HERO_OBJ_ROM"] + 32 > 0x8000):
         raise PatchError("bank 8 table layout overlap")
+    if (syms["CARD_TINT"] & 0xFF or syms["HERO_OBJ_ROM"] + 32 > syms["CARD_TINT"] or syms["CARD_TINT"] + 128 > syms["CARD_UI"]
+            or syms["CARD_UI"] >= syms["GOLD_DIGITS"] or syms["GOLD_DIGITS"] + syms["DIGIT_LEN"] > 0x8000
+            or syms["DIGIT_LEN"] != 16 * len(GL.DIGIT_TILES)
+            or syms["DIGIT_VRAM"] != 0x9000 + 16 * (GL.DIGIT_TILES[0] - 0x100)
+            or (syms["BASE_BG"] & 0xFF) + 64 > 0x100 or syms["HR_CARD"] != GL.CARD_NUMBER_HRAM):
+        raise PatchError("bank 8 card tint / gold digit layout")
+    if (syms["SCENE_LUTS"] & 0xFF or syms["PICTURE_FIX"] + 256 > syms["SCENE_LUTS"]
+            or syms["SCENE_LUTS"] + 256 * MAX_SCENE_LUTS > syms["LUT_TITLE_ROM"]
+            or syms["LUT_LOGO_ROM"] + 256 > syms["SCENES"] or syms["SCENES"] + 256 > syms["SCENE_OBJ"]
+            or syms["SCENE_OBJ"] + 0xF0 > syms["BANK_SIG"] or syms["BANK_SIG"] + 7 > syms["BRAND_TILES"]):
+        raise PatchError("bank 8 scene table layout overlap")
     if syms["W2bEnd"] > syms["THEME_OBJ"] or syms["BG_THEMES"] + 64 * MAX_THEMES > syms["UnloadedPal"]:
         raise PatchError(f"WRAM2 section wram2b overlaps BG_THEMES or ends past $E000 ({syms['W2bEnd']:#x})")
     if syms["W2CodeEnd"] > syms["OBJPAL"]:
@@ -441,7 +564,24 @@ def build(original: bytes, pal_data: dict[str, Any], bg_cat: dict[str, Any], obj
     put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["THEME_OBJ_ROM"]), t.theme_obj_rom, "THEME_OBJ_ROM")
     put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["RT_SLOT"]), t.rt_slot, "RT_SLOT")
     put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["MP_IDX"]), t.mp_idx, "MP_IDX")
+    # scenes: per-site theme / picture LUT / OBJ palette 0, and the bank signatures
+    # SceneHook uses to map the caller's bank back (byte at $4001 of banks 1-7)
+    if syms["MAX_SCENE_LUTS"] != MAX_SCENE_LUTS:
+        raise PatchError("MAX_SCENE_LUTS mismatch between dx.asm and dx_patch.py")
+    if t.scene_luts:
+        put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["SCENE_LUTS"]), t.scene_luts, "SCENE_LUTS")
+    put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["SCENES"]), t.scenes, "SCENES")
+    if t.scene_obj:
+        put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["SCENE_OBJ"]), t.scene_obj, "SCENE_OBJ")
+    sig = bytes(original[b * 0x4000 + 1] for b in range(1, 8))
+    if len(set(sig)) != 7:
+        raise PatchError(f"ROM banks 1-7 are not told apart by their byte at $4001 ({sig.hex()})")
+    put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["BANK_SIG"]), sig, "BANK_SIG")
     put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["HERO_OBJ_ROM"]), t.hero_obj, "HERO_OBJ_ROM")
+    # title-card tints and the gold side-panel digits (bank 8, SceneHook)
+    put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["CARD_TINT"]), t.card_tint, "CARD_TINT")
+    put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["CARD_UI"]), bytes([(syms["BASE_BG"] + 8 * t.card_ui) & 0xFF]), "CARD_UI")
+    put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["GOLD_DIGITS"]), gold_digits(original), "GOLD_DIGITS")
     w2(syms["SLOTPAL"], bytes([t.metapal[0]] * 16), "SLOTPAL")
     put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["LUT_TITLE_ROM"]), t.lut_title, "LUT_TITLE_ROM")
     if syms["HERO_BG"] != syms["LUT_GAME"]:

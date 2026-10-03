@@ -38,13 +38,14 @@ proved it (static disassembly offset list, emulator trace, etc.).
 - [x] Cavern of Hatred (areas $18-$1A) themed (`cavern`), see dungeons.md.
 - [ ] Remaining 7 dungeons: find entrances/area ids, add themes (lava/ice...). Max 3 themes besides theme 0 (grow BG_THEMES if needed).
 - [ ] Decode the per-area header in bank 4 (graphics list + compressed map) to enumerate all area ids statically.
-- [ ] Classify the unobserved LCD-on sites ($0AEB, $14FF, 1:$4126, 1:$54E9 assumed map).
+- [x] Classify $0AEB (rune text) and $14FF (2-player wait): dialog sites (ending.md). 1:$4126, 1:$54E9 still assumed map (2-player only).
 - [ ] Per-sprite-id palette tuning.
 - [x] HUD/side panel (hearts, stars, coin, A/B icons) and start menu colored, see menu.md.
-- [ ] Side-panel A/B icons on theme-0 maps sit on a tinted square (item palette colour 0); gold digits are dark brown.
-- [ ] Observe 0:`$14FF` (text screen, LCDC `$8F`) and check its colours.
+- [ ] Side-panel A/B icons on theme-0 maps sit on a tinted square (item palette colour 0). Gold digits: now bright gold on map screens (VRAM bank 1 redraw); the coin icon and the digits on dialog/menu screens keep their colours.
+- [x] Observe 0:`$14FF` (2-player "Please wait", forced via 0:`$14BD`): dialog colours.
 - [ ] Real hardware test; IPS RLE.
 - [x] Dungeon entrance title card + cutscene colored (entrance theme, picture LUT), see cutscene.md.
-- [ ] Classify LCDC `$87` sites 7:`$40BF`, 7:`$4AE3` (other pictures?) and give them picture LUTs.
+- [x] Classify LCDC `$87` sites 7:`$40BF` (rune shrine), 7:`$4AE3` (ending throne room): scene themes + LUTs (ending.md).
+- [ ] 2-player-only screens 3:`$6F78/$6FAC/$71FF/$720E`, 3:`$79FC/$7A21` keep the default text colours (not reachable without a link partner).
 - [ ] Hero in the cutscene uses the gameplay avatar palette (navy/skin/white); a cutscene-only OBJ palette would need OBJ themes.
-- [ ] Other dungeons' title cards reuse the navy/gold card (entrance theme); per-dungeon card accents would need a theme per text pointer.
+- [x] Per-dungeon title-card tints (CARD_TINT by HRAM `$FF8F`).

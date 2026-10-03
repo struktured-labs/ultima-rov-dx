@@ -47,6 +47,13 @@ restores bank 1 (the only bank the hooked callers run from) after far calls.
 bank 3 `$78F8/$7954/$79C7` champion select, `$7665/$7697/$7A93/$7AA2/$7779/$7788` story,
 initials, difficulty; bank 7 `$4319/$438B/$4619` blank transition screens and game over; 0:`$1804` (LCD "on" while on),
 7:`$4619` dungeon title card, 7:`$4692` entrance cutscene (LCDC `$87`), 7:`$438B` blank (see cutscene.md).
+End game, death, rune shrine, credits (ending.md): 7:`$40BF` rune shrine, 0:`$0AEB` rune text (dialog), 7:`$4A40` ending text,
+7:`$4AE3` throne room, 7:`$4C32/$4C78/$4C8D` credits, 3:`$6E93/$6EE1` high scores, 7:`$4853` parade, 7:`$4319` death screen,
+0:`$14FF` 2-player wait (dialog, forced only).
+
+## Game variables (end game)
+`$D135` runes reclaimed (bitmask; `$FF` = all eight starts the ending), `$D1F4` ending shown, `$D127`/`$D128` HP / max HP,
+`$D173` class of the fallen 2-player partner, HRAM `$FF8F` text parameter (the title-card dungeon number, 1-7, 9 = Abyss).
 
 ## DX runtime variables (WRAM bank 2)
 `$D700-$D702` last BGP/OBP0/OBP1, `$D703` LCD mode (0 map, 1 castle, 2 text, 3 picture, 4 menu, 5 dialog, 9 logo),
@@ -57,6 +64,9 @@ HRAM `$FFF3-$FFFE`: WRAM1 reader installed only while used (see menu.md).
 Bank 8: `$5600` PICTURE_LUT, `$5700` PICTURE_FIX, `$5C00` LUT_TITLE, `$5D00` LUT_LOGO, `$6000` BRAND_TILES, `$6600` BRAND_CELLS,
 `$6800` AREA_THEME (512: `$D13E` = 0, then 1), `$6A00` METAPAL (16 sets x 128), `$7200` THEME_BG_ROM (32 x 64), `$7A00` THEME_OBJ_ROM (32 x 8),
 `$7B00` RT_SLOT (WRAM slot per theme), `$7B20` MP_IDX (METAPAL set per theme), `$7B40` HERO_OBJ_ROM (4 x 8, player palette per champion).
+Scenes (ending.md): `$5800` SCENE_LUTS (4 x 256), `$5E00` SCENES ((ret lo, ret hi, ROM theme or `$FF` = card tint, LUT, OBJ)*, hi = 0 ends),
+`$5F00` SCENE_OBJ (8 per scene OBJ palette 0), `$5FF0` BANK_SIG (byte at `$4001` of banks 1-7), `$7C00` CARD_TINT (16 x 8, title-card UI palette per `$FF8F`),
+`$7C80` CARD_UI (low byte of BASE_BG's UI palette), `$7D00` GOLD_DIGITS (160: side-panel digits `$E8-$F1` in gold for VRAM bank 1 `$8E80`).
 Inventory/side panel: `$D100-$D11F` bag, `$D125` B item, `$D126` A item, `$D134` armour (see menu.md).
 
 ## Palettes

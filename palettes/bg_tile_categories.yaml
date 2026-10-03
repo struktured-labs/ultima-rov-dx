@@ -29,6 +29,9 @@ metatile_palettes:
 
 # Palette for font/UI tiles $40-$FF on game screens (overrides allowed).
 ui_palette: ui
+# Side-panel digits $E8-$F1 (the gold count) on map screens: drawn in gold
+# (colour 1 with a colour-3 drop shadow, from VRAM bank 1) on this palette.
+panel_digits: gold
 # Tiles $40-$4F hold the floor-item graphics of the current area (heart
 # pickups etc., drawn as BG tiles on the map; verified in the Cavern of
 # Hatred). They use `fire` so hearts read red and color 0 matches the floor.
@@ -136,6 +139,21 @@ area_themes:
     areas: []                    # no map area: selected by the entrance LCD-on sites
   menu:
     areas: []                    # no map area: text screens, dialogs and the start menu
+  # scene themes (no map area; picked by the LCD-on sites in `scenes` below)
+  shrine:
+    areas: []
+  royal:
+    areas: []
+  throne:
+    areas: []
+  death:
+    areas: []
+  credits:
+    areas: []
+  scores:
+    areas: []
+  parade:
+    areas: []
 
 # Theme used by dungeon title cards (bank 7 $4619) and the entrance cutscene
 # (bank 7 $4692); the area theme returns when the next area loads.
@@ -283,3 +301,71 @@ pictures:
       - { row: 3, col: 7, palette: gold }
       - { row: 3, col: 18, palette: gold }
       - { row: 3, col: 19, palette: gold }
+
+# Scenes: LCD-on sites (bank, address of the original `ldh [rLCDC],a`) whose
+# screen gets its own theme (an area_themes entry without areas, colours in
+# rov_palettes.yaml bg_themes), optionally a picture LUT (tile -> palette,
+# replacing the text-screen LUT) and an OBJ palette 0 (rov_palettes.yaml
+# scene_obj; the champion's colours return with the next area). Picked at
+# run time by bank-8 SceneHook from the site's return address. Scenes and
+# tile maps: reverse_engineering/notes/ending.md.
+scenes:
+  title_card:                    # dungeon title cards: entrance theme, UI palette per dungeon
+    sites: [[7, 0x4619]]         # (rov_palettes.yaml card_tints, keyed by the card number in HRAM $FF8F)
+    tint: true
+  rune_shrine:                   # rune reclaimed: champion raises the rune in the shrine (7:$4000)
+    sites: [[7, 0x40BF]]
+    theme: shrine
+    picture:
+      default: stone             # marble pillars (00/01/03-05/0B-11 and mirrored 30/31/33-35/3B-41)
+      ranges:
+        - { first: 0x02, last: 0x02, palette: gold }   # light from above, back wall bands
+        - { first: 0x06, last: 0x0A, palette: gold }
+        - { first: 0x12, last: 0x22, palette: water }  # floor and steps
+        - { first: 0x2E, last: 0x2F, palette: fire }   # the rune on the altar (item icon copied to BG tiles $2E/$2F)
+        - { first: 0x32, last: 0x32, palette: gold }
+        - { first: 0x36, last: 0x3A, palette: gold }
+        - { first: 0x42, last: 0x52, palette: water }
+        - { first: 0xE6, last: 0xE6, palette: gold }   # flash frames ($9C00 filled with tile $E6)
+  ending_text:                   # "Congratulations! You have foiled the Black Knight..." (7:$4A2A)
+    sites: [[7, 0x4A40]]
+    theme: royal
+  ending_throne:                 # throne room: the champion kneels before Lord British, THE END (7:$4AE3)
+    sites: [[7, 0x4AE3]]
+    theme: throne
+    picture:
+      default: stone             # castle wall, window frames, wall bands under the windows
+      ranges:
+        - { first: 0x01, last: 0x02, palette: water }  # window panes
+        - { first: 0x04, last: 0x07, palette: fire }   # banner (edges, border, field)
+        - { first: 0x14, last: 0x16, palette: fire }   # ankh on the banner
+        - { first: 0x1B, last: 0x1D, palette: fire }
+        - { first: 0x20, last: 0x22, palette: fire }
+        - { first: 0x25, last: 0x25, palette: fire }
+        - { first: 0x28, last: 0x28, palette: fire }
+        - { first: 0x2A, last: 0x2A, palette: earth }  # marble floor
+        - { first: 0x2B, last: 0x2F, palette: fire }   # banner foot
+        - { first: 0x30, last: 0x30, palette: earth }
+        - { first: 0x31, last: 0x32, palette: gold }   # throne and Lord British
+        - { first: 0x33, last: 0x34, palette: earth }  # banner shadow on the floor
+        - { first: 0x35, last: 0x41, palette: gold }
+        - { first: 0x42, last: 0x4B, palette: wood }   # carpeted steps
+        - { first: 0x4C, last: 0x4C, palette: earth }
+        - { first: 0x4D, last: 0x4F, palette: wood }
+        - { first: 0x60, last: 0x6F, palette: gold }   # Lord British's raised sword (metatile at $9990)
+  death:                         # skull and crossbones under twinkling stars (7:$4276, after a fatal hit)
+    sites: [[7, 0x4319]]
+    theme: death
+    obj: stars
+    picture:
+      default: stone
+  credits:                       # attract loop: "FCI, Origin and PonyCanyon present", "By Gary Scott Smith", staff
+    sites: [[7, 0x4C32], [7, 0x4C78], [7, 0x4C8D]]
+    theme: credits
+  high_scores:                   # attract loop: one / two player high scores (bank 3 $6E90)
+    sites: [[3, 0x6E93], [3, 0x6EE1]]
+    theme: scores
+  parade:                        # attract loop: "YOUR FRIENDS" / "YOUR FOES" (7:$47D6)
+    sites: [[7, 0x4853]]
+    theme: parade
+    obj: parade

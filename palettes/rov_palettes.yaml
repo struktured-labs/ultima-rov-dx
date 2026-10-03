@@ -246,6 +246,52 @@ bg_themes:
     earth:  { colors: ["#FFF8E8", "#F0C0A0", "#A86848", "#301810"] }  # portrait skin, food, rock
     grass:  { colors: ["#FFF8E8", "#A0D070", "#408838", "#102010"] }  # green potion, rune of justice
 
+  # scene themes (bg_tile_categories.yaml `scenes`)
+  shrine:  # rune shrine: marble pillars, golden light from above, blue-violet steps, glowing rune
+    stone:  { colors: ["#FFF8F0", "#C8C8E0", "#7878A8", "#282840"] }
+    gold:   { colors: ["#FFF8F0", "#F8E8A8", "#D8B060", "#806030"] }
+    water:  { colors: ["#FFF8F0", "#A8B0D8", "#585C98", "#1C1C38"] }
+    fire:   { colors: ["#FFF8F0", "#F8C040", "#D04020", "#401008"] }
+  royal:  # ending text: cream vellum, royal purple ink
+    ui:     { colors: ["#FFF4D8", "#D8C0E0", "#7848A8", "#2C1048"] }
+    gold:   { colors: ["#FFF4D8", "#F0C848", "#B87C18", "#5A3808"] }
+  throne:  # ending throne room: warm stone, sky-blue windows, crimson banner with a gold ankh,
+           # marble floor, gold throne and Lord British in red, carpeted steps
+    stone:  { colors: ["#F4F0E8", "#C8C0B8", "#887C74", "#302824"] }
+    water:  { colors: ["#F0F8FF", "#B0D0F0", "#6080B8", "#202848"] }
+    fire:   { colors: ["#F8D860", "#E09030", "#902020", "#400818"] }
+    earth:  { colors: ["#FFF8EC", "#E8D8C0", "#B09878", "#403020"] }
+    gold:   { colors: ["#FFF8E8", "#F0C850", "#C03828", "#381010"] }
+    wood:   { colors: ["#FFF8E8", "#D8B8A0", "#A04848", "#381818"] }
+  death:  # skull and crossbones: bone on a blood-black night
+    stone:  { colors: ["#F8F0E0", "#C8B8A0", "#806858", "#180810"] }
+  credits:  # attract-loop credits: cream letters on a night-blue screen (inverted, like the title cards)
+    ui:     { colors: ["#101828", "#38486C", "#8C9CC8", "#F8ECC8"] }
+    gold:   { colors: ["#101828", "#6C5830", "#B08838", "#F8D070"] }
+  scores:  # high-score tables: pale ledger paper, green ink, gold frame
+    ui:     { colors: ["#F4F8EC", "#B8CCB0", "#4C7450", "#102818"] }
+    gold:   { colors: ["#F4F8EC", "#E8C860", "#A07820", "#403008"] }
+  parade:  # YOUR FRIENDS / YOUR FOES: pale sky paper, slate ink
+    ui:     { colors: ["#EEF4FC", "#B4C4DC", "#5C6C90", "#141C34"] }
+
+# OBJ palette 0 on scene screens (bg_tile_categories.yaml `scenes` obj).
+# Dungeon title cards (bg_tile_categories.yaml scenes.title_card): UI palette
+# per card number (HRAM $FF8F), in the colour of the virtue the dungeon's vice
+# opposes; colour 0 = card, colour 3 = letters. Missing numbers keep the
+# entrance theme's night-blue card (1, the Cavern of Hatred).
+card_tints:
+  2: { colors: ["#0C1838", "#3C5C98", "#7898D0", "#E0ECFF"] }  # Deceit: honesty blue
+  3: { colors: ["#300808", "#783020", "#C06848", "#FFD8A8"] }  # Cowardice: valor red
+  4: { colors: ["#08200C", "#2C5C34", "#6CA060", "#E0F8B8"] }  # Injustice: justice green
+  5: { colors: ["#200C34", "#583880", "#9C78C8", "#F0E0FF"] }  # Dishonor: honor purple
+  6: { colors: ["#301404", "#804018", "#C88038", "#FFE4A8"] }  # Selfishness: sacrifice orange
+  7: { colors: ["#101010", "#484440", "#908C84", "#F4F0E4"] }  # Pride: humility grey
+  9: { colors: ["#200410", "#601830", "#B04858", "#FFE0D0"] }  # the Great Stygian Abyss: ember red
+
+scene_obj:
+  stars:  ["#FFFFFF", "#FFF4C0", "#E8C860", "#806020"]   # death screen stars (drawn with OBP0 $1B)
+  parade: ["#FFFFFF", "#F0D0A8", "#B06840", "#2C1810"]   # friends and foes (all OBJ palette 0 there)
+
 # Per-theme colours of OBJ palette 5 (royal). Lord British and his court
 # never appear in dungeons, where palette 5's knights (sprite $52) are the
 # Black Knight's men: dark steel instead of Lord British's red.

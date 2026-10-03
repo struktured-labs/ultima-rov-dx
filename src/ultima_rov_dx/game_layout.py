@@ -118,18 +118,21 @@ GAME_LCD_ON_SITES: tuple[tuple[int, int], ...] = (
 # (story, champion select, dialogs, game over) where all tiles use the UI
 # palette. Verified with tmp/sitetrace.py-style PyBoy hooks on rst $28:
 # $03A3 restores the map after dialogs/menus, $1B17 overworld, $23E2 area
-# entry, $10A8 start menu (mini-map); $0AEB/$14FF/1:$4126/1:$54E9 are map
-# redraw paths (static reading, not yet seen firing).
+# entry, $10A8 start menu (mini-map); 1:$4126 (two-player start, serial
+# link) and 1:$54E9 are map redraw paths (static reading, not seen firing).
 MAP_LCD_ON_SITES: frozenset[tuple[int, int]] = frozenset({
-    (0, 0x03A3), (0, 0x0AEB), (0, 0x14FF), (0, 0x1B17), (0, 0x23E2),
+    (0, 0x03A3), (0, 0x1B17), (0, 0x23E2),
     (1, 0x4126), (1, 0x54E9),
 })
 # Start menu (START during play; bank 0 $0FDB-$10A8, notes/menu.md): item grid
 # (inventory $D100-$D11F drawn as 16x16 icons from bank 3 $4B00 + id*64 into
 # tiles $0C-$8B), stats box with portrait, side panel in BG columns 22-23.
 MENU_LCD_ON_SITES: frozenset[tuple[int, int]] = frozenset({(0, 0x10A8)})
-# In-play dialog box screen (e.g. Lord British): text + side panel.
-DIALOG_LCD_ON_SITES: frozenset[tuple[int, int]] = frozenset({(0, 0x1323)})
+# In-play dialog box screen (e.g. Lord British): text + side panel. Also
+# $0AEB "You have reclaimed the rune of ..." after the rune cutscene and
+# $14FF (two-player) "Please wait for the <champion> who has fallen!"
+# (reverse_engineering/notes/ending.md); both were wrongly in map mode.
+DIALOG_LCD_ON_SITES: frozenset[tuple[int, int]] = frozenset({(0, 0x1323), (0, 0x0AEB), (0, 0x14FF)})
 # Champion select (bank 3; scripts/capture_screens.py CHARACTER_SELECT_LCD_ON
 # and the tile-map dump in tmp/probe/textscreens.py): text screen whose four
 # portraits use tiles $10-$1F, $20-$2F, $30-$3F and $80-$8F (4x4 each).
@@ -175,3 +178,14 @@ def missing_facts() -> list[str]:
     if not FREE_SPACE:
         missing.append("FREE_SPACE")
     return missing
+
+
+# Side-panel digits 0-9 (tiles $E8-$F1; the gold count). Their font sits at
+# bank 3 $4A00 as solid colour-3 glyphs; the DX redraws them in gold into VRAM
+# bank 1 on map screens (dx_patch.gold_digits, bg_tile_categories panel_digits).
+DIGIT_TILES = tuple(range(0xE8, 0xF2))
+DIGIT_FONT = (3, 0x4A00)
+# Title card (bank 7 $4602): HRAM byte holding the dungeon number shown
+# (1 Hatred, 2 Deceit, 3 Cowardice, 4 Injustice, 5 Dishonor, 6 Selfishness,
+# 7 Pride, 9 the Great Stygian Abyss).
+CARD_NUMBER_HRAM = 0xFF8F

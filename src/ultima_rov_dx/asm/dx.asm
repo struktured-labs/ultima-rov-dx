@@ -129,7 +129,18 @@ THEME_BG_ROM    equ $7200   ; bank 8: 64 bytes of BG base colours per ROM theme
 THEME_OBJ_ROM   equ $7A00   ; bank 8: 8 bytes (OBJ palette THEME_OBJ_SLOT) per ROM theme
 RT_SLOT         equ $7B00   ; bank 8: WRAM slot per ROM theme (0 surface, 1 dungeon cache, 2 entrance, 3 UI)
 MP_IDX          equ $7B20   ; bank 8: METAPAL set per ROM theme
+SCENE_LUTS      equ $5800   ; bank 8: 256-byte LUTs of scene pictures (MAX_SCENE_LUTS, SCENES LUT index)
+MAX_SCENE_LUTS  equ 4
+SCENES          equ $5E00   ; bank 8: (lo, hi, ROM theme, LUT, OBJ)* of scene LCD-on return addresses, hi = 0 ends
+SCENE_OBJ       equ $5F00   ; bank 8: 8 bytes per scene OBJ palette 0 (SCENES OBJ index)
+BANK_SIG        equ $5FF0   ; bank 8: byte at $4001 of ROM banks 1-7 (finds the caller's bank again)
 HERO_OBJ_ROM    equ $7B40   ; bank 8: 4 x 8 bytes, OBJ palette 0 (PLAYER_PAL) per champion (HERO_ID)
+CARD_TINT       equ $7C00   ; bank 8: 16 x 8 bytes, title-card UI palette per dungeon ([HR_CARD] & 15; SCENES theme $FF)
+CARD_UI         equ $7C80   ; bank 8: low byte of BASE_BG's UI palette (where CARD_TINT goes)
+GOLD_DIGITS     equ $7D00   ; bank 8: DIGIT_LEN bytes, side-panel digits $E8-$F1 redrawn in gold (VRAM bank 1)
+DIGIT_VRAM      equ $8E80   ; tile $E8 (signed tile data); LUT_GAME gives $E8-$F1 attribute bit 3
+DIGIT_LEN       equ 160
+HR_CARD         equ $FF8F   ; title card (bank 7 $4608): dungeon number shown on the card
 TITLE_BANK      equ 7       ; ROM bank of the title and picture LCD-on sites
 AREA_ID         equ $D12F   ; WRAM bank 1: current area/map id
 HERO_ID         equ $D133   ; WRAM bank 1: champion 0 Mariah, 1 Iolo, 2 Dupre, 3 Shamino (also the select cursor)
@@ -719,6 +730,189 @@ HeroObj:
         pop bc
         pop af
         ret
+; Logo screen (LCD_MODE 9, LCD off, bank 8 mapped): copy the branding tiles
+; into VRAM and place their cells in the $9800 map; the dissolve copies them
+; to $9C00 with the rest of the logo. Attributes follow from the logo LUT.
+Brand:
+        ld a, [LCD_MODE]
+        cp 9
+        ret nz
+        xor a
+        ldh [rVBK], a
+        ld hl, BRAND_TILES
+        ld de, BRAND_VRAM
+        ld bc, BRAND_TILES_LEN
+.t:
+        ld a, [hl+]
+        ld [de], a
+        inc de
+        dec bc
+        ld a, b
+        or c
+        jr nz, .t
+        ld hl, BRAND_CELLS
+.c:
+        ld e, [hl]
+        inc hl
+        ld a, [hl+]
+        or a
+        ret z
+        ld d, a
+        ld a, [hl+]
+        ld [de], a
+        jr .c
+
+; Bank 8 mapped, SVBK = 2, HL = return address of a game LCD-on site (its
+; mode byte), B = byte at $4001 of the caller's bank. A SCENES entry (lo, hi,
+; ROM theme, LUT, OBJ) for that site replaces the screen's BG colours with
+; the theme, the live LUT with SCENE_LUTS[LUT] ($FF: keep) and OBJ palette 0
+; with SCENE_OBJ[OBJ] ($FF: keep; the champion's colours come back with the
+; next area). Returns A = the caller's bank (from BANK_SIG).
+SceneHook:
+        push bc
+        ld a, [LCD_MODE]                ; map screens: gold side-panel digits in
+        or a                            ; VRAM bank 1 (LCD off; nothing else
+        jr nz, .nodig                   ; uses bank-1 tile data)
+        push hl
+        ld hl, GOLD_DIGITS
+        ld de, DIGIT_VRAM
+        ld b, DIGIT_LEN
+        inc a
+        ldh [rVBK], a
+.dg:
+        ld a, [hl+]
+        ld [de], a
+        inc de
+        dec b
+        jr nz, .dg
+        xor a
+        ldh [rVBK], a
+        pop hl
+.nodig:
+        ld de, SCENES
+.l:
+        ld a, [de]
+        ld c, a
+        inc de
+        ld a, [de]
+        inc de
+        or a
+        jp z, .done                     ; hi = 0: end of table
+        cp h
+        jr nz, .next
+        ld a, c
+        cp l
+        jr z, .hit
+.next:
+        inc de
+        inc de
+        inc de
+        jr .l
+.hit:
+        ld a, [de]                      ; ROM theme -> BASE_BG
+        inc de
+        push de
+        cp $FF
+        jr z, .tint                     ; $FF: keep the theme, tint the card
+        rrca
+        rrca
+        ld b, a
+        and $C0
+        ld l, a
+        ld a, b
+        and $07
+        add high(THEME_BG_ROM)
+        ld h, a
+        ld de, BASE_BG
+        ld b, 64
+.bg:
+        ld a, [hl+]
+        ld [de], a
+        inc e
+        dec b
+        jr nz, .bg
+.reload:
+        ld a, $FE                       ; no theme: the next screen reloads its own
+        ld [CUR_THEME], a
+        ld a, [LAST_BGP]
+        cpl
+        ld [LAST_BGP], a
+        pop de
+        ld a, [de]                      ; LUT
+        inc de
+        cp $FF
+        jr z, .obj
+        add high(SCENE_LUTS)
+        ld h, a
+        ld l, 0
+        push de
+        ld de, LUT
+.lut:
+        ld a, [hl+]
+        ld [de], a
+        inc e
+        jr nz, .lut
+        pop de
+.obj:
+        ld a, [de]                      ; OBJ palette 0
+        cp $FF
+        jr z, .done
+        add a
+        add a
+        add a
+        add low(SCENE_OBJ)
+        ld l, a
+        ld h, high(SCENE_OBJ)
+        ld de, BASE_OBJ + PLAYER_PAL * 8
+        ld b, 8
+.o:
+        ld a, [hl+]
+        ld [de], a
+        inc e
+        dec b
+        jr nz, .o
+        ld a, $FF
+        ld [HERO_CACHED], a
+        ld a, [LAST_OBP0]
+        cpl
+        ld [LAST_OBP0], a
+        jr .done
+.tint:                                  ; title card: UI palette of this dungeon
+        ldh a, [HR_CARD]
+        and $0F
+        add a
+        add a
+        add a
+        ld l, a
+        ld h, high(CARD_TINT)
+        ld a, [CARD_UI]
+        ld e, a
+        ld d, high(BASE_BG)
+        ld b, 8
+.tn:
+        ld a, [hl+]
+        ld [de], a
+        inc e
+        dec b
+        jr nz, .tn
+        jr .reload
+.done:
+        pop bc
+        ld hl, BANK_SIG
+        ld c, 1
+.s:
+        ld a, [hl+]
+        cp b
+        jr z, .f
+        inc c
+        ld a, c
+        cp 8
+        jr nz, .s
+        ld c, TITLE_BANK                ; not found (never): the picture bank
+.f:
+        ld a, c
+        ret
+
 Bank8CodeEnd:
 
 ; ======================================================== WRAM bank 2 image
@@ -1119,6 +1313,7 @@ W2LcdOnBody:
         ld a, $FF
         ld [CUR_THEME], a
 .synced:
+        call SceneTramp
         ldh a, [rBGP]
         call SyncBG
         call SyncOBJ
@@ -1721,37 +1916,25 @@ W2Meta:
         ldh [rVBK], a
         ret
 
-; Logo screen (LCD_MODE 9, LCD off, bank 8 mapped): copy the branding tiles
-; into VRAM and place their cells in the $9800 map; the dissolve copies them
-; to $9C00 with the rest of the logo. Attributes follow from the logo LUT.
-Brand:
-        ld a, [LCD_MODE]
-        cp 9
-        ret nz
-        xor a
-        ldh [rVBK], a
-        ld hl, BRAND_TILES
-        ld de, BRAND_VRAM
-        ld bc, BRAND_TILES_LEN
-.t:
-        ld a, [hl+]
-        ld [de], a
-        inc de
-        dec bc
-        ld a, b
-        or c
-        jr nz, .t
-        ld hl, BRAND_CELLS
-.c:
-        ld e, [hl]
-        inc hl
-        ld a, [hl+]
+; Scene LCD-on (game sites, SVBK = 2): bank-8 SceneHook may replace the
+; theme, LUT and OBJ palette 0 for the screen being switched on (SCENES
+; table, keyed by the site's return address); the caller's ROM bank is
+; found again from its signature byte at $4001 (BANK_SIG).
+SceneTramp:
+        ldh a, [HR_LCDMODE]
         or a
-        ret z
-        ld d, a
+        ret nz                          ; title sites: no scenes
+        ld hl, sp+14                    ; [ret][ret][hl][de][bc][ret][af][rst ret]
         ld a, [hl+]
-        ld [de], a
-        jr .c
+        ld h, [hl]
+        ld l, a
+        ld a, [$4001]
+        ld b, a
+        ld a, 8
+        ld [MBC_BANK], a
+        call SceneHook                  ; A = caller's bank
+        ld [MBC_BANK], a
+        ret
 
 ; CUR_THEME was just set: OBJ palette THEME_OBJ_SLOT takes that theme's
 ; colours (royal red on the surface, steel for the dungeon black knights),

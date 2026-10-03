@@ -2,6 +2,26 @@
 
 ## [Unreleased]
 
+### Added (end game and story screens, 2026-10-02)
+
+- The ending, credits, death screen and rune shrine are colorized
+  (`reverse_engineering/notes/ending.md`): congratulations text in royal purple on vellum; the
+  throne room with stone walls, sky windows, a crimson banner with a gold ankh, a gold throne,
+  Lord British in red and carpeted steps; credits in cream on night blue; ledger-green high
+  scores; the friends-and-foes parade on pale sky paper with folk-brown sprites; the rune shrine
+  in lavender marble with golden light and a red rune; the skull in bone on blood-black with
+  white/gold stars.
+- Scene mechanism: bank-8 `SceneHook` (via WRAM2 `SceneTramp`) picks a theme, picture LUT and
+  OBJ palette 0 per LCD-on site (`bg_tile_categories.yaml scenes`, `rov_palettes.yaml scene_obj`).
+- The rune text (0:`$0AEB`) and the 2-player "Please wait" screen (0:`$14FF`) are dialog sites
+  (they showed map colours, with blue blocks behind spaces).
+- Dungeon title cards are tinted per dungeon (`rov_palettes.yaml card_tints`); the Cavern of
+  Hatred card is unchanged.
+- The side-panel gold amount is bright gold with a dark shadow on map screens (digits redrawn
+  into VRAM bank 1).
+- Not handled: 2-player-only screens (game over, score, link "Please wait"), which keep the
+  default text colours.
+
 ### Added (champion colours, 2026-10-02)
 
 - Each champion has its own sprite colours, picked from `$D133` (0 Mariah, 1 Iolo, 2 Dupre,

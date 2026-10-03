@@ -36,7 +36,9 @@ class TablesTest(unittest.TestCase):
                          (64 * dx_patch.ROM_THEMES, 8 * dx_patch.ROM_THEMES, dx_patch.ROM_THEMES))
         self.assertEqual(len(t.mp_idx), dx_patch.ROM_THEMES)
         self.assertTrue(all(v < dx_patch.MP_SETS for v in t.mp_idx))
-        self.assertTrue(all(v < 8 for v in t.metapal + t.objpal + t.lut_game + t.lut_title + t.lut_logo))
+        self.assertTrue(all(v < 8 for v in t.metapal + t.objpal + t.lut_title + t.lut_logo))
+        # LUT_GAME: palette 0-7, plus attribute bit 3 (VRAM bank 1) on the gold panel digits only
+        self.assertTrue(all(v & ~0x0F == 0 and (v & 8 == 0 or i in GL.DIGIT_TILES) for i, v in enumerate(t.lut_game)))
         self.assertTrue(all(v < themes for v in t.area_theme))
         self.assertEqual(t.bg_themes[:64], t.base_bg)
 
@@ -165,8 +167,9 @@ class TablesTest(unittest.TestCase):
         self.assertEqual(missing, [])
         # gold colours the side-panel stars and coin: it stays gold in every theme
         gold = list(self.inputs["palettes"]["bg_palettes"]).index("gold")
+        scene_themes = {spec.get("theme") for spec in (bg.get("scenes") or {}).values()}
         for i, n in enumerate(names):
-            if n in ("entrance", "menu"):
+            if n in ("entrance", "menu") or n in scene_themes:        # no side panel on these screens
                 continue
             r, g, b = (lambda v: (v & 31, (v >> 5) & 31, v >> 10))(int.from_bytes(t.theme_bg_rom[64 * i + 8 * gold + 2:64 * i + 8 * gold + 4], "little"))
             self.assertTrue(r > 20 and g > 15 and b < 14, (n, r, g, b))
@@ -193,6 +196,108 @@ class TablesTest(unittest.TestCase):
         bg["area_themes"] = dict(bg["area_themes"], extra={"areas_alt": [0x46]})
         with self.assertRaises(dx_patch.PatchError):
             dx_patch.build_tables(self.inputs["palettes"], bg, self.inputs["obj_categories"])
+
+    def _tables(self, pal=None, bg=None):
+        from ultima_rov_dx import dx_patch
+        return dx_patch.build_tables(pal or self.inputs["palettes"], bg or self.inputs["bg_categories"],
+                                     self.inputs["obj_categories"])
+
+    def _scenes(self, t):
+        ent = []
+        for i in range(0, len(t.scenes) - 2, 5):
+            lo, hi, theme, lut, obj = t.scenes[i:i + 5]
+            ent.append((lo | hi << 8, theme, lut, obj))
+        self.assertEqual(t.scenes[-2:], b"\0\0")
+        return ent
+
+    def test_scene_tables(self):
+        # ending, credits, death screen, rune shrine...: one SCENES entry per LCD-on site
+        from ultima_rov_dx import dx_patch
+        t = self._tables()
+        ent = self._scenes(t)
+        self.assertEqual(len(ent), len(t.scene_names))
+        scenes = self.inputs["bg_categories"]["scenes"]
+        self.assertTrue({"rune_shrine", "ending_text", "ending_throne", "death", "credits", "high_scores",
+                         "parade", "title_card"} <= set(scenes))
+        sites = [tuple(s) for spec in scenes.values() for s in spec["sites"]]
+        self.assertEqual(len(sites), len(ent))
+        self.assertEqual(len(set(a for _b, a in sites)), len(sites), "return addresses must be unique")
+        for (bank, addr), (ret, theme, lut, obj), name in zip(sites, ent, t.scene_names):
+            self.assertIn((bank, addr), GL.GAME_LCD_ON_SITES)
+            self.assertNotIn((bank, addr), GL.MAP_LCD_ON_SITES)
+            self.assertEqual(ret, addr + 1, name)          # rst $28 at the site returns to the mode byte
+            if name == "title_card":
+                self.assertEqual((theme, lut, obj), (0xFF, 0xFF, 0xFF))
+                continue
+            self.assertEqual(t.theme_names[theme], scenes[name]["theme"])
+            self.assertNotIn(theme, t.area_theme, "scene themes are not map themes")
+            self.assertTrue(lut == 0xFF or lut < len(t.scene_luts) // 256)
+            self.assertTrue(obj == 0xFF or obj < len(t.scene_obj) // 8)
+        self.assertLessEqual(len(t.scene_luts) // 256, dx_patch.MAX_SCENE_LUTS)
+        self.assertEqual(len(t.scene_luts) % 256, 0)
+        named = dict(zip(t.scene_names, ent))
+        self.assertNotEqual(named["ending_throne"][2], 0xFF)           # throne room: own picture LUT
+        self.assertNotEqual(named["death"][3], 0xFF)                   # death screen: star sprites
+        # the text screens after a rune and the 2-player wait screen are dialogs (text + side panel)
+        self.assertLessEqual({(0, 0x0AEB), (0, 0x14FF)}, GL.DIALOG_LCD_ON_SITES)
+
+    def test_scene_errors(self):
+        from ultima_rov_dx import dx_patch
+        bg0 = self.inputs["bg_categories"]
+        def bad(scenes=None, pal=None):
+            bg = dict(bg0)
+            if scenes is not None:
+                bg["scenes"] = scenes
+            with self.assertRaises(dx_patch.PatchError):
+                self._tables(pal=pal, bg=bg)
+        sc = bg0["scenes"]
+        bad(dict(sc, x={"sites": [[7, 0x4A40]], "theme": "nope"}))                      # unknown theme
+        bad(dict(sc, x={"sites": [[0, 0x23E2]], "theme": "royal"}))                     # map site
+        bad(dict(sc, x={"sites": [[7, 0x4A40]], "theme": "royal"}))                     # duplicate site
+        bad(dict(sc, x={"sites": [[7, 0x4AE3]], "theme": "cavern"}))                    # area theme
+        bad(dict(sc, title_card={"sites": [[7, 0x4619]], "tint": True, "theme": "royal"}))
+        bad(dict(sc, title_card={"sites": [[7, 0x4A40]], "tint": True}))                # not a card site
+        pal = dict(self.inputs["palettes"])
+        pal["scene_obj"] = dict(pal["scene_obj"], unused={"colors": ["#FFFFFF", "#C0C0C0", "#808080", "#000000"]})
+        bad(pal=pal)                                                                    # unused scene_obj
+        pal = dict(self.inputs["palettes"], card_tints={16: {"colors": ["#000000"] * 4}})
+        bad(pal=pal)                                                                    # card number > 15
+
+    def test_card_tints(self):
+        # card number (HRAM $FF8F) -> UI palette; numbers without a tint keep the entrance card
+        t = self._tables()
+        self.assertEqual(len(t.card_tint), 128)
+        names = self.inputs["palettes"]["bg_themes"]
+        ent = t.theme_names.index(self.inputs["bg_categories"]["entrance_theme"])
+        entrance_ui = t.theme_bg_rom[64 * ent + 8 * t.card_ui:64 * ent + 8 * t.card_ui + 8]
+        cards = [t.card_tint[8 * i:8 * i + 8] for i in range(16)]
+        self.assertEqual(cards[1], entrance_ui)                       # the Cavern of Hatred: unchanged
+        tinted = sorted(self.inputs["palettes"]["card_tints"])
+        self.assertEqual(tinted, [2, 3, 4, 5, 6, 7, 9])
+        self.assertEqual(len({cards[i] for i in tinted} | {entrance_ui}), len(tinted) + 1)
+        self.assertIn("entrance", names)
+
+    def test_gold_digits(self):
+        # side-panel digits: map LUT selects VRAM bank 1 on the gold palette; the
+        # redrawn glyphs are colour 1 with a colour-3 shadow (never colour 2)
+        from ultima_rov_dx import dx_patch
+        t = self._tables()
+        gold = dx_patch.P.names(self.inputs["palettes"], "bg_palettes").index("gold")
+        self.assertEqual(t.digit_pal, gold)
+        self.assertTrue(all(t.lut_game[i] == gold | 8 for i in GL.DIGIT_TILES))
+        if not ROM.is_file():
+            self.skipTest("original ROM not present")
+        orig = ROM.read_bytes()
+        g = dx_patch.gold_digits(orig)
+        self.assertEqual(len(g), 16 * len(GL.DIGIT_TILES))
+        font = orig[GL.file_offset(*GL.DIGIT_FONT):][:len(g)]
+        for i in range(0, len(g), 2):
+            lo, hi = g[i], g[i + 1]
+            self.assertEqual(hi & ~lo, 0)                             # no colour 2
+            self.assertEqual(lo & ~hi, font[i])                       # colour 1 = the original glyph
+        off = GL.file_offset(*GL.DIGIT_FONT)
+        with self.assertRaises(dx_patch.PatchError):              # not a solid colour-3 glyph: refuse
+            dx_patch.gold_digits(orig[:off] + b"\xff\x00" + orig[off + 2:])
 
     def test_hero_palettes(self):
         # one OBJ palette 0 per champion ($D133 order) + portrait colours for BG palettes 1-4
@@ -409,6 +514,100 @@ class RealRomBuildTest(unittest.TestCase):
         for hero, p in enumerate(pals):
             self.assertEqual(p[:8], t.hero_obj[8 * hero:8 * hero + 8], f"champion {hero}")
         self.assertEqual(len({p[8:] for p in pals}), 1, "monster/NPC palettes must not depend on the champion")
+
+    def test_scene_tables_in_rom(self):
+        import build_dx
+        from ultima_rov_dx import dx_patch
+        from ultima_rov_dx.sm83asm import assemble
+        t = dx_patch.build_tables(*(build_dx.load_inputs()[k] for k in ("palettes", "bg_categories", "obj_categories")))
+        _, syms = assemble([("dx.asm", dx_patch._asm_source())])
+        def at(name, n):
+            off = GL.file_offset(GL.DX_RUNTIME_BANK, syms[name])
+            return self.out[off:off + n]
+        self.assertEqual(at("SCENES", len(t.scenes)), t.scenes)
+        self.assertEqual(at("SCENE_LUTS", len(t.scene_luts)), t.scene_luts)
+        self.assertEqual(at("SCENE_OBJ", len(t.scene_obj)), t.scene_obj)
+        sig = at("BANK_SIG", 7)
+        self.assertEqual(sig, bytes(self.original[b * 0x4000 + 1] for b in range(1, 8)))
+        self.assertEqual(len(set(sig)), 7)
+        self.assertEqual(at("CARD_TINT", 128), t.card_tint)
+        self.assertEqual(at("CARD_UI", 1)[0], (syms["BASE_BG"] + 8 * t.card_ui) & 0xFF)
+        self.assertEqual(at("GOLD_DIGITS", 160), dx_patch.gold_digits(self.original))
+        self.assertEqual(syms["DIGIT_VRAM"], 0x8E80)                  # tile $E8, signed tile data
+        self.assertEqual(syms["HR_CARD"], 0xFF8F)
+        # the card routine stores the card number in $FF8F before its LCD-on
+        self.assertEqual(self.original[GL.file_offset(7, 0x4608):][:2], b"\xe0\x8f")
+
+    def test_ending_scenes_colour(self):
+        # all eight runes ($D135 = $FF) on the overworld: the ending text, the throne room and
+        # the credits each get their scene theme, and the game carries on into the attract loop
+        try:
+            from pyboy import PyBoy
+        except ImportError:
+            self.skipTest("pyboy not installed (uv sync --extra emu)")
+        import tempfile
+        import build_dx
+        import capture_screens as cs
+        from ultima_rov_dx import dx_patch
+        t = dx_patch.build_tables(*(build_dx.load_inputs()[k] for k in ("palettes", "bg_categories", "obj_categories")))
+
+        def colours(pb):
+            out = set()
+            for i in range(0, 64, 2):
+                pb.memory[0xFF68] = i
+                lo = pb.memory[0xFF69]
+                pb.memory[0xFF68] = i + 1
+                out.add(lo | pb.memory[0xFF69] << 8)
+            return out
+
+        def theme_colours(name):
+            k = t.theme_names.index(name)
+            rom = t.theme_bg_rom[64 * k:64 * k + 64]
+            return {rom[i] | rom[i + 1] << 8 for i in range(0, 64, 2)}
+
+        seen = {}
+        with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as d:
+            rom = Path(d) / "dx.gbc"
+            rom.write_bytes(self.out)
+            pb = PyBoy(str(rom), window="null", cgb=True, sound_emulated=False)
+            pb.set_emulation_speed(0)
+            hit = []
+            pb.hook_register(3, cs.CHARACTER_SELECT_LCD_ON, lambda _c: hit.append(1), None)
+            for _scene, actions in cs.ROUTE[:6]:
+                for button, hold, after in actions:
+                    if button == "until":
+                        for _ in range(60):
+                            pb.button_press(hold); pb.tick(6, True); pb.button_release(hold)
+                            for _ in range(54):
+                                pb.tick(1, True)
+                                if hit:
+                                    break
+                            if hit:
+                                break
+                        pb.tick(54, True)
+                        continue
+                    if button:
+                        pb.button_press(button); pb.tick(hold, True); pb.button_release(button)
+                    pb.tick(max(after, 1), True)
+            ev = []
+            for site in ((7, 0x4A40), (7, 0x4AE3), (7, 0x4C32), (7, 0x4C78)):
+                pb.hook_register(site[0], site[1], lambda _c, s=site: ev.append(s), None)
+            pb.memory[0xD135] = 0xFF
+            for f in range(3000):
+                pb.tick(1, True)
+                if ev and ev[-1] not in seen:
+                    pb.tick(30, True)
+                    seen[ev[-1]] = colours(pb)
+                if ev and ev[-1] in ((7, 0x4A40), (7, 0x4AE3)) and f % 60 == 59:   # the ending waits for a button;
+                    pb.button_press("a"); pb.tick(6, True); pb.button_release("a")  # the attract loop runs alone
+                if (7, 0x4C78) in seen:
+                    break
+            pb.stop(save=False)
+        self.assertEqual(set(seen), {(7, 0x4A40), (7, 0x4AE3), (7, 0x4C32), (7, 0x4C78)})
+        for site, theme in (((7, 0x4A40), "royal"), ((7, 0x4AE3), "throne"), ((7, 0x4C32), "credits"),
+                            ((7, 0x4C78), "credits")):
+            self.assertLessEqual(seen[site], theme_colours(theme), f"{site}: {theme}")
+            self.assertGreaterEqual(len(seen[site]), 2)
 
     def test_ips_roundtrip(self):
         ips = patch_builder.build_ips_patch(self.original, self.out)
