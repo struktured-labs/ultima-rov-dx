@@ -56,6 +56,7 @@ MBC_BANK        equ $2100
 HR_DISPATCH     equ $FF98   ; bank-8 far-call index
 HR_LCDMODE      equ $FF99   ; 0 = game site (mode byte decides map/text), 1 = castle title, 9 = logo
 HR_SLOTG        equ $FF9A   ; scratch: graphic index in Slot
+HR_VBLANK       equ $FF8E   ; game: set by its VBlank interrupt, cleared at its idle waits
 HR_CGB          equ $FF9B   ; 1 = CGB (set by Boot on every power-up; KEY1 is not
                             ;     a reliable DMG test on all emulators)
 
@@ -103,6 +104,8 @@ MONSTER_PAL     equ 1       ; OBJ palettes 1-3: monster tiers base / stronger / 
 ENTRY_TIER      equ $DB10   ; 40: tier per OAM entry (TierEnd, from REC_TIER and [record+3]; read by TierPal)
 ITEM_IDS        equ $C5B0   ; WRAM0: item id of floor-item slot k (BG tiles $40+4k-$43+4k; $FF = empty)
 ITEM_CACHE      equ $D7D0   ; 15: ITEM_IDS as last coloured (low byte = low(ITEM_IDS) + $20)
+PREP_DONE       equ $D7DF   ; 1 = Prep8 coloured the shadow OAM since the last DMA (the hook skips its OAM pass)
+PREP_LY         equ 128     ; Prep8 runs only below this line (or past 145): done before VBlank
 FLOOR_TILES     equ $40
 FLOOR_SLOTS     equ 15      ; bank 0 $1450/$2721: slots $C5B0-$C5BE -> tiles $40-$7B
 W2C_ORG         equ $DB40   ; WRAM2 code section wram2c (past the longest attribute program, $DB0F)
@@ -122,6 +125,7 @@ MP_SETS         equ 16          ; metatile palette sets in METAPAL (themes share
 AREA_FLAG       equ $D13E       ; WRAM bank 1: second area set (Injustice, Dishonor, Pride, Abyss; bank 0 $2355)
 HELPER          equ $FFF3   ; 12 bytes of HRAM: reads WRAM bank 1 for WRAM2 code (installed only while used)
 CURSOR_PAL      equ 7
+PORTRAIT_PAL    equ 5           ; BG palette `earth`: start-menu portrait (no item uses it, see item_palettes)
 PLAYER_PAL      equ 0
 OBP1_PAL        equ 7
 
@@ -182,8 +186,15 @@ Far8:                                   ; A = routine index, caller AF on stack
 
 section rst20, $0020, $0020            ; rst $20: logo dissolve copy (bank7:$4BD1)
         jp DissolveCopy
+section rst20b, $0023, $0023           ; rst $20 padding
+PrepWait:                               ; 0:$175A (animated-tile copy): prep,
+        call PrepTramp                  ; then the original wait for LY 145
+        jr PrepWait2
 section rst28, $0028, $0028            ; rst $28: LCD on (game screens)
         jp LcdOnGame
+section rst28b, $002B, $002B           ; rst $28 padding
+PrepWait2:
+        jp $02DC                        ; wait for LY 145
 section rst30, $0030, $0030            ; rst $30: LCD on (title screens)
 LcdOnTitle:                             ; A = new LCDC value; LUT mode from it:
         push af                         ; $81 (castle, map $9800) -> 1
@@ -192,6 +203,39 @@ LcdOnTitle:                             ; A = new LCDC value; LUT mode from it:
 HudExit:                                ; $0035: back from W2Hud (A = 1)
         ldh [rSVBK], a
         ret
+
+; Idle-wait hook: the main loop's halt wait ($1EE7 `xor a; ldh [$FF8E],a`)
+; and $02EA (wait for the VBlank flag: `ldh a,[rLCDC]; or a`, its `ret z`
+; stays) call PrepTramp. Every exit clears HR_VBLANK (the halt wait needs it;
+; $02EA clears it on its own) and returns A / Z of the LCDC test. The wait
+; for LY 145 ($02DC) itself is not hooked: the title code calls it
+; back-to-back inside line 145, where the original returns at once; any hook
+; overhead misses LY 145 and waits a whole frame (title sequence ~13%
+; slower). Only its call in the animated-tile copy (0:$175A, then DMA and
+; the VRAM copy) goes through PrepWait. Lives in interrupt-vector filler
+; the game never executes: the timer and joypad interrupts are never enabled
+; (IE = $0B), and the VBlank / STAT / serial vectors are 3-byte jumps
+; followed by $FF padding.
+section vec_prep_lcd, $0043, $0043     ; VBlank vector padding
+PrepLcd:                                ; DMG
+        xor a
+        ldh [HR_VBLANK], a
+        jr PrepLcd2
+section vec_prep_lcd2, $004B, $004B    ; STAT vector padding
+PrepLcd2:                               ; the replaced test (A = LCDC, Z = off)
+        ldh a, [rLCDC]
+        or a
+        ret
+section vec_prep, $0051, $0051         ; timer vector (never enabled), after its reti
+PrepTramp:
+        ldh a, [HR_CGB]                 ; 1 = CGB
+        add a                           ; A = 2, Z = DMG
+        jr z, PrepLcd
+        jr PrepTramp2
+section vec_prep_b, $005B, $005B       ; serial vector padding (after jp $C550)
+PrepTramp2:
+        ldh [rSVBK], a                  ; 2 (main code runs with SVBK = 1)
+        jp W2Prep                       ; returns through HudExit (SVBK = 1)
 
 section bank0_c, $0061, $0061           ; $0061-$00FF (159 bytes)
 AttrRun:                                ; end of tile program (SP = VRAM, DI)
@@ -337,6 +381,12 @@ section patch_hud_icons, $04E6, $04E6   ; $04E6: call $01A9; ld a,1; ld [$2100],
 section patch_dissolve, $1CBD1, $4BD1   ; bank7:$4BD1
         rst $20
         nop
+section patch_idle_vbl, $02EA, $02EA    ; wait for the VBlank flag
+        call PrepTramp
+section patch_anim_wait, $175A, $175A  ; animated tiles: wait LY 145, DMA, copy
+        call PrepWait                   ; (was call $02DC)
+section patch_idle_halt, $1EE7, $1EE7   ; main loop, before its halt wait
+        call PrepTramp                  ; (was xor a; ldh [$FF8E],a)
 
 ; ======================================================== bank 8 (ROM)
 section bank8, $20000, $4000
@@ -911,6 +961,12 @@ SceneHook:
         jr .reload
 .done:
         pop bc
+; B = signature byte read at $4001 before bank 8 was mapped: A = that bank.
+SigBank:
+        ld a, [$4001]                   ; bank 8 itself (nested call from a
+        cp b                            ; bank-8 routine interrupted by VBlank)
+        ld a, 8
+        ret z
         ld hl, BANK_SIG
         ld c, 1
 .s:
@@ -926,7 +982,176 @@ SceneHook:
         ld a, c
         ret
 
+; Rebuild ENTRY_TIER from the object records (WRAM1 [record+3] = shadow-OAM
+; offset of its two 8x16 entries; free records hold $FF). Entered from the
+; WRAM2 routine TierFar with SVBK = 2, B = caller's $4001 signature, C = mode:
+; 0 (after the DMA): entries without a record are tier 0 if visible in the
+; shadow OAM now, else unknown (0, TierPal rebuilds when one shows up);
+; $80 (TierPal): every entry known. Known = bit 7, tier = bits 0-1.
+; Returns A = caller's bank, SVBK = 2.
+TierScan8:
+        bit 0, c
+        jp nz, HeroMenu8
+        bit 1, c
+        jp nz, Prep8
+        bit 2, c
+        jp nz, FillAttrs8
+        call TierCore
+        jp SigBank
+TierCore:
+        push bc
+        ld hl, ENTRY_TIER
+        ld de, $C000
+.c:
+        ld a, c
+        or a
+        jr nz, .f
+        ld a, [de]                      ; Y = 0: slot empty
+        or a
+        jr z, .f
+        ld a, $80
+.f:
+        ld [hl+], a
+        ld a, e
+        add 4
+        ld e, a
+        cp $A0
+        jr nz, .c
+        ld hl, $D003
+        ld de, REC_TIER
+.r:
+        ld a, 1
+        ldh [rSVBK], a
+        ld b, [hl]                      ; [record+3]
+        inc a
+        ldh [rSVBK], a
+        ld a, b
+        or a
+        jr z, .n                        ; not drawn
+        cp $A0
+        jr nc, .n                       ; free ($FF)
+        and $FC                         ; (not always a multiple of 4 while
+        rrca                            ; the record is being set up)
+        rrca
+        add low(ENTRY_TIER)
+        ld c, a
+        ld a, [de]
+        or $80
+        push hl
+        ld l, c
+        ld h, high(ENTRY_TIER)
+        ld [hl+], a
+        ld [hl], a
+        pop hl
+.n:
+        inc e
+        ld a, l
+        add 16
+        ld l, a
+        jr nc, .r
+        pop bc
+        ret
+; C = 1 (SetThemeM): BG palette PORTRAIT_PAL = HERO_BG colours of the
+; champion in INV+$33 (= WRAM1 $D133, ReadInv just ran). CUR_THEME = $FF:
+; the next screen reloads its theme, so the change stays in the menu.
+HeroMenu8:
+        ld a, [LCD_BYTE]                ; only on the start menu's LCD-on
+        cp $64
+        jp nz, SigBank
+        ld a, [INV+$33]
+        and 3
+        add a
+        add a
+        add a
+        add low(HERO_BG)
+        ld e, a
+        ld d, high(HERO_BG)
+        ld hl, BASE_BG + PORTRAIT_PAL * 8
+        ld c, 8
+.l:
+        ld a, [de]
+        ld [hl+], a
+        inc e
+        dec c
+        jr nz, .l
+        ld a, $FF
+        ld [CUR_THEME], a
+        ld a, [LAST_BGP]
+        cpl
+        ld [LAST_BGP], a
+        jp SigBank
+
 Bank8CodeEnd:
+
+; bank 8 $5400-$55FF (between the WRAM2 image and PICTURE_LUT)
+section bank8b, $21400, $5400
+; C = 2 (W2Prep: the game's idle waits $1EE7 / $02EA, main code, outside
+; VBlank, shadow OAM final for the next DMA): the sprite palette bits go into
+; the shadow OAM, so the DMA itself carries them and the VBlank hook skips
+; its OAM pass (the game's own VBlank VRAM work keeps its time). Map screens
+; first rebuild every entry's tier from the records (no unknown entries) and
+; colour dropped floor items. Skipped when it could run into VBlank (the
+; hook then colours OAM as before).
+Prep8:
+        push bc
+        xor a
+        ldh [HR_VBLANK], a
+        ldh a, [rLCDC]
+        add a
+        jr nc, .x                       ; LCD off
+        ldh a, [rLY]
+        cp PREP_LY
+        jr c, .go
+        cp 146
+        jr c, .x                        ; too close to VBlank / LY 145 target
+.go:
+        ld hl, $C003                    ; clear the palette bits: all recomputed
+        ld b, 40
+.z:
+        ld a, [hl]
+        and $F8
+        ld [hl+], a
+        inc l
+        inc l
+        inc l
+        dec b
+        jr nz, .z
+        ld a, [LCD_MODE]
+        or a
+        jr nz, .pal
+        ld c, $80
+        call TierCore
+        call LiveFloor
+.pal:
+        ld hl, $C000
+        call OamPass
+        ld a, 1
+        ld [PREP_DONE], a
+.x:
+        pop bc
+        jp SigBank
+; C = 4 (SetTheme, LCD off): recompute attributes of both BG maps from
+; their tile ids.
+FillAttrs8:
+        xor a                           ; full recompute: no sweep needed
+        ld [SWEEP_HI], a
+        ld hl, $9800
+        ld d, high(LUT)
+.loop:
+        xor a
+        ldh [rVBK], a
+        ld e, [hl]
+        inc a
+        ldh [rVBK], a
+        ld a, [de]
+        ld [hl+], a
+        ld a, h
+        cp $A0
+        jr nz, .loop
+        xor a
+        ldh [rVBK], a
+        jp SigBank
+Bank8bEnd:
 
 ; ======================================================== WRAM bank 2 image
 
@@ -938,7 +1163,12 @@ W2AfterDma:
         push bc
         push de
         push hl
-        call W2AfterDmaT                ; W2AfterDmaBody, then the OAM entry tiers
+        call W2AfterDmaBody
+        ld hl, PREP_DONE
+        ld a, [hl]
+        ld [hl], 0
+        or a
+        call z, W2AfterDmaT             ; not prepped: the OAM entry tiers here
         pop hl
         pop de
         pop bc
@@ -959,6 +1189,8 @@ W2AfterDmaBody:
         ldh a, [rLY]
         cp 144
         ret c                           ; not in VBlank: try next frame
+        cp 146                          ; a late DMA (bank 0 $1717 at LY 145:
+        ret nc                          ; its tile copy follows) keeps the time
         di
         call HelperOn
         ld hl, $D125
@@ -1044,13 +1276,24 @@ W2Pal:
 .obj:
         call SyncOBJ
 .oam:
+        ld a, [PREP_DONE]               ; Prep8 coloured the shadow OAM at the
+        or a                            ; game's idle wait: the DMA carried it
+        ret nz
         ld hl, $FE00
+; HL = OAM page: $FE00 after the DMA (fallback), $C000 from Prep8 (which
+; clears the palette bits first). An entry whose palette bits are already
+; set came from Prep8 through the DMA and is kept.
+OamPass:
         ld b, 40
 .o:
         ld a, [hl+]                     ; Y
         or a
         jr z, .hide
         inc l                           ; skip X
+        inc l
+        ld a, [hl-]                     ; attribute; HL -> tile
+        and 7
+        jr nz, .kept
         ld a, [hl+]                     ; tile; HL -> attribute
         sub $80
         jr c, .player
@@ -1123,6 +1366,7 @@ W2Pal:
         ret
 .hide:
         inc l
+.kept:
         inc l
         inc l
         dec b
@@ -1311,6 +1555,8 @@ W2LcdOnBody:
         ld a, [ENTRANCE_THEME]
 .set:
         call SetTheme
+        ld c, 1                         ; start-menu portrait colours (bank 8
+        call TierFar                    ; HeroMenu8 checks LCD_BYTE $64)
         ld a, [LCD_BYTE]                ; champion select: BG palettes 1-4 =
         cp $7F                          ; the four portraits (HERO_BG); the
         jr nz, .synced                  ; next screen reloads its theme
@@ -1340,7 +1586,8 @@ W2LcdOnBody:
         ld a, [FLAT_BG+1]
         ldh [rBCPD], a
 .attrs:
-        call FillAttrs
+        ld c, 4                         ; FillAttrs8 (bank 8)
+        call TierFar
         ld a, [LCD_MODE]
         cp 3
         ret nz
@@ -1366,26 +1613,6 @@ W2LcdOnBody:
         ldh [rVBK], a
         ld a, TITLE_BANK
         ld [MBC_BANK], a
-        ret
-; Recompute attributes of both BG maps from their tile ids (LCD off).
-FillAttrs:
-        xor a                           ; full recompute: no sweep needed
-        ld [SWEEP_HI], a
-        ld hl, $9800
-        ld d, high(LUT)
-.loop:
-        xor a
-        ldh [rVBK], a
-        ld e, [hl]
-        inc a
-        ldh [rVBK], a
-        ld a, [de]
-        ld [hl+], a
-        ld a, h
-        cp $A0
-        jr nz, .loop
-        xor a
-        ldh [rVBK], a
         ret
 
 ; A = area theme. Loads its BG base colours and forces a CRAM resync at
@@ -1415,7 +1642,7 @@ SetTheme:
         ld a, [LAST_BGP]
         cpl
         ld [LAST_BGP], a
-        jp ThemeObj                     ; and the theme's colours of OBJ palette THEME_OBJ_SLOT
+        ret                             ; (OBJ palette 5 no longer follows the theme: royal everywhere)
 
 ; Rebuild the live LUT for LCD_MODE.
 BuildLut:
@@ -1623,7 +1850,7 @@ ItemPal:
 ; LUT[$F8-$FB] = palette of the A item, LUT[$FC-$FF] = B item.
 HudItemsLut:
         ld a, [INV+$26]
-        call ItemPal
+        call IconPal                    ; ItemPal, on the panel's colour 0
         ld hl, LUT+$F8
         ld [hl+], a
         ld [hl+], a
@@ -1631,7 +1858,7 @@ HudItemsLut:
         ld [hl+], a
         push hl
         ld a, [INV+$25]
-        call ItemPal
+        call IconPal
         pop hl
         ld [hl+], a
         ld [hl+], a
@@ -1949,29 +2176,9 @@ SceneTramp:
         ld [MBC_BANK], a
         ret
 
-; CUR_THEME was just set: OBJ palette THEME_OBJ_SLOT takes that theme's
-; colours (all royal now: obj_themes is empty, sprites never follow the area),
-; resynced at the next OAM DMA.
-ThemeObj:
-        ld a, [CUR_THEME]
-        add a
-        add a
-        add a
-        add low(THEME_OBJ)
-        ld e, a
-        ld d, high(THEME_OBJ)
-        ld hl, BASE_OBJ + THEME_OBJ_SLOT * 8
-        ld b, 8
-.c:
-        ld a, [de]
-        ld [hl+], a
-        inc e
-        dec b
-        jr nz, .c
-        ld a, [LAST_OBP0]
-        cpl
-        ld [LAST_OBP0], a
-        ret
+; LCD-on, after BuildLut: SetTheme, then on the start menu ($64) the current
+; champion's portrait colours in BG palette PORTRAIT_PAL (bank 8 HeroMenu8;
+; BuildLut's ReadInv has refreshed INV+$33 = WRAM1 $D133).
 ; Side-panel refresh step (from the 4-cell loop, stack: [loop][bc]): draw
 ; cell A only while LY is still in VBlank, else end the batch here and
 ; resume from this cell next frame (VRAM writes in mode 3 are lost).
@@ -1986,6 +2193,28 @@ HudCellLy:
         ld a, c
         ld [LIVE_R], a
         ret
+; PrepTramp (idle waits, SVBK = 2): Prep8 in bank 8, then the original
+; LCDC test for the caller's `ret z`; back to SVBK 1 through HudExit.
+; The LY window test comes first, so a wait entered just before VBlank
+; costs only a few cycles more than the original.
+W2Prep:
+        ldh a, [rLY]
+        sub PREP_LY                     ; LY in [PREP_LY, 146): skip
+        cp 146 - PREP_LY
+        jr c, .skip
+        push bc                         ; (TierFar keeps DE)
+        push hl
+        ld c, 2
+        call TierFar
+        pop hl
+        pop bc
+.skip:
+        xor a
+        ldh [HR_VBLANK], a
+        ldh a, [rLCDC]
+        or a
+        ld a, 1
+        jp HudExit
 W2bEnd:
 
 ; ======================================================== WRAM bank 2, $DB40-$DBFF
@@ -2062,7 +2291,7 @@ LiveFloor:
 ; (MONSTER_PAL) get MONSTER_PAL + the entry's tier. HL = attribute byte.
 TierPal:
         cp MONSTER_PAL
-        jp nz, W2Pal.apply
+        jp nz, OamPass.apply
         ld a, l
         rrca
         rrca
@@ -2071,59 +2300,72 @@ TierPal:
         ld e, a
         ld d, high(ENTRY_TIER)
         ld a, [de]
+        bit 7, a
+        jr nz, .k
+        push hl                         ; unknown: the entry's record just got
+        push bc                         ; this OAM slot (spawned, back on screen,
+        ld c, $80                       ; moved): rebuild from the records now
+        call TierFar
+        pop bc
+        pop hl
+        ld a, [de]
+.k:
         and 3
         add MONSTER_PAL
-        jp W2Pal.apply
+        jp OamPass.apply
 
-; After every DMA: W2AfterDmaBody, then (map screens) rebuild ENTRY_TIER,
-; which W2Pal uses right after the next DMA (OAM writes must land in
-; VBlank; record -> OAM offsets are stable from frame to frame). Runs on
+; A = item id: A = BG palette of its side-panel A/B icon. ItemPal, unless
+; that palette's colour 0 differs from the panel's (palette 0) on this
+; screen (water / grass items on the overworld): then the panel palette,
+; so the icon never sits on a tinted square. Clobbers DE, HL.
+IconPal:
+        call ItemPal
+        ld e, a
+        add a
+        add a
+        add a
+        or low(BASE_BG)
+        ld l, a
+        ld h, high(BASE_BG)
+        ld a, [hl+]
+        ld d, [hl]
+        ld l, low(BASE_BG)
+        cp [hl]
+        jr nz, .r
+        inc l
+        ld a, d
+        cp [hl]
+.r:
+        ld a, e
+        ret z
+        xor a
+        ret
+
+; C = TierScan8 mode: run it in bank 8 and map the caller's bank back.
+TierFar:
+        push de
+        ld a, [$4001]
+        ld b, a
+        ld a, 8
+        ld [MBC_BANK], a
+        call TierScan8
+        ld [MBC_BANK], a
+        pop de
+        ret
+
+; After every DMA: W2AfterDmaBody, then (map screens) rebuild ENTRY_TIER
+; (TierScan8, bank 8), which W2Pal uses right after the next DMA. Runs on
 ; every exit of the body: its live refresh is skipped whenever W2Pal ends
-; after VBlank (busy screens), the tiers must not be. Each live object
-; record draws two 8x16 entries from [record+3]; both take the record's
-; REC_TIER (0 included, so no clearing is needed).
+; after VBlank (busy screens), the tiers must not be. An entry whose slot
+; is empty now is left unknown: if a monster shows up in it next frame,
+; TierPal rebuilds the table first, so no frame shows the base colour.
 W2AfterDmaT:
-        call W2AfterDmaBody
         ld a, [LCD_MODE]
         or a
         ret nz
         call LiveFloor
-        di
-        call HelperOn
-        ld de, REC_TIER
-.r:
-        ld a, e
-        swap a
-        and $F0
-        ld l, a
-        ld h, $D0
-        call HELPER                     ; A = [record+0] ($FF = free), HL -> +1
-        inc a
-        jr z, .n
-        inc l
-        inc l
-        call HELPER                     ; A = [record+3]: its shadow-OAM offset
-        or a
-        jr z, .n                        ; not drawn
-        cp $A0
-        jr nc, .n
-        and $FC                         ; (not always a multiple of 4 while
-        rrca                            ; the record is being set up)
-        rrca
-        add low(ENTRY_TIER)
-        ld l, a
-        ld h, high(ENTRY_TIER)
-        ld a, [de]
-        ld [hl+], a
-        ld [hl], a
-.n:
-        inc e
-        ld a, e
-        cp low(REC_TIER) + 16
-        jr nz, .r
-        call HelperOff
-        ei
-        ret
+        ld c, 0
+        jp TierFar
 
 ; LCD-on: no stale tiers on the new screen.
 BuildLutT:

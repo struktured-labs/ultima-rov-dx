@@ -2,6 +2,28 @@
 
 ## [Unreleased]
 
+### Fixed (hardware timing, monster flash, panel icons, 2026-10-03)
+
+- VBlank budget on real hardware: sprite palettes are now computed at the game's idle waits
+  (halt wait 0:`$1EE7`, VBlank-flag wait 0:`$02EA`, animated-tile wait 0:`$175A`) into the shadow OAM, so the OAM DMA carries them
+  and the VBlank hook no longer overruns. Instrumented SameBoy: blocked VRAM writes 3,184 → 0,
+  blocked OAM writes 436 → 36 (2 title frames), palette writes 0 (`reverse_engineering/notes/hardware_timing.md`).
+  This fixes torn animated tiles (the game's 0:`$176A` copy) and one-frame wrong sprite palettes.
+- Strong monsters no longer flash the base (green) palette for a frame when they spawn or change
+  sprite slot: tiers are rebuilt from the records right before the DMA (0 wrong frames in 6,400).
+- A/B icons no longer sit on a tinted square: new `overworld` BG theme (areas 00, 02-05, 46 alt)
+  with parchment colour 0 for stone/wood/earth/fire; Lycaeum grounds, market and Simon's shop
+  aligned; water/grass item icons fall back to the panel palette on surface maps (`IconPal`).
+  Food and rocks now use `wood` instead of `earth`.
+- Start menu: the portrait (BG palette 5, `earth`, now unused by items) takes the current
+  champion's colours (Mariah violet, Iolo green, Dupre red, Shamino leather).
+- Side-panel live refresh gets more VBlank time (1,519 → 2,260 cells per 600 frames).
+
+### Added (tools)
+
+- `tools/sameboy_harness` + `scripts/hw_access_scan.py`: SameBoy-core write logger for
+  VRAM / CGB palette / OAM access while blocked, per speed and PC.
+
 ### Changed (monster variants and floor pickups, 2026-10-02)
 
 - Monster templates decoded (`reverse_engineering/notes/monsters.md`). Each monster graphic keeps

@@ -147,15 +147,30 @@ bg_themes:
     fire:   { colors: ["#E8E8E0", "#F8A020", "#C03010", "#401008"] }  # braziers, traps, floor items
     gold:   { colors: ["#E8E8E0", "#E8C040", "#A06818", "#382008"] }  # carpets, banners (gold also colours the side-panel stars and coin)
 
+  overworld:  # the overworld, Lord British's throne room and the Abyss isle (surface atlas):
+    # the base colours, but stone/wood/earth/fire share the side panel's parchment as
+    # colour 0 (grass and water keep their field colours), so A/B icons sit on parchment
+    stone:  { colors: ["#FFF0C0", "#A8A8B8", "#585870", "#181820"] }
+    wood:   { colors: ["#FFF0C0", "#C89050", "#785028", "#281808"] }
+    earth:  { colors: ["#FFF0C0", "#C89868", "#885838", "#302010"] }
+    fire:   { colors: ["#FFF0C0", "#F8A020", "#C03010", "#401008"] }
+
   simon:  # Lord Simon's castle (surface atlas): warm sandstone, emerald lawns
-    stone:  { colors: ["#F0E8D8", "#C8B898", "#786850", "#201810"] }  # floor + stone
-    earth:  { colors: ["#F0DCB8", "#C8A070", "#806040", "#302010"] }  # brick walls
+    stone:  { colors: ["#FFF0C0", "#C8B898", "#786850", "#201810"] }  # floor + stone (colour 0 = panel parchment)
+    earth:  { colors: ["#FFF0C0", "#C8A070", "#806040", "#302010"] }  # brick walls
+    wood:   { colors: ["#FFF0C0", "#C89050", "#785028", "#281808"] }
+    fire:   { colors: ["#FFF0C0", "#F8A020", "#C03010", "#401008"] }
     gold:   { colors: ["#FFF0C0", "#E8C040", "#A06818", "#382008"] }  # ankhs, banners
     grass:  { colors: ["#D0F0A0", "#70C060", "#2C7038", "#0C2010"] }  # lawns, hedges (emerald)
 
   lycaeum_grounds:  # the Lycaeum on its island (surface atlas): blue-grey marble, lapis walls
     stone:  { colors: ["#E8ECF4", "#A8B4D0", "#505C88", "#141828"] }  # floor + stone
-    earth:  { colors: ["#E0E4F4", "#98A4D8", "#46509C", "#101438"] }  # brick walls
+    earth:  { colors: ["#E8ECF4", "#98A4D8", "#46509C", "#101438"] }  # brick walls
+    # the side panel and every palette an A/B icon can use share the floor's colour 0
+    ui:     { colors: ["#E8ECF4", "#C4BAB4", "#D83020", "#281810"] }
+    wood:   { colors: ["#E8ECF4", "#C89050", "#785028", "#281808"] }
+    fire:   { colors: ["#E8ECF4", "#F8A020", "#C03010", "#401008"] }
+    gold:   { colors: ["#E8ECF4", "#E8C040", "#A06818", "#382008"] }
 
   lycaeum:  # Lycaeum halls: parchment marble, lapis and scholar's blue
     ui:     { colors: ["#D8D0B8", "#A09C94", "#C82818", "#201810"] }  # side panel
@@ -178,7 +193,10 @@ bg_themes:
     gold:   { colors: ["#E0CCA4", "#F0C838", "#C06018", "#401C08"] }  # shop signs, awnings, carpets
 
   market:  # Gnu Gnu's market and the Isle of the Avatar shop (surface atlas): bright stalls
-    wood:   { colors: ["#F8E0B0", "#E09848", "#985020", "#2C1808"] }  # stalls, doors, chests
+    wood:   { colors: ["#FFF0C0", "#E09848", "#985020", "#2C1808"] }  # stalls, doors, chests (colour 0 = panel parchment)
+    stone:  { colors: ["#FFF0C0", "#A8A8B8", "#585870", "#181820"] }
+    earth:  { colors: ["#FFF0C0", "#C89868", "#885838", "#302010"] }
+    fire:   { colors: ["#FFF0C0", "#F8A020", "#C03010", "#401008"] }
     gold:   { colors: ["#FFF0C0", "#F8B838", "#D05818", "#401808"] }  # awnings, shop signs
 
   catslair:  # the Cat's Lair: a cosy tavern shop, plum stone and amber

@@ -59,7 +59,7 @@ End game, death, rune shrine, credits (ending.md): 7:`$40BF` rune shrine, 0:`$0A
 `$D700-$D702` last BGP/OBP0/OBP1, `$D703` LCD mode (0 map, 1 castle, 2 text, 3 picture, 4 menu, 5 dialog, 9 logo),
 `$D704` current theme, `$D705` entrance theme, `$D706` last mode byte, `$D707` map theme, `$D708-$D70F` `FLAT_BG`,
 `$D710` UI theme, `$D711/$D712` live-refresh counters, `$D716` MAP_CACHED, `$D717` HERO_CACHED (champion in OBJ palette 0), `$D718` menu cursor colours, `$D720` HRAM backup (12),
-`$D740` `ITEM_PAL` (64), `$D780` inventory copy (64), `$D7C0` REC_TIER (16, colour tier per object record), `$D7D0` ITEM_CACHE (15, floor items `$C5B0+k` last coloured), `$DB10` ENTRY_TIER (40, tier per OAM entry), code section `wram2c` at `$DB40-$DBFF` (see monsters.md). Tables `$DC00` `LUT_MENU`, `$DD00` `LUT_GAME` (`$DD00-$DD1F` = HERO_BG portrait colours), `$DE00` `BG_THEMES` (8x64).
+`$D740` `ITEM_PAL` (64), `$D780` inventory copy (64), `$D7C0` REC_TIER (16, colour tier per object record), `$D7D0` ITEM_CACHE (15, floor items `$C5B0+k` last coloured), `$D7DF` PREP_DONE (shadow OAM coloured by Prep8 since the last DMA), `$DB10` ENTRY_TIER (40, tier per OAM entry), code section `wram2c` at `$DB40-$DBFF` (see monsters.md). Tables `$DC00` `LUT_MENU`, `$DD00` `LUT_GAME` (`$DD00-$DD1F` = HERO_BG portrait colours), `$DE00` `BG_THEMES` (8x64).
 HRAM `$FFF3-$FFFE`: WRAM1 reader installed only while used (see menu.md).
 Bank 8: `$5600` PICTURE_LUT, `$5700` PICTURE_FIX, `$5C00` LUT_TITLE, `$5D00` LUT_LOGO, `$6000` BRAND_TILES, `$6600` BRAND_CELLS,
 `$6800` AREA_THEME (512: `$D13E` = 0, then 1), `$6A00` METAPAL (16 sets x 128), `$7200` THEME_BG_ROM (32 x 64), `$7A00` THEME_OBJ_ROM (32 x 8),
@@ -85,3 +85,15 @@ so the DX runtime re-derives CRAM whenever those registers change.
 Bank 0: `$0003-$0037` (rst vectors, unused) and `$0061-$00FF`. `$0038` is kept (rst $38 = crash
 trap on `$FF`). The DX build expands the ROM to 256 KiB (header `0x148=$03`, MBC2 max) and
 uses bank 8; banks 9-15 are free. The expanded ROM was verified to boot and play identically in DMG mode.
+
+### Idle-wait prep (hardware timing)
+
+* ROM0 `PrepTramp` in vector padding (`$0043-$0047`, `$004B-$004F`, `$0051-$0057`, `$005B-$005F`),
+  called from 0:`$1EE7` (main loop halt wait), 0:`$02EA` (VBlank-flag wait) and, through `PrepWait`
+  (`$0023`/`$002B`), 0:`$175A` (animated-tile copy). 0:`$02DC` itself (wait
+  LY 145) is deliberately not hooked: the title code re-enters it inside line 145, so any
+  overhead costs a frame.
+* WRAM2 `W2Prep` → bank 8 `Prep8` (section `bank8b`, `$5400-$55FF`, between the WRAM2 image and
+  `PICTURE_LUT`), also `FillAttrs8` (moved out of WRAM2). TierFar modes: C = 0/`$80` tier scan,
+  1 HeroMenu8, 2 Prep8, 4 FillAttrs8.
+* `OamPass` (WRAM2) = the OAM palette loop, over `$FE00` (hook fallback) or `$C000` (Prep8).

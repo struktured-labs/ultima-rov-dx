@@ -28,7 +28,7 @@ MP_SETS = 16      # dx.asm MP_SETS: distinct metatile palette maps (METAPAL), sh
 SLOT_SURFACE, SLOT_MAP, SLOT_ENTRANCE, SLOT_UI = 0, 1, 2, 3   # WRAM slots (dx.asm SLOT_MAP = 1)
 
 # Windows that assembled sections may occupy (file offsets, inclusive-exclusive).
-FREE_WINDOWS = [(0x0003, 0x0038), (0x0061, 0x0100), GL.BANK2_FREE, (0x20000, 0x40000)]
+FREE_WINDOWS = [(0x0003, 0x0038), (0x0043, 0x0048), (0x004B, 0x0050), (0x0051, 0x0058), (0x005B, 0x0060), (0x0061, 0x0100), GL.BANK2_FREE, (0x20000, 0x40000)]
 
 
 class PatchError(Exception):
@@ -462,6 +462,8 @@ def build(original: bytes, pal_data: dict[str, Any], bg_cat: dict[str, Any], obj
     # layout limits
     if syms["Bank8CodeEnd"] > syms["W2_IMAGE_ROM"]:
         raise PatchError("bank 8 code overlaps the WRAM2 image")
+    if syms["Bank8bEnd"] > syms["PICTURE_LUT"]:
+        raise PatchError("bank 8 section bank8b overlaps PICTURE_LUT")
     if syms["MAX_THEMES"] != MAX_THEMES:
         raise PatchError("MAX_THEMES mismatch between dx.asm and dx_patch.py")
     if syms["ROM_THEMES"] != ROM_THEMES or syms["SLOT_MAP"] != SLOT_MAP or syms["MP_SETS"] != MP_SETS:

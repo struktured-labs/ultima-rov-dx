@@ -172,7 +172,7 @@ class RuntimeColoursTest(unittest.TestCase):
                         items += 1
                         self.assertEqual(m[2, lut + 0x40 + 4 * k], m[2, item_pal + (i & 0x3F)], f"{area:#x} slot {k}")
                 pb.tick(180, True)                           # let the room's spawns settle
-                bad = good = 0
+                bad = good = carried = 0
                 pals = set()
                 for _ in range(120):
                     pb.tick(1, True)
@@ -190,11 +190,14 @@ class RuntimeColoursTest(unittest.TestCase):
                             pals.add(at)
                             bad += at != 1 + t
                             good += at == 1 + t
+                            carried += (m[0xC003 + off + k] & 7) == at   # coloured in the shadow OAM
                 seen[area] = pals
-                # ENTRY_TIER is rebuilt after the DMA: an entry whose record just appeared or
-                # changed OAM slot can show the base colour for one frame
+                # Prep8 colours the shadow OAM at the game's idle wait (tiers rebuilt from the
+                # records first), so no frame shows a monster in another tier's colour, and
+                # the DMA itself carries the palettes on most frames
                 self.assertGreater(good, 0, hex(area))
-                self.assertLessEqual(bad, good // 50, hex(area))
+                self.assertEqual(bad, 0, hex(area))
+                self.assertGreater(carried, good // 2, hex(area))
             pb.stop(save=False)
         self.assertGreater(items, 3)
         self.assertIn(3, seen[0x2C])                         # strongest trolls (B16)

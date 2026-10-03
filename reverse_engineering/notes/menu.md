@@ -56,9 +56,16 @@ $3DB8 $3FD9`, 1:`$4336 $5121`. None uses HL/DE/A after the return.
   tiles of every slot, the armour icon and the A/B icons; theme `UI_THEME` (`bg_themes.menu`:
   every palette shares one paper colour 0, so coloured icons have no boxes). Cursor sprites
   (tiles < 4) use OBJ palette 7 = `MENU_OBJ` (`menu_cursor`, red/orange).
+  The champion portrait (BG palette 5 = `PORTRAIT_PAL`, the `earth` slot, which no item uses)
+  gets the current champion's `HERO_BG` colours: `SetThemeM` → bank-8 `HeroMenu8` on the menu
+  LCD-on (`LCD_BYTE` `$64`); it sets `CUR_THEME` = `$FF` so the next screen reloads its theme.
 * Mode 5 (dialog, 0:`$1323`): text LUT + `LUT_MENU[$E4-$FF]` + A/B icons, theme `UI_THEME`.
 * Map (mode 0): `LUT_GAME` gives the panel glyphs their palettes (hearts use palette 0 whose
-  shade 2 is red; stars/coin/"A:"/"B:" gold); icon tiles `$F8-$FF` follow `ITEM_PAL`.
+  shade 2 is red; stars/coin/"A:"/"B:" gold); icon tiles `$F8-$FF` follow `ITEM_PAL`, through
+  `IconPal`: if that palette's colour 0 differs from the panel's (palette 0) on this screen,
+  e.g. water/grass items on the overworld, the icon uses palette 0 instead, so it never sits on
+  a tinted square. Surface themes (`overworld`, Lycaeum grounds, market, Simon's shop) give
+  stone/wood/earth/fire the panel's colour 0.
 * Live refresh: the icon tiles change without an LCD-on, so
   - `$04E6` is patched to `call $01A9; jp HudTramp`; HudTramp (bank 0) restores bank 1, then on CGB
     calls `W2Hud` (WRAM2) with D/E = A/B items. W2Hud (only in VBlank or LCD off, modes 0/4/5)

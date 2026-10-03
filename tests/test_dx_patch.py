@@ -45,11 +45,32 @@ class TablesTest(unittest.TestCase):
     def test_cavern_theme(self):
         from ultima_rov_dx import dx_patch
         t = dx_patch.build_tables(self.inputs["palettes"], self.inputs["bg_categories"], self.inputs["obj_categories"])
-        self.assertEqual((t.area_theme[0x18], t.area_theme[0x19], t.area_theme[0x02], t.area_theme[0x00]), (1, 1, 0, 0))
+        ow = t.theme_names.index("overworld")
+        self.assertEqual((t.area_theme[0x18], t.area_theme[0x19], t.area_theme[0x02], t.area_theme[0x00]), (1, 1, ow, ow))
         cav = t.bg_themes[64:128]
         # all 8 palettes (side panel included) share the cave floor as colour 0
         self.assertEqual({cav[p * 8:p * 8 + 2] for p in range(8)}, {cav[8:10]})
         self.assertNotEqual(cav[8:10], t.base_bg[8:10])
+
+    def test_panel_icons_on_panel_colour(self):
+        # every map theme: the palettes an A/B icon can use share the side panel's colour 0
+        # (no tinted square); surface themes keep grass/water fields, IconPal falls back there
+        from ultima_rov_dx import dx_patch
+        t = dx_patch.build_tables(self.inputs["palettes"], self.inputs["bg_categories"], self.inputs["obj_categories"])
+        bg = self.inputs["bg_categories"]
+        pal = list(self.inputs["palettes"]["bg_palettes"])
+        icon_pals = {pal.index(p) for p, ids in bg["item_palettes"].items() if ids}
+        for name, spec in bg["area_themes"].items():
+            if not (spec.get("areas") or spec.get("areas_alt")):
+                continue
+            k = t.theme_names.index(name)
+            rom = t.theme_bg_rom[64 * k:64 * k + 64]
+            skip = {pal.index("grass"), pal.index("water")} if spec.get("surface") else set()
+            for p in icon_pals - skip:
+                self.assertEqual(rom[8 * p:8 * p + 2], rom[0:2], f"{name}: {pal[p]}")
+        # `earth` is the start-menu portrait palette: no item uses it
+        self.assertFalse(bg["item_palettes"].get("earth"))
+        self.assertNotIn(pal.index("earth"), set(t.item_pal))
 
     def test_menu_tables(self):
         from ultima_rov_dx import dx_patch
@@ -118,10 +139,11 @@ class TablesTest(unittest.TestCase):
         for theme, levels in self.DUNGEONS.items():
             for area, flag in levels:
                 self.assertEqual(t.area_theme[256 * flag + area], names.index(theme), (theme, hex(area), flag))
-        # the overworld, Lord British's throne room and the Abyss isle stay on theme 0
+        # the overworld, Lord British's throne room and the Abyss isle: `overworld` (theme 0 stays
+        # for the title screens)
         for area in (0x00, 0x02, 0x03, 0x04, 0x05):
-            self.assertEqual(t.area_theme[area], 0, hex(area))
-        self.assertEqual(t.area_theme[256 + 0x46], 0)
+            self.assertEqual(t.area_theme[area], names.index("overworld"), hex(area))
+        self.assertEqual(t.area_theme[256 + 0x46], names.index("overworld"))
         # the same id differs between the halves: 00 castle / Injustice, 18 Hatred / Dishonor
         self.assertNotEqual(t.area_theme[0x18], t.area_theme[0x118])
         self.assertEqual(t.area_theme[0x100], names.index("injustice"))
@@ -379,8 +401,26 @@ class RealRomBuildTest(unittest.TestCase):
         self.assertEqual(hdr["header_checksum"], hdr["header_checksum_calc"])
         self.assertEqual(hdr["global_checksum"], hdr["global_checksum_calc"])
 
+    def test_live_interrupt_vectors_kept(self):
+        # PrepTramp sits in vector padding: the jumps/retis the game takes stay
+        self.assertEqual(self.out[0x40:0x43], self.original[0x40:0x43])   # VBlank: jp $1ACB
+        self.assertEqual(self.out[0x48:0x4B], self.original[0x48:0x4B])   # STAT: jp $1A9F
+        self.assertEqual(self.out[0x50], 0xD9)                            # timer: reti
+        self.assertEqual(self.out[0x58:0x5B], self.original[0x58:0x5B])   # serial: jp $C550
+        self.assertEqual(self.out[0x60], 0xD9)                            # joypad: reti
+        from ultima_rov_dx import dx_patch
+        from ultima_rov_dx.sm83asm import assemble
+        _, syms = assemble([("dx.asm", dx_patch._asm_source())])
+        tramp = syms["PrepTramp"]
+        self.assertEqual(self.out[0x02EA:0x02EE], bytes([0xCD, tramp & 0xFF, tramp >> 8, 0xC8]))  # VBlank-flag wait
+        self.assertEqual(self.out[0x02DC:0x02E0], self.original[0x02DC:0x02E0])  # LY-145 wait: timing-exact, not hooked
+        wait = syms["PrepWait"]
+        self.assertEqual(self.out[0x175A:0x175D], bytes([0xCD, wait & 0xFF, wait >> 8]))  # animated-tile copy
+        self.assertEqual(self.out[0x1EE7:0x1EEB], bytes([0xCD, tramp & 0xFF, tramp >> 8, 0x76]))  # main loop: then halt
+
     def test_only_expected_bytes_change(self):
         allowed = set(range(0x0003, 0x0038)) | set(range(0x0061, 0x0100)) | {0x143, 0x148, 0x14D, 0x14E, 0x14F}
+        allowed |= set(range(0x0043, 0x0048)) | set(range(0x004B, 0x0050)) | set(range(0x0051, 0x0058)) | set(range(0x005B, 0x0060))  # vector padding
         for h in GL.HOOKS:
             allowed |= set(range(h.offset, h.offset + len(h.preimage)))
         allowed |= set(range(*GL.BANK2_FREE))           # AllocHook + TIER_TAB (was $FF fill)

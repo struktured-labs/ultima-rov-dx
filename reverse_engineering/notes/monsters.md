@@ -130,17 +130,31 @@ removed. Knights are `royal` everywhere now.
   * cloner (`$5B4A`): copy the source record's tier.
 
   It stores the result in `REC_TIER[record >> 4]` (WRAM2 `$D7C0`, 16 bytes).
-* After each OAM DMA in map mode, `W2AfterDmaT` maps each live record's
-  shadow-OAM offset (+3) to its two OAM entries: `ENTRY_TIER[idx]`
-  (WRAM2 `$DB10`, 40 bytes).
-* When the OAM attribute pass picks palette 1 (`monster`), `TierPal` adds
-  `ENTRY_TIER[entry]`, giving 1/2/3. It is cleared on LCD on.
-* `ENTRY_TIER` is rebuilt after `W2Pal` (outside the VBlank-critical part), so it lags one
-  frame. When a record appears or the game moves it to another OAM slot, it can show the base
-  colour for one frame (measured: 2 of 722 entries over 400 frames in Selfishness `$4A`).
-* The floor-item check (`LiveFloor`) also runs after the VBlank-critical part. The 4-cell
-  side-panel refresh stops when LY leaves VBlank (`HudCellLy`), so its VRAM writes are never
-  lost in mode 3.
+* Sprite palettes are computed at the game's idle waits, outside VBlank, by bank-8 `Prep8`
+  (via ROM0 `PrepTramp` in interrupt-vector padding and WRAM2 `W2Prep`). Those waits are the
+  main loop's halt wait 0:`$1EE7`, the VBlank-flag wait 0:`$02EA` and the animated-tile copy's
+  wait 0:`$175A` (not the routine 0:`$02DC` itself, see hardware_timing.md).
+  The shadow OAM is final there. `Prep8` clears the palette bits of all 40 shadow entries. In
+  map mode it rebuilds `ENTRY_TIER` (WRAM2 `$DB10`, 40 bytes) from every live record's
+  shadow-OAM offset (+3) with all entries known (`TierCore`, C = `$80`), and runs `LiveFloor`.
+  Then it runs `OamPass` over `$C000`, writing each entry's palette into the shadow attribute
+  byte, so the OAM DMA itself carries the colours. It sets `PREP_DONE` (`$D7DF`).
+* When the palette pass picks palette 1 (`monster`), `TierPal` adds `ENTRY_TIER[entry]`,
+  giving 1/2/3. The tiers come from the same shadow OAM that is about to be DMA'd, so no frame
+  shows a monster in the base colour when it spawns or changes sprite slot (the old post-DMA
+  scan lagged one frame: 2 of 722 entries in Selfishness `$4A`). Now 0 of about 6,400
+  monster-frames are wrong over 4A/2C/27/49/4C/3D.
+* After a DMA with `PREP_DONE` set, the hook skips its OAM pass. Without prep (the wait came at
+  LY 128-145, too close to VBlank), the hook runs `OamPass` over `$FE00`. It keeps entries
+  whose palette bits are already set (carried from an earlier prep) and colours the rest, then
+  runs the old tier scan (`W2AfterDmaT`). An entry that is still unknown is rebuilt on demand
+  (`TierPal` → `TierFar` C = `$80`).
+* Why: the post-DMA OAM pass, live refresh and tier scan took about 8,000 T-cycles inside the
+  VBlank interrupt (VBlank is 4,560), so the game's own VBlank VRAM work after the DMA (the
+  animated-tile copy at 0:`$176A`) spilled into mode 3. See `hardware_timing.md`.
+* The side-panel live refresh (`HELPER` reads, `HudItemsLut`, 4 `HudCellLy` cells) runs only
+  when the hook starts by LY 145. On a late DMA (0:`$1717` at LY 145) the game's tile copy needs
+  that time. `HudCellLy` stops when LY leaves VBlank, so its VRAM writes are never lost.
 
 ## Floor pickups
 

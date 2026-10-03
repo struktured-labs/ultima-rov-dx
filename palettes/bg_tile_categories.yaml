@@ -113,7 +113,11 @@ area_themes:
                 0x60, 0x61, 0x62, 0x63, 0x64, 0x65]
     metatile_palettes: {earth: [0x23]}
   # --- places outside the eight dungeons (reverse_engineering/notes/areas.md) ---
-  castle:                        # Lord British's castle wings (00 cells $43 / $C3); the throne room 00 keeps theme 0
+  overworld:                     # overworld regions 02-05, Lord British's throne room 00, the Abyss isle 46*:
+    surface: true                # base colours with the panel's colour 0 (A/B icons, notes/menu.md)
+    areas: [0x00, 0x02, 0x03, 0x04, 0x05]
+    areas_alt: [0x46]
+  castle:                        # Lord British's castle wings (00 cells $43 / $C3); the throne room 00 is `overworld`
     areas: [0x30, 0x31]
   simon:                         # Lord Simon's castle (04 cell $16; 32 is an unreached copy of 33). Surface atlas.
     surface: true
@@ -197,7 +201,7 @@ menu_screen:
   default: ui
   ranges:
     - { first: 0x02, last: 0x0B, palette: gold }   # box frames: gold-brown lines
-    - { first: 0xD4, last: 0xE3, palette: earth }  # champion portrait (skin tones)
+    - { first: 0xD4, last: 0xE3, palette: earth }  # champion portrait: `earth` holds the current champion's portrait colours at run time (HeroMenu8)
     - { first: 0xE4, last: 0xE4, palette: gold }   # full star
     - { first: 0xE8, last: 0xF1, palette: gold }   # digits 0-9 (stats, gold count)
     - { first: 0xF4, last: 0xF4, palette: fire }   # full heart
@@ -210,11 +214,11 @@ menu_screen:
 item_palettes:
   stone: [0x00, 0x04, 0x08, 0x0A, 0x0B, 0x0F, 0x12, 0x15, 0x18, 0x19, 0x1A, 0x1B, 0x1C,
           0x20, 0x29, 0x33]                           # armour, blades, throwing stars, pick, chain, caltrops
-  wood:  [0x01, 0x02, 0x03, 0x05, 0x11, 0x21, 0x2C, 0x2D, 0x2E, 0x30, 0x37]   # bows, arrows, boomerang, whip, chest, rope, boots, net, pipes
+  wood:  [0x01, 0x02, 0x03, 0x05, 0x11, 0x21, 0x2C, 0x2D, 0x2E, 0x30, 0x37,   # bows, arrows, boomerang, whip, chest, rope, boots, net, pipes
+          0x0E, 0x13, 0x22, 0x2F, 0x35]               # rock, food (not earth: in the start menu `earth` is the champion's portrait)
   water: [0x06, 0x07, 0x16, 0x24]                     # blue flask, magic staff, rain, rune of honesty (hand)
   gold:  [0x09, 0x0C, 0x14, 0x17, 0x1D, 0x1E, 0x1F, 0x25, 0x2A, 0x31, 0x32, 0x34, 0x36, 0x38, 0x3E]  # coins, keys, lamp, rings, chalice, trumpet (brass, as on the map), ankh, compass, stars
   fire:  [0x0D, 0x10, 0x23, 0x26, 0x28, 0x3F]         # fireballs, heart, red potion, runes of valour / sacrifice
-  earth: [0x0E, 0x13, 0x22, 0x2F, 0x35]               # rock, food
   grass: [0x27, 0x3D]                                 # rune of justice, green potion
 
 # Tile -> palette LUT for the dungeon-entrance cutscene (one picture shared by

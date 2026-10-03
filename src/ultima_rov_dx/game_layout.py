@@ -73,6 +73,10 @@ PEOPLE_GFX = (1, 0x5A92)     # sprite id bit 6 = 1
 FREE_SPACE: tuple[tuple[int, int], ...] = (
     (0x0003, 0x0025),
     (0x0028, 0x0010),
+    (0x0043, 0x0005),        # VBlank vector padding after jp $1ACB
+    (0x0051, 0x0007),        # timer vector after its reti (the game never enables the timer interrupt)
+    (0x005B, 0x0005),        # serial vector padding after jp $C550
+    (0x004B, 0x0005),        # STAT vector padding after jp $1A9F
     (0x0061, 0x009F),
     (0x20000, 0x20000),      # banks 8-15 after expansion to 256 KiB
     (file_offset(2, 0x7F34), 0xCC),   # bank 2 $7F34-$7FFF ($FF padding): AllocHook + TIER_TAB
@@ -97,6 +101,12 @@ HOOKS: tuple[Hook, ...] = (
          "title dissolve copies $98xx->$9Cxx with LCD on -> rst $20 (copies attribute too)"),
     Hook("record_alloc", file_offset(2, 0x5FE6), bytes.fromhex("0100d0"),
          "ld bc,$d000 at the object record allocator (spawner 0:$2895, cloner 2:$5B47) -> jp AllocHook (monster tier)"),
+    Hook("idle_wait_vblank", 0x02EA, bytes.fromhex("f040b7"),
+         "wait for the VBlank flag: ldh a,[rLCDC]; or a -> call PrepTramp (sprite palettes into the shadow OAM)"),
+    Hook("anim_tile_wait", 0x175A, bytes.fromhex("cddc02"),
+         "call $02DC before the animated-tile DMA + VRAM copy -> call PrepWait (prep, then the wait)"),
+    Hook("main_loop_halt", 0x1EE7, bytes.fromhex("afe08e"),
+         "main loop before its halt wait: xor a; ldh [$FF8E],a -> call PrepTramp (clears $FF8E)"),
 )
 PALETTE_INIT_HOOK = HOOKS[0]
 VBLANK_HOOK = HOOKS[1]   # OAM DMA is called from ~10 sites, so the hook is the HRAM routine itself
