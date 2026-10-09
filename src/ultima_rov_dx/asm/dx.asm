@@ -59,6 +59,7 @@ HR_SLOTG        equ $FF9A   ; scratch: graphic index in Slot
 HR_VBLANK       equ $FF8E   ; game: set by its VBlank interrupt, cleared at its idle waits
 PARADE_LIST     equ $FF9C   ; low byte of the parade's graphic list (bank 7 $7CA6 + 5k), set by ParadeLoad (also on DMG: unused HRAM)
 PARADE_ON       equ $FF9D   ; 1 = the attract-loop parade is up: OamPass colours its sprites from PARADE_TAB (CGB)
+KNIGHT_DIRTY    equ $FF9E   ; 1 = OBJ palette KNIGHT_SLOT changed in BASE_OBJ (Black Knight borrow): CRAM sync due (CGB)
 HR_CGB          equ $FF9B   ; 1 = CGB (set by Boot on every power-up; KEY1 is not
                             ;     a reliable DMG test on all emulators)
 
@@ -159,6 +160,20 @@ CARD_UI         equ $7C80   ; bank 8: low byte of BASE_BG's UI palette (where CA
 GOLD_DIGITS     equ $7D00   ; bank 8: DIGIT_LEN bytes, side-panel digits $E8-$F1 redrawn in gold (VRAM bank 1)
 PARADE_PAL_ROM  equ $7E00   ; bank 8: PARADE_LEN bytes, OBJ palette per byte of the parade lists 7:$7CA6-$7CBE (builder, from OBJPAL)
 PARADE_TAB      equ ENTRY_TIER  ; WRAM2: PARADE_PAL_ROM copied over ENTRY_TIER (unused off map screens, cleared at every LCD-on)
+; Black Knight context toggle (issue #10, reverse_engineering/notes/monsters.md):
+; the knight ($52) never shares a screen with Lord British or the guards, so
+; while it is loaded and no other royal sprite is, it borrows OBJ palette
+; KNIGHT_SLOT (royal) recoloured with KNIGHT_ROM; else palette 5 holds the
+; royal colours again and the knight falls back to KNIGHT_FALLBACK. The
+; state lives in OBJPAL[KNIGHT_ID] itself (= KNIGHT_SLOT while borrowing).
+KNIGHT_ID       equ $52     ; sprite id (key: id & $7E) of the Black Knight
+KNIGHT_SLOT     equ 5       ; OBJ palette borrowed (royal)
+KNIGHT_ROM      equ $7E20   ; bank 8: 8 bytes, the knight's colours (builder: obj_categories knight_borrow)
+ROYAL_ROM       equ $7E28   ; bank 8: 8 bytes, palette KNIGHT_SLOT's own colours (restored)
+KNIGHT_FALLBACK equ $7E30   ; bank 8: OBJ palette of the knight when a royal sprite is loaded too
+KNIGHT_MODE     equ 8       ; TierFar mode: KnightSync8
+KNIGHT_LO       equ $DB39   ; WRAM2 scratch (KnightScan8): first / last tile of the loaded royal slots
+KNIGHT_HI       equ $DB3A
 PARADE_LISTS    equ $7CA6   ; bank 7: the parade's five 4-graphic lists ($FF-terminated, 5 bytes each)
 PARADE_LEN      equ 25
 PARADE_RET      equ $4854   ; return address of the parade's LCD-on site 7:$4853 (rst $28)
@@ -669,6 +684,7 @@ Bank8Boot:
         ldh [rSVBK], a
         xor a                           ; no parade yet (HRAM is random at power-on)
         ldh [PARADE_ON], a
+        ldh [KNIGHT_DIRTY], a
         jr .wait
 .notcgb1:
         ld a, 1
@@ -1025,6 +1041,8 @@ TierScan8:
         jp nz, Prep8
         bit 2, c
         jp nz, FillAttrs8
+        bit 3, c
+        jp nz, KnightSync8
         call TierCore
         jp SigBank
 TierCore:
@@ -1084,6 +1102,7 @@ TierCore:
 ; champion in INV+$33 (= WRAM1 $D133, ReadInv just ran). CUR_THEME = $FF:
 ; the next screen reloads its theme, so the change stays in the menu.
 HeroMenu8:
+        call KnightLcd8                 ; (every LCD-on: Black Knight palette, LCD off)
         ld a, [LCD_BYTE]                ; only on the start menu's LCD-on
         cp $64
         jp nz, SigBank
@@ -1170,6 +1189,8 @@ Prep8:
         ld c, $80
         call TierCore
         call LiveFloor
+        call KnightScan8                ; Black Knight: borrow palette 5 or not
+        call KnightSet8
 .pal:
         ld hl, $C000
         call OamPass
@@ -1215,6 +1236,180 @@ FillAttrs8:
 .fixed:
         xor a
         ldh [rVBK], a
+        jp SigBank
+
+; Black Knight context toggle (see KNIGHT_ID). SVBK = 2, bank 8 mapped.
+; KnightScan8: A = 1 (borrow) if the knight is in a loaded sprite slot ($C580,
+; the first [$C539] slots) and no other sprite of palette KNIGHT_SLOT (Lord
+; British, guards, $50) is drawn, else 0. Pass 1 walks the slots; only when
+; a royal sprite is loaded too (Selfishness $36 loads $50 with the knight)
+; pass 2 looks for a visible shadow-OAM entry in the royal slots' tiles
+; [KNIGHT_LO, KNIGHT_HI]. Clobbers BC, DE, HL.
+KnightScan8:
+        ld a, [SPRITE_COUNT]
+        cp 17
+        jr c, .n16
+        ld a, 16
+.n16:
+        ld b, a
+        ld c, 0                         ; bit 0 knight, 1 royal, 2 in a royal (large) sprite
+        or a
+        jr z, .end
+        ld hl, SPRITE_IDS
+        ld d, high(OBJPAL)
+.l:
+        ld a, [hl]
+        cp $FF                          ; continuation of a large sprite
+        jr z, .cont
+        res 2, c
+        and $7E
+        cp KNIGHT_ID
+        jr z, .k
+        ld e, a
+        ld a, [de]
+        cp KNIGHT_SLOT
+        jr nz, .n
+        bit 1, c
+        jr nz, .more
+        set 1, c
+        call .tile
+        ld [KNIGHT_LO], a
+.more:
+        set 2, c
+.ext:
+        call .tile
+        add 7
+        ld [KNIGHT_HI], a
+        jr .n
+.cont:
+        bit 2, c
+        jr nz, .ext
+        jr .n
+.k:
+        set 0, c
+.n:
+        inc l
+        dec b
+        jr nz, .l
+.end:
+        ld a, c
+        and 3
+        cp 1
+        jr z, .yes
+        cp 3
+        jr nz, .no
+        ld a, [KNIGHT_LO]
+        ld d, a
+        ld a, [KNIGHT_HI]
+        ld e, a
+        ld hl, $C000
+        ld b, 40
+.o:
+        ld a, [hl]                      ; Y: 0 or >= 160 = hidden
+        dec a
+        cp 159
+        jr nc, .s
+        inc l
+        inc l
+        ld a, [hl-]                     ; tile
+        dec l
+        cp d
+        jr c, .s
+        cp e
+        jr z, .no                       ; a royal sprite is drawn
+        jr c, .no
+.s:
+        ld a, l
+        add 4
+        ld l, a
+        dec b
+        jr nz, .o
+.yes:
+        ld a, 1
+        ret
+.no:
+        xor a
+        ret
+.tile:                                  ; A = first tile of slot L - low(SPRITE_IDS)
+        ld a, l
+        sub low(SPRITE_IDS)
+        add a
+        add a
+        add a
+        add $80
+        ret
+; A = 1: borrow (OBJPAL[KNIGHT_ID] = KNIGHT_SLOT, palette KNIGHT_SLOT =
+; KNIGHT_ROM), 0: royal (OBJPAL[KNIGHT_ID] = KNIGHT_FALLBACK, palette =
+; ROYAL_ROM). Only on a change: BASE_OBJ updated, KNIGHT_DIRTY = 1 (the
+; next VBlank writes that one CRAM palette, KnightSync8). Clobbers BC, DE, HL.
+KnightSet8:
+        ld c, a
+        ld a, [OBJPAL + KNIGHT_ID]
+        cp KNIGHT_SLOT
+        ld a, 0
+        jr nz, .cur
+        inc a
+.cur:
+        cp c
+        ret z
+        ld hl, ROYAL_ROM
+        ld a, [KNIGHT_FALLBACK]
+        dec c
+        jr nz, .set
+        ld hl, KNIGHT_ROM
+        ld a, KNIGHT_SLOT
+.set:
+        ld [OBJPAL + KNIGHT_ID], a
+        ld [OBJPAL + KNIGHT_ID + 1], a
+        ld de, BASE_OBJ + KNIGHT_SLOT * 8
+        ld b, 8
+.c:
+        ld a, [hl+]
+        ld [de], a
+        inc e
+        dec b
+        jr nz, .c
+        ld a, 1
+        ldh [KNIGHT_DIRTY], a
+        ret
+; Every LCD-on (LCD off, HeroMenu8; SyncOBJ follows and writes all of CRAM):
+; map screens scan the slots, every other screen gets the royal colours
+; back (the parade, the ending, Lord British's dialogs). Preserves BC, HL.
+KnightLcd8:
+        push bc
+        push hl
+        ld a, [LCD_MODE]
+        or a
+        ld a, 0
+        jr nz, .set                     ; not a map: royal (A = 0)
+        call KnightScan8
+.set:
+        call KnightSet8
+        xor a
+        ldh [KNIGHT_DIRTY], a
+        pop hl
+        pop bc
+        ret
+; TierFar mode KNIGHT_MODE (W2Pal, right after the OAM DMA, KNIGHT_DIRTY):
+; write OBJ palette KNIGHT_SLOT to CRAM through OBP0, only while LY is still
+; at the start of VBlank (144-145, the side-panel refresh's window); else the
+; flag stays and the next DMA retries. B = caller's bank signature.
+KnightSync8:
+        ldh a, [rLY]
+        sub 144
+        cp 2
+        jp nc, SigBank
+        push bc
+        xor a
+        ldh [KNIGHT_DIRTY], a
+        ld a, $80 | (KNIGHT_SLOT * 8)
+        ldh [rOCPS], a
+        ld hl, BASE_OBJ + KNIGHT_SLOT * 8
+        ld a, [LAST_OBP0]
+        ld d, a
+        ld bc, $0100 | rOCPD
+        call SyncGroup
+        pop bc
         jp SigBank
 Bank8bEnd:
 
@@ -1337,9 +1532,15 @@ W2Pal:
         ldh a, [rOBP1]
         inc hl
         cp [hl]
-        jr z, .oam
+        jr z, .knight
 .obj:
         call SyncOBJ
+.knight:
+        ldh a, [KNIGHT_DIRTY]           ; Black Knight palette changed (Prep8):
+        or a                            ; that one CRAM palette, in bank 8
+        jr z, .oam
+        ld c, KNIGHT_MODE
+        call TierFar
 .oam:
         ld a, [PREP_DONE]               ; Prep8 coloured the shadow OAM at the
         or a                            ; game's idle wait: the DMA carried it

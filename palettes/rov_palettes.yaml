@@ -30,6 +30,15 @@ obj_palettes:
   item:    { colors: ["#FFFFFF", "#FFF8A0", "#E8B030", "#704010"] }  # chests, sparkles, missiles
   obp1:    { colors: ["#FFFFFF", "#E0E0E0", "#909090", "#202020"] }  # sprites using DMG OBP1
 
+# The Black Knight's colours while he borrows OBJ palette 5 (obj_categories.yaml
+# knight_borrow picks one). Shade 1 = highlights, 2 = armour, 3 = outline.
+knight_colors:
+  steel: ["#FFFFFF", "#D8E0EC", "#7C889C", "#182030"]   # blue-grey steel
+  black: ["#FFFFFF", "#A0A8B8", "#343844", "#040408"]   # near-black armour, grey highlights
+  # experiment: helmet darker than the armour. The helmet face is shade 1, which the
+  # shield face, belt and shoulder highlights share (8x16 OBJs: no per-tile palette).
+  black_helm: ["#FFFFFF", "#1C2028", "#4C5462", "#000000"]
+
 # The four champions, in the order of WRAM1 $D133 (0 Mariah, 1 Iolo, 2 Dupre,
 # 3 Shamino; reverse_engineering/notes/heroes.md). `sprite` replaces OBJ
 # palette 0 (avatar) once the game has started: walking, attack poses, the

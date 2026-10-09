@@ -32,7 +32,17 @@ ids:
   folk:    [0x40, 0x42, 0x44, 0x46, 0x4A, 0x4E, 0x54, 0x58, 0x5A, 0x5C, 0x5E, 0x60, 0x62, 0x64, 0x6A, 0x6E, 0x70]  # 0x70 = jester (large)
   royal:   [0x48, 0x4C, 0x50, 0x56, 0x66, 0x68, 0x6C]   # Lord British, guards: one colour everywhere
   # 0x52 = the Black Knight (sword + shield; talker template B2E on the overworld
-  # and in the dungeons). Royal made his grey armour red (issue #10); no OBJ
-  # palette is free for steel, so he takes the darkest one, the elite purple,
-  # everywhere (shade 2 = armour, shade 3 = near-black outline).
+  # and in the dungeons). Royal made his grey armour red (issue #10). This entry
+  # is only his fallback (elite purple) for a screen that also loads a royal
+  # sprite, which the game never does: see knight_borrow.
   monster_elite: [0x52]
+# Context toggle (issue #10): the Black Knight never shares a screen with Lord
+# British or the guards, so while he is in a loaded sprite slot and no other
+# `royal` sprite is, he borrows OBJ palette 5 (royal) and the runtime rewrites
+# that palette with `colors` (rov_palettes.yaml knight_colors; shade 2 = armour,
+# shade 3 = outline). The royal colours come back as soon as a royal sprite is
+# loaded, and on every non-map screen (parade, ending, dialogs).
+knight_borrow:
+  id: 0x52
+  slot: royal
+  colors: black

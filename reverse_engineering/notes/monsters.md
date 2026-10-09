@@ -127,6 +127,24 @@ It is a static `obj_categories.yaml` entry, not a tier: `TierPal` only adds a
 tier to palette 1. A true steel colour would need a free OBJ palette (all 8 are
 taken on map screens: 7 is the wand fire).
 
+Prototype (issue #10 follow-up): context toggle instead of a free palette. The
+knight never shares a screen with Lord British or the guards, so he borrows
+palette 5 (`obj_categories.yaml` `knight_borrow`, colours `rov_palettes.yaml`
+`knight_colors`):
+
+* `KnightScan8` (bank 8, from `Prep8` on map screens and `KnightLcd8` at every
+  LCD-on): borrow if `$52` is in a loaded slot (`$C580`, `[$C539]` slots) and
+  no other palette-5 sprite is. Selfishness `$36` loads `$50` (royal list) with
+  the knight, so then a second pass checks the shadow OAM: borrow unless an
+  entry in the royal slots' tiles (`KNIGHT_LO`-`KNIGHT_HI`) is visible.
+* `KnightSet8`: the state is `OBJPAL[$52]` itself (5 = borrowing, else the
+  fallback 3). On a change: `OBJPAL[$52/$53]`, `BASE_OBJ` palette 5 from
+  bank 8 `KNIGHT_ROM` or `ROYAL_ROM`, HRAM `KNIGHT_DIRTY` = 1.
+* `KnightSync8` (TierFar mode 8 from `W2Pal`, right after the OAM DMA): writes
+  CRAM palette 5 (8 bytes through OBP0) if LY is 144-145, else retries next
+  DMA. At LCD-on the full `SyncOBJ` covers it and the flag is cleared.
+* Non-map LCD-on (dialogs, parade, ending) forces the royal colours.
+
 ### Runtime
 
 * The bank-2 `AllocHook` (`$7F34`, replacing `ld bc,$D000` at `$5FE6`) runs the

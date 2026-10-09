@@ -38,7 +38,7 @@ restores bank 1 (the only bank the hooked callers run from) after far calls.
 | `$FF8E` | VBlank-happened flag |
 | `$FF91` | player cell in the area map (high nibble row, low nibble column) |
 | `$FFA0-$FFAF` | metatile slot -> graphic index |
-| free | `$FF98-$FF9F`, `$FFE8-$FFFE` (DX uses `$FF98-$FF9D`: `$FF9C` PARADE_LIST, also written on DMG; `$FF9D` PARADE_ON) |
+| free | `$FF98-$FF9F`, `$FFE8-$FFFE` (DX uses `$FF98-$FF9D`: `$FF9C` PARADE_LIST, also written on DMG; `$FF9D` PARADE_ON; `$FF9E` KNIGHT_DIRTY) |
 | WRAM bank 2-7 | unused by the DMG game (DX runtime lives in bank 2) |
 
 ## LCD-on sites seen (PyBoy hook on the DX `rst $28`)
@@ -68,6 +68,7 @@ Scenes (ending.md): `$5800` SCENE_LUTS (4 x 256), `$5E00` SCENES ((ret lo, ret h
 `$5F00` SCENE_OBJ (8 per scene OBJ palette 0), `$5FF0` BANK_SIG (byte at `$4001` of banks 1-7), `$7C00` CARD_TINT (16 x 8, title-card UI palette per `$FF8F`),
 `$7C80` CARD_UI (low byte of BASE_BG's UI palette), `$7D00` GOLD_DIGITS (160: side-panel digits `$E8-$F1` in gold for VRAM bank 1 `$8E80`),
 `$7E00` PARADE_PAL_ROM (25: OBJ palette per byte of the parade lists 7:`$7CA6`, copied over ENTRY_TIER while the parade is up; ending.md).
+`$7E20` KNIGHT_ROM (8), `$7E28` ROYAL_ROM (8), `$7E30` KNIGHT_FALLBACK (Black Knight borrow, monsters.md); WRAM2 `$DB39-$DB3A` KNIGHT_LO/HI (scratch).
 Bank 7: `$7FF8-$7FFD` ParadeLoad (`$FF` padding after the ending text).
 Bank 2: `$7F34-$7FB9` AllocHook (allocator `$5FE6` hook), `$7FBA` TIER_TAB (70: tier nibble per template). Object records `$D000-$D0FF` (WRAM1, 16 bytes; monsters.md).
 Inventory/side panel: `$D100-$D11F` bag, `$D125` B item, `$D126` A item, `$D134` armour (see menu.md).

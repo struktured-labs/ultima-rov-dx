@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Changed (Black Knight near-black via palette borrow, issue #10, prototype 2026-10-08)
+
+- The Black Knight (`$52`) borrows the `royal` OBJ palette 5 while he is loaded and no other
+  royal sprite (Lord British, guards, `$50`) is drawn; the runtime rewrites that palette with
+  `knight_colors` (near-`black` by default; `steel` and the `black_helm` experiment available) and puts the royal colours back as
+  soon as a royal sprite is drawn and on every non-map screen. Tier-2 trolls keep the elite
+  purple; the purple stays the knight's fallback. One CRAM palette write (8 bytes) in VBlank,
+  only on a change made with the LCD on (`KnightScan8` / `KnightSet8` / `KnightSync8`).
+
 ### Fixed (Black Knight colour, issue #10, 2026-10-08)
 
 - The Black Knight (sprite `$52`) no longer uses the `royal` OBJ palette meant for Lord British,

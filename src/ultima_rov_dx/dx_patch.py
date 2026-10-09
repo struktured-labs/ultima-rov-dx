@@ -74,6 +74,11 @@ class Tables:
     card_tint: bytes = bytes(128)                  # 16 x 8: title-card UI palette per dungeon (bank 8 CARD_TINT)
     card_ui: int = 0                               # BG palette index of the UI palette (CARD_TINT target)
     digit_pal: int = -1                            # BG palette of the gold side-panel digits (-1: off)
+    knight_id: int = 0x52                          # Black Knight sprite id (obj_categories knight_borrow)
+    knight_slot: int = 5                           # OBJ palette it borrows while no royal sprite is loaded
+    knight_rom: bytes = bytes(8)                   # its colours then (bank 8 KNIGHT_ROM)
+    royal_rom: bytes = bytes(8)                    # the borrowed palette's own colours (bank 8 ROYAL_ROM)
+    knight_fallback: int = 0                       # its OBJ palette while a royal sprite is loaded (static OBJPAL)
 
 
 def _index(names: list[str], name: str, what: str) -> int:
@@ -430,7 +435,44 @@ def build_tables(pal_data: dict[str, Any], bg_cat: dict[str, Any], obj_cat: dict
                   lut_menu, bytes(item_pal), SLOT_UI if ui_theme else 0, menu_obj, bytes(theme_obj), fire_obj, ship_pal,
                   bytes(text_ranges), theme_bg_rom, theme_obj_rom, bytes(rt_slot), tuple(theme_names), first_map,
                   bytes(mp_idx), hero_obj, hero_bg, bytes(scene_entries), bytes(scene_luts), bytes(scene_obj),
-                  tuple(scene_names), bytes(card_tint), ui, digit_pal)
+                  tuple(scene_names), bytes(card_tint), ui, digit_pal, *knight_borrow(pal_data, obj_cat, obj_names, objpal, enc["obj"]))
+
+
+def knight_borrow(pal_data: dict[str, Any], obj_cat: dict[str, Any], obj_names: list[str], objpal: bytes | bytearray,
+                  obj_enc: bytes) -> tuple[int, int, bytes, bytes, int]:
+    """Black Knight context toggle (issue #10): obj_categories `knight_borrow`
+    {id, slot, colors} names the sprite, the OBJ palette it borrows while no
+    other sprite of that palette is loaded, and its colours then (a key of
+    rov_palettes.yaml `knight_colors`, or 4 colours). Its static OBJPAL entry
+    (ids:) is the fallback for screens that also load a royal sprite.
+    Without `knight_borrow` the borrow keeps the fallback's colours."""
+    spec = obj_cat.get("knight_borrow") or {}
+    kid = int(spec.get("id", 0x52))
+    if not 0 <= kid < 128 or kid & 1:
+        raise PatchError(f"knight_borrow id {kid:#x} must be even and < $80")
+    slot = _index(obj_names, spec.get("slot", obj_names[5]), "knight_borrow slot")
+    fallback = objpal[kid]
+    if fallback == slot:
+        raise PatchError(f"knight_borrow: sprite {kid:#x} must not be listed under {obj_names[slot]!r} "
+                         "(its ids: entry is the fallback while a royal sprite is loaded)")
+    if fallback == 0 or fallback == 7:
+        raise PatchError("knight_borrow fallback must be an OBJ palette 1-6 (0 = player, 7 = OBP1 / wand fire)")
+    royal = obj_enc[8 * slot:8 * slot + 8]
+    colors = spec.get("colors")
+    if colors is None:
+        knight = obj_enc[8 * fallback:8 * fallback + 8]
+    else:
+        if isinstance(colors, str):
+            table = pal_data.get("knight_colors") or {}
+            if colors not in table:
+                raise PatchError(f"knight_borrow colors {colors!r} is not a knight_colors entry")
+            colors = table[colors]
+        if not isinstance(colors, list) or len(colors) != 4:
+            raise PatchError("knight_borrow colors need 4 colours")
+        knight = b"".join(P.bgr555(c).to_bytes(2, "little") for c in colors)
+    if not any(objpal[i] == slot for i in range(128) if i & 0x7E != kid):
+        raise PatchError(f"knight_borrow slot {obj_names[slot]!r} has no other sprite: nothing to borrow from")
+    return kid, slot, knight, royal, fallback
 
 
 def _asm_source() -> str:
@@ -637,6 +679,24 @@ def build(original: bytes, pal_data: dict[str, Any], bg_cat: dict[str, Any], obj
     put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["CARD_UI"]), bytes([(syms["BASE_BG"] + 8 * t.card_ui) & 0xFF]), "CARD_UI")
     put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["GOLD_DIGITS"]), gold_digits(original), "GOLD_DIGITS")
     put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["PARADE_PAL_ROM"]), parade_palettes(original, t.objpal), "PARADE_PAL_ROM")
+    # Black Knight context toggle (KnightScan8 / KnightSet8 / KnightSync8)
+    hram_free = {a + i for a, n in GL.FREE_HRAM for i in range(n)}
+    hr_used = {syms[k] for k in ("HR_DISPATCH", "HR_LCDMODE", "HR_SLOTG", "HR_CGB", "PARADE_LIST", "PARADE_ON")}
+    if (syms["KNIGHT_ID"] != t.knight_id or syms["KNIGHT_SLOT"] != t.knight_slot
+            or syms["KNIGHT_SLOT"] != syms["THEME_OBJ_SLOT"] or syms["KNIGHT_DIRTY"] not in hram_free
+            or syms["KNIGHT_DIRTY"] in hr_used
+            or syms["KNIGHT_ROM"] < syms["PARADE_PAL_ROM"] + syms["PARADE_LEN"]
+            or syms["ROYAL_ROM"] != syms["KNIGHT_ROM"] + 8 or syms["KNIGHT_FALLBACK"] != syms["ROYAL_ROM"] + 8
+            or syms["KNIGHT_FALLBACK"] >= 0x8000 or syms["KNIGHT_MODE"] != 8
+            or syms["KNIGHT_LO"] < syms["ENTRY_TIER"] + 41 or syms["KNIGHT_HI"] != syms["KNIGHT_LO"] + 1
+            or syms["KNIGHT_HI"] >= syms["W2C_ORG"]
+            or t.royal_rom != t.base_obj[8 * t.knight_slot:8 * t.knight_slot + 8]
+            or t.objpal[t.knight_id] != t.knight_fallback or t.objpal[t.knight_id | 1] != t.knight_fallback):
+        raise PatchError("Black Knight borrow layout: KNIGHT_ID / KNIGHT_SLOT / KNIGHT_DIRTY / KNIGHT_ROM")
+    if pal_data.get("obj_themes"):
+        raise PatchError("obj_themes and the Black Knight borrow both rewrite OBJ palette 5")
+    put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["KNIGHT_ROM"]), t.knight_rom + t.royal_rom + bytes([t.knight_fallback]),
+        "KNIGHT_ROM/ROYAL_ROM/KNIGHT_FALLBACK")
     w2(syms["SLOTPAL"], bytes([t.metapal[0]] * 16), "SLOTPAL")
     put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["LUT_TITLE_ROM"]), t.lut_title, "LUT_TITLE_ROM")
     if syms["HERO_BG"] != syms["LUT_GAME"]:

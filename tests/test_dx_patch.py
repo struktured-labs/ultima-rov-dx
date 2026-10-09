@@ -51,6 +51,34 @@ class TablesTest(unittest.TestCase):
         self.assertEqual(names[t.objpal[0x52]], "monster_elite")
         self.assertEqual(t.objpal[0x52], t.objpal[0x53])
 
+    def test_black_knight_borrow_tables(self):
+        # issue #10 context toggle: $52 borrows royal (5) recoloured; static fallback elite purple
+        import copy
+        from ultima_rov_dx import dx_patch, palettes as P
+        pal, obj = self.inputs["palettes"], self.inputs["obj_categories"]
+        names = list(pal["obj_palettes"])
+        enc = lambda cs: b"".join(P.bgr555(c).to_bytes(2, "little") for c in cs)  # noqa: E731
+        t = dx_patch.build_tables(pal, self.inputs["bg_categories"], obj)
+        self.assertEqual((t.knight_id, names[t.knight_slot], names[t.knight_fallback]), (0x52, "royal", "monster_elite"))
+        self.assertEqual(t.royal_rom, t.base_obj[40:48])
+        self.assertEqual(t.knight_rom, enc(pal["knight_colors"][obj["knight_borrow"]["colors"]]))
+        self.assertNotEqual(t.knight_rom, t.royal_rom)
+        self.assertEqual(names[t.objpal[0x4C]], "royal")                  # Lord British untouched
+        black = copy.deepcopy(obj)
+        black["knight_borrow"]["colors"] = "black"
+        tb = dx_patch.build_tables(pal, self.inputs["bg_categories"], black)
+        self.assertEqual(tb.knight_rom, enc(pal["knight_colors"]["black"]))
+        self.assertEqual(tb.base_obj, t.base_obj)                         # only KNIGHT_ROM differs
+        bad = copy.deepcopy(obj)
+        bad["ids"]["royal"] = bad["ids"]["royal"] + [0x52]
+        bad["ids"]["monster_elite"] = []
+        with self.assertRaises(dx_patch.PatchError):
+            dx_patch.build_tables(pal, self.inputs["bg_categories"], bad)
+        bad = copy.deepcopy(obj)
+        bad["knight_borrow"]["colors"] = "chrome"
+        with self.assertRaises(dx_patch.PatchError):
+            dx_patch.build_tables(pal, self.inputs["bg_categories"], bad)
+
     def test_cavern_theme(self):
         from ultima_rov_dx import dx_patch
         t = dx_patch.build_tables(self.inputs["palettes"], self.inputs["bg_categories"], self.inputs["obj_categories"])
@@ -461,6 +489,98 @@ class RealRomBuildTest(unittest.TestCase):
             elif b & 0x80 == 0 and b != 0x08:            # monster bank (0x08 = wisp: item)
                 self.assertEqual(pal, syms["MONSTER_PAL"], hex(b))
         self.assertEqual(tab[0], 5)                       # Lord British: royal, as in his castle
+
+    def test_black_knight_borrow_runtime(self):
+        # run the bank-8 toggle on the built ROM (SM83 interpreter, flat WRAM = bank 2)
+        from probes.sm83 import CPU
+        from ultima_rov_dx import dx_patch
+        from ultima_rov_dx.sm83asm import assemble
+        _, syms = assemble([("dx.asm", dx_patch._asm_source())])
+        b8 = GL.file_offset(8, 0x4000)
+        rom8 = self.out[b8:b8 + 0x4000]
+        k = syms["KNIGHT_ROM"] - 0x4000
+        steel, royal, fallback = rom8[k:k + 8], rom8[k + 8:k + 16], rom8[k + 16]
+        self.assertEqual(fallback, 3)
+        cpu = CPU(self.out)
+        cpu.ime = False
+        cpu.bank = 8
+        img = syms["W2_IMAGE_ROM"] - 0x4000
+        cpu.mem[0xD000:0xE000] = rom8[img:img + 0x1000]
+        objpal, pal5 = syms["OBJPAL"], syms["BASE_OBJ"] + 40
+        self.assertEqual(bytes(cpu.mem[pal5:pal5 + 8]), royal)          # power-on: royal, knight on fallback
+        self.assertEqual(cpu.mem[objpal + 0x52], fallback)
+        ocpd = []
+        cpu.write_watch.append((0xFF6A, 0xFF6C, lambda c, a, v: ocpd.append((a, v))))
+
+        def run(entry, a=0, b=0):
+            cpu.sp, cpu.pc, cpu.a, cpu.b = 0xCFF0, entry, a, b
+            cpu.push(0x0000)
+            start = cpu.cycles
+            for _ in range(5000):
+                if cpu.pc == 0x0000:
+                    return cpu.cycles - start
+                cpu.step()
+            self.fail(f"{entry:#x} did not return")
+
+        def scene(ids, mode=0, oam=()):
+            cpu.mem[0xC000:0xC0A0] = bytes(0xA0)
+            for e, (y, tile) in enumerate(oam):
+                cpu.mem[0xC000 + 4 * e:0xC000 + 4 * e + 3] = bytes([y, 40, tile])
+            cpu.mem[syms["SPRITE_COUNT"]] = len(ids)
+            cpu.mem[0xC580:0xC590] = bytes(ids + [0] * (16 - len(ids)))
+            cpu.mem[syms["LCD_MODE"]] = mode
+            run(syms["KnightScan8"])
+            want = cpu.a
+            run(syms["KnightSet8"], a=want)
+            return want
+
+        dirty = syms["KNIGHT_DIRTY"]
+        cpu.mem[dirty] = 0
+        # knight with monsters (Cowardice): borrow, palette 5 = steel, CRAM sync due
+        self.assertEqual(scene([0x0A, 0x52, 0x9A, 0xFF, 0x14]), 1)
+        self.assertEqual((cpu.mem[objpal + 0x52], cpu.mem[objpal + 0x53]), (5, 5))
+        self.assertEqual(bytes(cpu.mem[pal5:pal5 + 8]), steel)
+        self.assertEqual(cpu.mem[dirty], 1)
+        # VBlank sync: not past LY 145 (flag kept), then at LY 144 exactly palette 5
+        cpu.mem[syms["LAST_OBP0"]] = 0xE4
+        cpu.cycles = 100 * 114
+        run(syms["KnightSync8"], b=self.out[0x4001])
+        self.assertEqual((ocpd, cpu.mem[dirty]), ([], 1))
+        cpu.cycles = 144 * 114
+        cost = run(syms["KnightSync8"], b=self.out[0x4001])
+        self.assertEqual(cpu.mem[dirty], 0)
+        self.assertEqual(ocpd[0], (0xFF6A, 0x80 | 40))
+        self.assertEqual(bytes(v for a, v in ocpd[1:]), steel)
+        self.assertLess(cost, 250)        # M-cycles (double-speed VBlank = 2280), only on a state change
+        # unchanged scene: nothing to do
+        cpu.mem[dirty] = 0
+        scene([0x52])
+        self.assertEqual(cpu.mem[dirty], 0)
+        # Lord British's castle ($4C + guards): royal colours back, knight (if any) on the fallback
+        self.assertEqual(scene([0x4C, 0x48, 0x52], oam=[(70, 0x80), (70, 0x8A)]), 0)
+        self.assertEqual(cpu.mem[objpal + 0x52], fallback)
+        self.assertEqual(bytes(cpu.mem[pal5:pal5 + 8]), royal)
+        self.assertEqual(scene([0x52]), 1)
+        self.assertEqual(scene([0x4C]), 0)
+        self.assertEqual(bytes(cpu.mem[pal5:pal5 + 8]), royal)
+        # Selfishness $36 loads $50 (royal) with the knight: borrow while $50 is not drawn
+        sl = [0x20, 0x50, 0x52, 0x16]                                   # $50 = slot 1, tiles $88-$8F
+        self.assertEqual(scene(sl, oam=[(60, 0x90), (60, 0x92), (0, 0x88), (170, 0x8A), (80, 0x80)]), 1)
+        self.assertEqual(bytes(cpu.mem[pal5:pal5 + 8]), steel)
+        self.assertEqual(scene(sl, oam=[(60, 0x90), (90, 0x8E)]), 0)    # $50 on screen: royal back
+        self.assertEqual((cpu.mem[objpal + 0x52], bytes(cpu.mem[pal5:pal5 + 8])), (fallback, royal))
+        self.assertEqual(scene([0xF0, 0xFF, 0xFF, 0x4C, 0x52], oam=[(50, 0x98)]), 0)  # after a large sprite
+        self.assertEqual(scene([0xCC, 0xFF, 0x52], oam=[(50, 0x8C)]), 0)  # royal large sprite, 2nd slot drawn
+        self.assertEqual(scene([0x52, 0x4C], oam=[(50, 0x80)]), 1)      # only the knight drawn
+        self.assertEqual(bytes(cpu.mem[pal5:pal5 + 8]), steel)
+        # LCD-on of a non-map screen (dialog, parade, ending): royal, no VBlank sync left
+        scene([0x52])
+        cpu.mem[syms["LCD_MODE"]] = 2
+        run(syms["KnightLcd8"])
+        self.assertEqual((bytes(cpu.mem[pal5:pal5 + 8]), cpu.mem[objpal + 0x52], cpu.mem[dirty]), (royal, fallback, 0))
+        # dispatch: TierScan8 mode 8 reaches KnightSync8
+        self.assertIn(bytes([0xCB, 0x59, 0xC2, syms["KnightSync8"] & 0xFF, syms["KnightSync8"] >> 8]),
+                      rom8[syms["TierScan8"] - 0x4000:syms["TierCore"] - 0x4000])
 
     def test_lcd_sites_use_rst(self):
         for bank, addr in GL.GAME_LCD_ON_SITES:
