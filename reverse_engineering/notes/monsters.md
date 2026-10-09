@@ -114,13 +114,18 @@ colour means a tougher variant, never a different dungeon.
 | 2 | `monster_strong` — stronger (red) | `#FFFFFF #FFC0A0 #E03828 #400C08` |
 | 3 | `monster_elite` — strongest (purple) | `#FFFFFF #E8C8FF #9048D8 #200838` |
 | 4 | `folk` — townsfolk, brigands, talking NPCs, jester | |
-| 5 | `royal` — Lord British, guards, black knights (one colour everywhere) | |
+| 5 | `royal` — Lord British, guards (one colour everywhere) | |
 | 6 | `item` — chests, signs, bombs, wisps, thrown blades | |
 | 7 | `obp1` — cursor, wand fire, title OBP1 sprites | |
 
 The black knights used to get a steel colour inside dungeons (`obj_themes`).
 That was per-area tinting of one unchanged knight, not a variant, so it was
-removed. Knights are `royal` everywhere now.
+removed. `royal` then turned his grey armour red (issue #10), so the Black
+Knight (`$52`, talker template B2E on the overworld and in Cowardice /
+Selfishness) now uses OBJ palette 3 (`monster_elite`, dark purple) everywhere.
+It is a static `obj_categories.yaml` entry, not a tier: `TierPal` only adds a
+tier to palette 1. A true steel colour would need a free OBJ palette (all 8 are
+taken on map screens: 7 is the wand fire).
 
 ### Runtime
 

@@ -42,6 +42,15 @@ class TablesTest(unittest.TestCase):
         self.assertTrue(all(v < themes for v in t.area_theme))
         self.assertEqual(t.bg_themes[:64], t.base_bg)
 
+    def test_black_knight_not_royal(self):
+        # issue #10: the Black Knight ($52) must not share Lord British's red royal palette
+        from ultima_rov_dx import dx_patch
+        t = dx_patch.build_tables(self.inputs["palettes"], self.inputs["bg_categories"], self.inputs["obj_categories"])
+        names = list(self.inputs["palettes"]["obj_palettes"])
+        self.assertEqual(names[t.objpal[0x4C]], "royal")              # Lord British
+        self.assertEqual(names[t.objpal[0x52]], "monster_elite")
+        self.assertEqual(t.objpal[0x52], t.objpal[0x53])
+
     def test_cavern_theme(self):
         from ultima_rov_dx import dx_patch
         t = dx_patch.build_tables(self.inputs["palettes"], self.inputs["bg_categories"], self.inputs["obj_categories"])
@@ -424,12 +433,34 @@ class RealRomBuildTest(unittest.TestCase):
         for h in GL.HOOKS:
             allowed |= set(range(h.offset, h.offset + len(h.preimage)))
         allowed |= set(range(*GL.BANK2_FREE))           # AllocHook + TIER_TAB (was $FF fill)
+        allowed |= set(range(*GL.BANK7_FREE))           # ParadeLoad (was $FF fill)
         for bank, addr in GL.GAME_LCD_ON_SITES + GL.TITLE_LCD_ON_SITES:
             off = GL.file_offset(bank, addr)
             allowed |= {off, off + 1}
         changed = {i for i in range(len(self.original)) if self.original[i] != self.out[i]}
         self.assertEqual(changed - allowed, set())
         self.assertEqual(self.out[len(self.original):len(self.original) + 3][:1], b"\xf0")  # bank 8 starts with code
+
+    def test_parade_sprites(self):
+        # attract-loop parade: both loader calls go through ParadeLoad, which notes the
+        # list and jumps on to the original loader; the foes get the monster palette
+        from ultima_rov_dx import dx_patch
+        from ultima_rov_dx.sm83asm import assemble
+        _, syms = assemble([("dx.asm", dx_patch._asm_source())])
+        load = syms["ParadeLoad"]
+        call = bytes([0xCD, load & 0xFF, load >> 8])
+        self.assertEqual(self.out[GL.file_offset(7, 0x47F4):GL.file_offset(7, 0x47FA)], bytes.fromhex("11a67c") + call)
+        self.assertEqual(self.out[GL.file_offset(7, 0x48D3):GL.file_offset(7, 0x48D7)], bytes.fromhex("d1") + call)
+        off = GL.file_offset(7, load)
+        self.assertEqual(self.out[off:off + 6], bytes([0x7B, 0xE0, syms["PARADE_LIST"] & 0xFF, 0xC3, 0xEE, 0x49]))
+        tab = self.out[GL.file_offset(8, syms["PARADE_PAL_ROM"]):][:syms["PARADE_LEN"]]
+        self.assertEqual(len(tab), len(GL.PARADE_LIST_BYTES))
+        for b, pal in zip(GL.PARADE_LIST_BYTES, tab):
+            if b == 0xFF:
+                self.assertEqual(pal, 0)
+            elif b & 0x80 == 0 and b != 0x08:            # monster bank (0x08 = wisp: item)
+                self.assertEqual(pal, syms["MONSTER_PAL"], hex(b))
+        self.assertEqual(tab[0], 5)                       # Lord British: royal, as in his castle
 
     def test_lcd_sites_use_rst(self):
         for bank, addr in GL.GAME_LCD_ON_SITES:

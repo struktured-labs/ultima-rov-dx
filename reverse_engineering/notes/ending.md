@@ -32,6 +32,31 @@ Executive Producer: Dallas Snell) -> 3:`$6E93`/`$6EE1` One / Two Player High Sco
 Beh Lem, Ariana, Kador) and "YOUR FOES" (Trolls, Ghosts, Gremlins, Slimes, Skeletons, Snakes, Rats,
 Wizards, Reapers, Wisps, Jaggers, Cyclops), sprites scrolling in on OBJ palette 0 -> `4C32` again.
 
+### Parade sprites
+* Five lists of 4 graphic bytes + `$FF` at 7:`$7CA6` (`8C 80 B0 9C`, `96 9E 9A 8E` friends;
+  `22 04 0E 0C`, `1A 2C 14 A4`, `02 08 20 34` foes). Bit 7 = people bank (1:`$5A92`), else
+  monsters (6:`$6AD9`); source = (byte & `$7F`) * `$40`, so the gameplay sprite id is
+  (byte & `$3F`) | (bit 7 >> 1): `$A4` wizard = `$64` (brigand, folk), `$80` Sherry = `$40`, `$8C` Lord British = `$4C`.
+* 7:`$49EE` (DE = list, HL = `$8800`) loads list entry k into tiles `$80+8k` through 0:`$1811` (its
+  only caller); it is called from 7:`$47F7` (first page, before the LCD-on at 7:`$4853`) and 7:`$48D4`
+  (7:`$48C8`, each next page; the LCD stays on). Sprite k = OAM entries 2+2k, 3+2k (8x16), tiles
+  `$80+8k..` (0:`$083D` animates by +-4). The game never touches `$C539`/`$C580` here: after
+  "Quit for now" or the ending they still hold the last area's sprite slots.
+* Why the DX showed them uncoloured: `OamPass` takes the palette from the loaded sprite slots
+  (`$C539` count, `$C580` ids). On the parade the count is 0 after power-on, so every sprite
+  fell to `UnloadedPal` = OBJ palette 0 (folk-brown `scene_obj.parade`); after a game the stale
+  slots gave the parade sprites the last area's palettes instead.
+* Fix: both `call $49EE` go through bank-7 `ParadeLoad` (7:`$7FF8`, `$FF` padding), which stores
+  the list's low byte in HRAM `$FF9C` (unused HRAM, so DMG behaviour is unchanged) and jumps on.
+  At the parade's LCD-on, bank-8 `SceneHook` (return address `$4854`) copies `PARADE_PAL_ROM`
+  (builder: OBJPAL of each list byte, so foes get `monster` = tier-0 green, Lord British and Gnu
+  Gnu `royal`, the wisp `item`, the rest `folk`) over `ENTRY_TIER` (unused off map screens) and
+  sets `PARADE_ON` (`$FF9D`); `TierClear` ends it at the next LCD-on. `OamPass` reads the slot count
+  through `SlotCount`, which on the parade colours the entry with `PARADE_TAB[$FF9C - $A6 + slot]`.
+  Verified with PyBoy and the SameBoy harness (idle from power-on to the parade, ~2,460 frames;
+  OAM palettes 5,5,4,4.. / 1,1,1.. per page; blocked VRAM/CRAM/OAM writes identical to the previous build).
+  DMG frames are identical to the previous build.
+
 ## Death
 * Damage (0:`$33FC`) writes HP to `$D127` (max `$D128`). At 0 in single player: 0:`$3460` ->
   0:`$17D8` -> 7:`$4276`: skull and crossbones with twinkling star sprites (site 7:`$4319`, LCDC `$83`,
@@ -75,8 +100,8 @@ Wizards, Reapers, Wisps, Jaggers, Cyclops), sprites scrolling in on OBJ palette 
   steps, fire-red rune; `royal` cream vellum, royal purple ink (ending text); `throne` warm stone,
   sky windows, crimson banner with a gold ankh, marble floor, gold throne and Lord British in red,
   carpeted steps; `death` bone on blood-black, stars white/gold (`scene_obj.stars`); `credits` night
-  blue with cream letters (4C32/4C78/4C8D); `scores` ledger green; `parade` pale sky paper, slate ink,
-  folk-brown sprites (`scene_obj.parade`).
+  blue with cream letters (4C32/4C78/4C8D); `scores` ledger green; `parade` pale sky paper, slate ink;
+  its sprites take their gameplay palettes (Parade sprites above; `scene_obj.parade` is only OBJ palette 0).
 * Title cards: theme byte `$FF` keeps the entrance theme and loads the UI palette from
   `CARD_TINT[$FF8F]` (the card number, 7:`$4608`): 1 Hatred navy (unchanged), 2 Deceit blue,
   3 Cowardice red, 4 Injustice green, 5 Dishonor purple, 6 Selfishness orange, 7 Pride grey,

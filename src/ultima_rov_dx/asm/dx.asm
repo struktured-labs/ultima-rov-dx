@@ -57,6 +57,8 @@ HR_DISPATCH     equ $FF98   ; bank-8 far-call index
 HR_LCDMODE      equ $FF99   ; 0 = game site (mode byte decides map/text), 1 = castle title, 9 = logo
 HR_SLOTG        equ $FF9A   ; scratch: graphic index in Slot
 HR_VBLANK       equ $FF8E   ; game: set by its VBlank interrupt, cleared at its idle waits
+PARADE_LIST     equ $FF9C   ; low byte of the parade's graphic list (bank 7 $7CA6 + 5k), set by ParadeLoad (also on DMG: unused HRAM)
+PARADE_ON       equ $FF9D   ; 1 = the attract-loop parade is up: OamPass colours its sprites from PARADE_TAB (CGB)
 HR_CGB          equ $FF9B   ; 1 = CGB (set by Boot on every power-up; KEY1 is not
                             ;     a reliable DMG test on all emulators)
 
@@ -155,6 +157,12 @@ HERO_OBJ_ROM    equ $7B40   ; bank 8: 4 x 8 bytes, OBJ palette 0 (PLAYER_PAL) pe
 CARD_TINT       equ $7C00   ; bank 8: 16 x 8 bytes, title-card UI palette per dungeon ([HR_CARD] & 15; SCENES theme $FF)
 CARD_UI         equ $7C80   ; bank 8: low byte of BASE_BG's UI palette (where CARD_TINT goes)
 GOLD_DIGITS     equ $7D00   ; bank 8: DIGIT_LEN bytes, side-panel digits $E8-$F1 redrawn in gold (VRAM bank 1)
+PARADE_PAL_ROM  equ $7E00   ; bank 8: PARADE_LEN bytes, OBJ palette per byte of the parade lists 7:$7CA6-$7CBE (builder, from OBJPAL)
+PARADE_TAB      equ ENTRY_TIER  ; WRAM2: PARADE_PAL_ROM copied over ENTRY_TIER (unused off map screens, cleared at every LCD-on)
+PARADE_LISTS    equ $7CA6   ; bank 7: the parade's five 4-graphic lists ($FF-terminated, 5 bytes each)
+PARADE_LEN      equ 25
+PARADE_RET      equ $4854   ; return address of the parade's LCD-on site 7:$4853 (rst $28)
+PARADE_LOAD     equ $49EE   ; bank 7: load the graphics of list DE into tiles $80+8k (k = list index)
 DIGIT_VRAM      equ $8E80   ; tile $E8 (signed tile data); LUT_GAME gives $E8-$F1 attribute bit 3
 DIGIT_LEN       equ 160
 HR_CARD         equ $FF8F   ; title card (bank 7 $4608): dungeon number shown on the card
@@ -387,6 +395,18 @@ section patch_anim_wait, $175A, $175A  ; animated tiles: wait LY 145, DMA, copy
         call PrepWait                   ; (was call $02DC)
 section patch_idle_halt, $1EE7, $1EE7   ; main loop, before its halt wait
         call PrepTramp                  ; (was xor a; ldh [$FF8E],a)
+; Attract-loop parade (bank 7 $47D6, "YOUR FRIENDS" / "YOUR FOES"): both
+; calls of its graphics loader ($49EE, DE = list of 4 graphic bytes) go
+; through ParadeLoad, which notes the list in HRAM (harmless on DMG).
+section patch_parade_first, $1C7F7, $47F7   ; ld de,$7ca6; call $49ee (first page)
+        call ParadeLoad
+section patch_parade_page, $1C8D4, $48D4    ; pop de; call $49ee (next pages)
+        call ParadeLoad
+section bank7_parade, $1FFF8, $7FF8         ; bank 7 $FF padding after the ending text
+ParadeLoad:
+        ld a, e
+        ldh [PARADE_LIST], a
+        jp PARADE_LOAD
 
 ; ======================================================== bank 8 (ROM)
 section bank8, $20000, $4000
@@ -647,6 +667,8 @@ Bank8Boot:
         jr nz, .notcgb1
         ld a, 1
         ldh [rSVBK], a
+        xor a                           ; no parade yet (HRAM is random at power-on)
+        ldh [PARADE_ON], a
         jr .wait
 .notcgb1:
         ld a, 1
@@ -833,6 +855,13 @@ Brand:
 ; next area). Returns A = the caller's bank (from BANK_SIG).
 SceneHook:
         push bc
+        ld a, h                         ; the attract-loop parade: its sprites
+        cp high(PARADE_RET)             ; take their gameplay colours
+        jr nz, .np
+        ld a, l
+        cp low(PARADE_RET)
+        call z, ParadeOn8
+.np:
         ld a, [LCD_MODE]                ; map screens: gold side-panel digits in
         or a                            ; VRAM bank 1 (LCD off; nothing else
         jr nz, .nodig                   ; uses bank-1 tile data)
@@ -1081,6 +1110,25 @@ HeroMenu8:
         ld [LAST_BGP], a
         jp SigBank
 
+; SceneHook at the parade's LCD-on (SVBK = 2, TierClear just ran):
+; PARADE_TAB = PARADE_PAL_ROM, PARADE_ON = 1 until the next LCD-on.
+; Preserves HL.
+ParadeOn8:
+        push hl
+        ld hl, PARADE_PAL_ROM
+        ld de, PARADE_TAB
+        ld b, PARADE_LEN
+.c:
+        ld a, [hl+]
+        ld [de], a
+        inc e
+        dec b
+        jr nz, .c
+        ld a, 1
+        ldh [PARADE_ON], a
+        pop hl
+        ret
+
 Bank8CodeEnd:
 
 ; bank 8 $5400-$55FF (between the WRAM2 image and PICTURE_LUT)
@@ -1148,6 +1196,23 @@ FillAttrs8:
         ld a, h
         cp $A0
         jr nz, .loop
+        ld a, [LCD_MODE]
+        cp 3
+        jr nz, .fixed
+; Picture: map cells whose tile id is shared by two regions get their own
+; attribute (PICTURE_FIX); SigBank maps the caller's bank 7 back.
+        ld hl, PICTURE_FIX
+.fix:
+        ld e, [hl]
+        inc hl
+        ld a, [hl+]
+        or a
+        jr z, .fixed
+        ld d, a
+        ld a, [hl+]
+        ld [de], a
+        jr .fix
+.fixed:
         xor a
         ldh [rVBK], a
         jp SigBank
@@ -1302,7 +1367,7 @@ OamPass:
         rrca
         and $0F
         ld e, a                         ; slot at or past the loaded count ($C539):
-        ld a, [SPRITE_COUNT]            ; not a monster. The champion's attack
+        call SlotCount                  ; not a monster. The champion's attack
         cp e                            ; pose uses tiles $E0-$EF (slots 12-13),
         jr c, .unl                      ; the sailing ship $B8-$BF (slot 7)
         jr z, .unl
@@ -1586,34 +1651,28 @@ W2LcdOnBody:
         ld a, [FLAT_BG+1]
         ldh [rBCPD], a
 .attrs:
-        ld c, 4                         ; FillAttrs8 (bank 8)
-        call TierFar
-        ld a, [LCD_MODE]
-        cp 3
-        ret nz
-; Picture: map cells whose tile id is shared by two regions get their own
-; attribute (list in bank 8), then the caller's bank 7 is mapped back.
-        ld a, 8
-        ld [MBC_BANK], a
-        ld hl, PICTURE_FIX
-        ld a, 1
-        ldh [rVBK], a
-.fix:
-        ld e, [hl]
-        inc hl
-        ld a, [hl+]
+        ld c, 4                         ; FillAttrs8 (bank 8; picture fixups too)
+        jp TierFar
+
+; OamPass, E = sprite slot of the entry's tile ($80+8E): A = loaded slot
+; count ($C539). On the attract-loop parade (PARADE_ON) the slots hold the
+; graphics of list PARADE_LIST instead: the entry gets PARADE_TAB[list
+; offset + E], the gameplay OBJ palette of that graphic (monsters: base
+; tier), and OamPass goes on at .apply (HL = attribute byte).
+SlotCount:
+        ldh a, [PARADE_ON]
         or a
-        jr z, .fixed
-        ld d, a
-        ld a, [hl+]
-        ld [de], a
-        jr .fix
-.fixed:
-        xor a
-        ldh [rVBK], a
-        ld a, TITLE_BANK
-        ld [MBC_BANK], a
-        ret
+        ld a, [SPRITE_COUNT]
+        ret z
+        pop af                          ; not back into the slot lookup
+        ldh a, [PARADE_LIST]
+        add e
+        add (low(PARADE_TAB) - low(PARADE_LISTS)) & $FF
+        ld e, a
+        ld d, high(PARADE_TAB)
+        ld a, [de]
+        and 7
+        jp OamPass.apply
 
 ; A = area theme. Loads its BG base colours and forces a CRAM resync at
 ; the next OAM DMA (VBlank) if it differs from the current one. SVBK = 2.
@@ -2374,6 +2433,7 @@ BuildLutT:
 TierClear:
         ld hl, ENTRY_TIER
         xor a
+        ldh [PARADE_ON], a              ; every screen but the parade (SceneHook sets it again)
         ld b, 40
 .c:
         ld [hl+], a

@@ -28,7 +28,8 @@ MP_SETS = 16      # dx.asm MP_SETS: distinct metatile palette maps (METAPAL), sh
 SLOT_SURFACE, SLOT_MAP, SLOT_ENTRANCE, SLOT_UI = 0, 1, 2, 3   # WRAM slots (dx.asm SLOT_MAP = 1)
 
 # Windows that assembled sections may occupy (file offsets, inclusive-exclusive).
-FREE_WINDOWS = [(0x0003, 0x0038), (0x0043, 0x0048), (0x004B, 0x0050), (0x0051, 0x0058), (0x005B, 0x0060), (0x0061, 0x0100), GL.BANK2_FREE, (0x20000, 0x40000)]
+FREE_WINDOWS = [(0x0003, 0x0038), (0x0043, 0x0048), (0x004B, 0x0050), (0x0051, 0x0058), (0x005B, 0x0060), (0x0061, 0x0100), GL.BANK2_FREE,
+                GL.BANK7_FREE, (0x20000, 0x40000)]
 
 
 class PatchError(Exception):
@@ -102,6 +103,20 @@ def gold_digits(original: bytes) -> bytes:
             body = rows[y]
             shadow = ((rows[y - 1] >> 1) if y else 0) & ~body & 0xFF
             out += bytes([body | shadow, shadow])   # colour 1 = lo only, colour 3 = both planes
+    return bytes(out)
+
+
+def parade_palettes(original: bytes, objpal: bytes) -> bytes:
+    """OBJ palette per byte of the attract-loop parade lists (bank 7 $7CA6):
+    each graphic gets its gameplay palette (OBJPAL of its sprite id; monsters
+    the base tier), the $FF terminators PLAYER_PAL (0)."""
+    off = GL.file_offset(*GL.PARADE_LISTS)
+    got = bytes(original[off:off + len(GL.PARADE_LIST_BYTES)])
+    if got != GL.PARADE_LIST_BYTES:
+        raise PatchError(f"parade lists at 7:{GL.PARADE_LISTS[1]:04x}: expected {GL.PARADE_LIST_BYTES.hex()} got {got.hex()}")
+    out = bytearray()
+    for b in got:
+        out.append(0 if b == 0xFF else objpal[(b & 0x3F) | ((b & 0x80) >> 1)])
     return bytes(out)
 
 
@@ -510,6 +525,17 @@ def build(original: bytes, pal_data: dict[str, Any], bg_cat: dict[str, Any], obj
     if syms["Bank2End"] > syms["TIER_TAB"] or syms["TIER_TAB"] + tier_len > 0x8000:
         raise PatchError(f"bank 2 hook ({syms['Bank2End']:#x}) and TIER_TAB overlap or overflow")
 
+    parade_site = GL.PARADE_LCD_ON
+    if (parade_site not in GL.GAME_LCD_ON_SITES or parade_site in GL.MAP_LCD_ON_SITES
+            or any(a == parade_site[1] and b != parade_site[0] for b, a in GL.GAME_LCD_ON_SITES)
+            or syms["PARADE_RET"] != parade_site[1] + 1
+            or syms["PARADE_LISTS"] != GL.PARADE_LISTS[1] or syms["PARADE_LEN"] != len(GL.PARADE_LIST_BYTES)
+            or (syms["PARADE_LISTS"] + syms["PARADE_LEN"] - 1) >> 8 != syms["PARADE_LISTS"] >> 8
+            or syms["PARADE_TAB"] != syms["ENTRY_TIER"]
+            or (syms["PARADE_TAB"] & 0xFF) + syms["PARADE_LEN"] + 15 > (syms["ENTRY_TIER"] & 0xFF) + 40
+            or syms["PARADE_PAL_ROM"] < syms["GOLD_DIGITS"] + syms["DIGIT_LEN"]
+            or syms["PARADE_PAL_ROM"] + syms["PARADE_LEN"] > 0x8000):
+        raise PatchError("parade layout: PARADE_RET / PARADE_LISTS / PARADE_TAB / PARADE_PAL_ROM")
     if syms["PICTURE_BANK"] != syms["TITLE_BANK"] or any(b != syms["TITLE_BANK"] for b, _ in GL.TITLE_LCD_ON_SITES):
         raise PatchError("title/picture LCD-on sites must all be in TITLE_BANK (LUTs are copied from bank 8)")
     if (syms["INV"] + 64 > syms["SLOTG"] or syms["ITEM_PAL"] + 64 > syms["INV"] or syms["HR_BACKUP"] + 12 > syms["TEXT_RANGES"]
@@ -610,6 +636,7 @@ def build(original: bytes, pal_data: dict[str, Any], bg_cat: dict[str, Any], obj
     put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["CARD_TINT"]), t.card_tint, "CARD_TINT")
     put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["CARD_UI"]), bytes([(syms["BASE_BG"] + 8 * t.card_ui) & 0xFF]), "CARD_UI")
     put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["GOLD_DIGITS"]), gold_digits(original), "GOLD_DIGITS")
+    put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["PARADE_PAL_ROM"]), parade_palettes(original, t.objpal), "PARADE_PAL_ROM")
     w2(syms["SLOTPAL"], bytes([t.metapal[0]] * 16), "SLOTPAL")
     put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["LUT_TITLE_ROM"]), t.lut_title, "LUT_TITLE_ROM")
     if syms["HERO_BG"] != syms["LUT_GAME"]:

@@ -2,6 +2,21 @@
 
 ## [Unreleased]
 
+### Fixed (Black Knight colour, issue #10, 2026-10-08)
+
+- The Black Knight (sprite `$52`) no longer uses the `royal` OBJ palette meant for Lord British,
+  which drew his grey armour red. He uses the dark `monster_elite` purple everywhere (overworld
+  and dungeons); no OBJ palette is free for a separate steel colour.
+
+### Fixed (attract-mode parade, 2026-10-08)
+
+- The "YOUR FRIENDS / YOUR FOES" parade of the title/attract loop now colours each sprite like
+  in gameplay: foes in the monster palette (base tier, green), Lord British and Gnu Gnu royal,
+  the wisp gold, townsfolk folk. It used OBJ palette 0 for everything after power-on, and the
+  last area's sprite-slot palettes after a game. Bank-7 hook on the parade's graphics loader
+  (`ParadeLoad`, 7:`$7FF8`), table `PARADE_PAL_ROM` built from OBJPAL
+  (`reverse_engineering/notes/ending.md`).
+
 ### Fixed (hardware timing, monster flash, panel icons, 2026-10-03)
 
 - VBlank budget on real hardware: sprite palettes are now computed at the game's idle waits

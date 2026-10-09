@@ -80,8 +80,19 @@ FREE_SPACE: tuple[tuple[int, int], ...] = (
     (0x0061, 0x009F),
     (0x20000, 0x20000),      # banks 8-15 after expansion to 256 KiB
     (file_offset(2, 0x7F34), 0xCC),   # bank 2 $7F34-$7FFF ($FF padding): AllocHook + TIER_TAB
+    (file_offset(7, 0x7FF8), 0x08),   # bank 7 $7FF8-$7FFF ($FF padding after the ending text): ParadeLoad
 )
 BANK2_FREE = (file_offset(2, 0x7F34), file_offset(2, 0x8000))
+BANK7_FREE = (file_offset(7, 0x7FF8), file_offset(7, 0x8000))
+
+# Attract-loop parade ("YOUR FRIENDS" / "YOUR FOES", bank 7 $47D6; ending.md).
+# Five lists of four graphic bytes + $FF at bank 7 $7CA6: bit 7 = people bank
+# (bank 1 $5A92), else monsters (bank 6 $6AD9); source = (byte & $7F) * $40,
+# so the gameplay sprite id ($C580, OBJPAL key) is (byte & $3F) | (bit 7 >> 1).
+# List k's graphics go to tiles $80+8k (sprite slot k).
+PARADE_LCD_ON = (7, 0x4853)
+PARADE_LISTS = (7, 0x7CA6)
+PARADE_LIST_BYTES = bytes.fromhex("8c80b09cff" "969e9a8eff" "22040e0cff" "1a2c14a4ff" "02082034ff")
 FREE_HRAM = ((0xFF98, 8), (0xFFE8, 0x17))
 # WRAM bank 2 ($D000-$DFFF with SVBK=2) is entirely unused by the DMG game.
 
@@ -107,6 +118,11 @@ HOOKS: tuple[Hook, ...] = (
          "call $02DC before the animated-tile DMA + VRAM copy -> call PrepWait (prep, then the wait)"),
     Hook("main_loop_halt", 0x1EE7, bytes.fromhex("afe08e"),
          "main loop before its halt wait: xor a; ldh [$FF8E],a -> call PrepTramp (clears $FF8E)"),
+    # The preimages include the instruction before the call (kept): the list setup.
+    Hook("parade_gfx_first", file_offset(7, 0x47F4), bytes.fromhex("11a67ccdee49"),
+         "attract-loop parade, first page: ld de,$7CA6; call $49EE -> call ParadeLoad (records the list)"),
+    Hook("parade_gfx_page", file_offset(7, 0x48D3), bytes.fromhex("d1cdee49"),
+         "attract-loop parade, next pages (7:$48C8): pop de; call $49EE -> call ParadeLoad"),
 )
 PALETTE_INIT_HOOK = HOOKS[0]
 VBLANK_HOOK = HOOKS[1]   # OAM DMA is called from ~10 sites, so the hook is the HRAM routine itself

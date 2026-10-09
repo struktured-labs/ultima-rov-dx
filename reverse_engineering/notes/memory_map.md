@@ -38,7 +38,7 @@ restores bank 1 (the only bank the hooked callers run from) after far calls.
 | `$FF8E` | VBlank-happened flag |
 | `$FF91` | player cell in the area map (high nibble row, low nibble column) |
 | `$FFA0-$FFAF` | metatile slot -> graphic index |
-| free | `$FF98-$FF9F`, `$FFE8-$FFFE` (DX uses `$FF98-$FF9B`) |
+| free | `$FF98-$FF9F`, `$FFE8-$FFFE` (DX uses `$FF98-$FF9D`: `$FF9C` PARADE_LIST, also written on DMG; `$FF9D` PARADE_ON) |
 | WRAM bank 2-7 | unused by the DMG game (DX runtime lives in bank 2) |
 
 ## LCD-on sites seen (PyBoy hook on the DX `rst $28`)
@@ -66,7 +66,9 @@ Bank 8: `$5600` PICTURE_LUT, `$5700` PICTURE_FIX, `$5C00` LUT_TITLE, `$5D00` LUT
 `$7B00` RT_SLOT (WRAM slot per theme), `$7B20` MP_IDX (METAPAL set per theme), `$7B40` HERO_OBJ_ROM (4 x 8, player palette per champion).
 Scenes (ending.md): `$5800` SCENE_LUTS (4 x 256), `$5E00` SCENES ((ret lo, ret hi, ROM theme or `$FF` = card tint, LUT, OBJ)*, hi = 0 ends),
 `$5F00` SCENE_OBJ (8 per scene OBJ palette 0), `$5FF0` BANK_SIG (byte at `$4001` of banks 1-7), `$7C00` CARD_TINT (16 x 8, title-card UI palette per `$FF8F`),
-`$7C80` CARD_UI (low byte of BASE_BG's UI palette), `$7D00` GOLD_DIGITS (160: side-panel digits `$E8-$F1` in gold for VRAM bank 1 `$8E80`).
+`$7C80` CARD_UI (low byte of BASE_BG's UI palette), `$7D00` GOLD_DIGITS (160: side-panel digits `$E8-$F1` in gold for VRAM bank 1 `$8E80`),
+`$7E00` PARADE_PAL_ROM (25: OBJ palette per byte of the parade lists 7:`$7CA6`, copied over ENTRY_TIER while the parade is up; ending.md).
+Bank 7: `$7FF8-$7FFD` ParadeLoad (`$FF` padding after the ending text).
 Bank 2: `$7F34-$7FB9` AllocHook (allocator `$5FE6` hook), `$7FBA` TIER_TAB (70: tier nibble per template). Object records `$D000-$D0FF` (WRAM1, 16 bytes; monsters.md).
 Inventory/side panel: `$D100-$D11F` bag, `$D125` B item, `$D126` A item, `$D134` armour (see menu.md).
 
@@ -94,6 +96,7 @@ uses bank 8; banks 9-15 are free. The expanded ROM was verified to boot and play
   LY 145) is deliberately not hooked: the title code re-enters it inside line 145, so any
   overhead costs a frame.
 * WRAM2 `W2Prep` → bank 8 `Prep8` (section `bank8b`, `$5400-$55FF`, between the WRAM2 image and
-  `PICTURE_LUT`), also `FillAttrs8` (moved out of WRAM2). TierFar modes: C = 0/`$80` tier scan,
+  `PICTURE_LUT`), also `FillAttrs8` (moved out of WRAM2; it also applies the entrance-cutscene
+  `PICTURE_FIX` cells since the parade fix). TierFar modes: C = 0/`$80` tier scan,
   1 HeroMenu8, 2 Prep8, 4 FillAttrs8.
 * `OamPass` (WRAM2) = the OAM palette loop, over `$FE00` (hook fallback) or `$C000` (Prep8).
