@@ -62,7 +62,9 @@ class Creatures:
     fallback: bytes = bytes(FALLBACKS * MAX_CLASSES)      # base class id -> nearest-coloured base classes
     folk: int = 0                                         # class of the ship (surface maps)
     tiered_keys: frozenset = frozenset()
-    tiers: dict = field(default_factory=dict)             # template index -> tier (monsters.tiers)
+    tiers: dict = field(default_factory=dict)             # template index -> tier (monsters.tiers + NPC templates)
+    npc: bytes = bytes(MAX_CLASSES)                       # class id -> 1 for named-NPC classes (bank 9 NAT_NPC)
+    alias: dict = field(default_factory=dict)             # NPC / variant name -> class id (dialog portraits)
 
     def cls(self, name: str) -> int:
         return self.names.index(name) + 1
@@ -107,6 +109,52 @@ def build(pal_data: dict[str, Any], obj_cat: dict[str, Any], temps: list[MON.Tem
         tiers_of[base] = 1 + len(variants)
         if len(variants) > MON.MAX_TIERS - 1:
             raise CreatureError(f"creatures.{name}: at most {MON.MAX_TIERS - 1} variants")
+    # named NPCs: own colours on the map (shared graphics: variants keyed by template)
+    by_name = {t.name: t for t in temps}
+    npc_cls: set[int] = set()
+    npc_tier: dict[int, int] = {}
+    npc_keys: set[int] = set()
+    for name, ent in (pal_data.get("npcs") or {}).items():
+        ids = ent.get("ids") or []
+        if not ids:
+            raise CreatureError(f"npcs.{name}: no ids")
+        for k in ids:
+            if not 0 <= k < 0x80 or k & 1:
+                raise CreatureError(f"npcs.{name}: id {k:#x} must be even and < $80")
+            if k in key_owner:
+                raise CreatureError(f"npcs.{name}: id {k:#x} also in {key_owner[k]}")
+            key_owner[k] = name
+        if not ent.get("why"):
+            raise CreatureError(f"npcs.{name}: say why (natural colour)")
+        base = len(names) + 1
+        names.append(name)
+        cr.alias[name] = base
+        cols += _enc(ent.get("colors"), f"npcs.{name}")
+        npc_cls.add(base)
+        variants = ent.get("variants") or []
+        if len(variants) > 3:
+            raise CreatureError(f"npcs.{name}: at most 3 variants (tiers 1-3)")
+        for i, v in enumerate(variants):
+            vname = v.get("name") or f"{name}+{i + 1}"
+            names.append(f"{name}+{i + 1}")
+            cr.alias[vname] = base + 1 + i
+            npc_cls.add(base + 1 + i)
+            cols += _enc(v.get("colors"), f"npcs.{name}.variants[{i}]")
+            if not v.get("why"):
+                raise CreatureError(f"npcs.{name}.variants[{i}]: say why")
+            tps = v.get("templates") or []
+            if not tps:
+                raise CreatureError(f"npcs.{name}.variants[{i}]: no templates")
+            for tn in tps:
+                t = by_name.get(tn)
+                if t is None or t.key not in ids:
+                    raise CreatureError(f"npcs.{name}.variants[{i}]: template {tn} is not a {name} sprite")
+                if t.index in npc_tier:
+                    raise CreatureError(f"npcs.{name}: template {tn} in two variants")
+                npc_tier[t.index] = i + 1
+        tiers_of[base] = 1 + len(variants)
+        if variants:
+            npc_keys.update(ids)
     obj_names = P.names(pal_data, "obj_palettes")
     ids = obj_cat.get("ids") or {}
     for cat in ids:
@@ -145,6 +193,7 @@ def build(pal_data: dict[str, Any], obj_cat: dict[str, Any], temps: list[MON.Tem
     # with variants needs exactly that many tiers, one without needs one
     ckeys = {k for ks in creature_keys.values() for k in ks}
     tier = MON.tiers(temps, ckeys)
+    tier.update(npc_tier)
     for name, ks in creature_keys.items():
         found = {tier[t.index] for t in temps if t.key in ks}
         want = tiers_of[names.index(name) + 1]
@@ -153,12 +202,13 @@ def build(pal_data: dict[str, Any], obj_cat: dict[str, Any], temps: list[MON.Tem
                                 f"the table {want} (base + variants)")
         if want > 1 and len({t.key for t in temps if t.key in ks}) != 1:
             raise CreatureError(f"creatures.{name}: a creature with variants must have one graphic with templates")
-    cr.tiered_keys = frozenset(k for name, ks in creature_keys.items() for k in ks
-                               if tiers_of[names.index(name) + 1] > 1)
+    cr.tiered_keys = frozenset([k for name, ks in creature_keys.items() for k in ks
+                                if tiers_of[names.index(name) + 1] > 1] + sorted(npc_keys))
+    cr.npc = bytes(1 if c in npc_cls else 0 for c in range(MAX_CLASSES))
     cr.tiers = tier
     tpl = bytearray(len(temps))
     for t in temps:
-        if t.key in cr.tiered_keys and tier[t.index]:
+        if t.key in cr.tiered_keys and (tier[t.index] or t.key in npc_keys):   # NPCs: tier 0 listed too
             tpl[t.index] = tier[t.index] << 6 | cr.class_of_key(t.key)
     cr.tpl = bytes(tpl)
     # fallback: base classes ranked by colour distance (light + mid shade)
@@ -171,6 +221,8 @@ def build(pal_data: dict[str, Any], obj_cat: dict[str, Any], temps: list[MON.Tem
     for c in bases:
         a = col(c)
         rank = sorted((sum((x - y) ** 2 for p, q in zip(a, col(o)) for x, y in zip(p, q)), o) for o in bases if o != c)
+        if c in npc_cls:          # an NPC that does not fit wears the generic townsfolk colours
+            rank = [(0, cr.folk)] + [r for r in rank if r[1] != cr.folk]
         for i, (_, o) in enumerate(rank[:FALLBACKS]):
             fb[FALLBACKS * c + i] = o
     cr.fallback = bytes(fb)
@@ -187,6 +239,7 @@ class Allocation:
     objpal: dict[int, int]                 # loaded key -> OBJPAL byte (palette | $80 when tiered)
     colors: dict[int, bytes]               # OBJ palette -> 8 bytes, palettes the area owns
     ship_pal: int | None = None
+    solo: dict = field(default_factory=dict)   # NPC class -> the one variant (tier) its palette shows
 
 
 def allocate(cr: Creatures, slots: list[int], count: int, area_list: list[tuple[int, int]] = (),
@@ -210,6 +263,13 @@ def allocate(cr: Creatures, slots: list[int], count: int, area_list: list[tuple[
     if surface and cr.folk not in need:
         need[cr.folk] = 1
         order.append(cr.folk)
+    npcs = [c for c in order if cr.npc[c]]
+    order = [c for c in order if not cr.npc[c]]
+    if npcs and len(order) + len(npcs) > LAST_PAL - FIRST_PAL + 1 and cr.folk not in need:
+        need[cr.folk] = 1
+        order.append(cr.folk)             # overflowing NPCs fall back to folk brown
+    order += npcs
+    mask: dict[int, int] = {}
     for i, (_pos, t) in enumerate(area_list):
         if LIST_ADDR + 2 * i >= LIST_END or t == 0:
             break
@@ -222,6 +282,12 @@ def allocate(cr: Creatures, slots: list[int], count: int, area_list: list[tuple[
             c, tr = v & 0x3F, v >> 6
             if c in need:
                 need[c] = max(need[c], tr + 1)
+                mask[c] = mask.get(c, 0) | 1 << tr
+    # a shared-graphic NPC whose area spawns one named variant only: that
+    # variant's colours in a single palette (no tier block)
+    solo = {c: {2: 1, 4: 2, 8: 3}[mask[c]] for c in order if cr.npc[c] and mask.get(c) in (2, 4, 8)}
+    for c in solo:
+        need[c] = 1
     size = {c: 1 for c in order}
     spare = LAST_PAL - FIRST_PAL + 1 - len(order)
     for c in order:
@@ -249,8 +315,9 @@ def allocate(cr: Creatures, slots: list[int], count: int, area_list: list[tuple[
         if c in shared:
             continue
         for t in range(size[c]):
-            colors[pal[c] + t] = cr.class_col[8 * (c + t):8 * (c + t) + 8]
-    return Allocation(order, need, size, pal, shared, objpal, colors, pal.get(cr.folk))
+            u = c + t + solo.get(c, 0)
+            colors[pal[c] + t] = cr.class_col[8 * u:8 * u + 8]
+    return Allocation(order, need, size, pal, shared, objpal, colors, pal.get(cr.folk), solo)
 
 
 PARADE_PREF = (1, 2, 3, 4, 5, 6, 7, 0)   # 0 / 7 only when 1-6 are taken: the parade shows no player or OBP1 sprite

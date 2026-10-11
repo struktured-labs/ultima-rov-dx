@@ -163,6 +163,21 @@ MENU_LCD_ON_SITES: frozenset[tuple[int, int]] = frozenset({(0, 0x10A8)})
 # $14FF (two-player) "Please wait for the <champion> who has fallen!"
 # (reverse_engineering/notes/ending.md); both were wrongly in map mode.
 DIALOG_LCD_ON_SITES: frozenset[tuple[int, int]] = frozenset({(0, 0x1323), (0, 0x0AEB), (0, 0x14FF)})
+# Talk dialog (0:$126E): talk id ([$C535], NPC record byte 10 & $7F) -> text
+# record via bank 4 $69F9 + 2*id (records in bank 4 for ids < $12, else bank
+# 6). Record byte 0 is the speaker's portrait byte P, then the name. P is
+# pushed as D at 0:$12B8 (popped at 0:$1372) and is still on top of the
+# game's stack at the LCD-on 0:$1323; 0:$034A/$2BD5 copy the portrait (bank 2
+# $(P+$66)33, 256 bytes; P+$66 = $FE/$FF: none) into tiles $D4-$E3 and draw
+# it 4x4 at $9C46. Portrait bytes read from the verified ROM:
+TALK_DIALOG_SITE = (0, 0x1323)
+PORTRAIT_TILES = tuple(range(0xD4, 0xE4))
+DIALOG_PORTRAITS = {
+    0x00: "Gnu Gnu", 0x01: "Lord British", 0x06: "Sherry", 0x07: "Beh Lem", 0x08: "a sign",
+    0x09: "Eep Eep", 0x0A: "Kador", 0x0B: "Chuckles", 0x0C: "Klip", 0x0D: "Klop", 0x0E: "Dr Cat",
+    0x0F: "Penumbra", 0x10: "Johann", 0x11: "Loubet", 0x12: "Zoltan", 0x13: "Finn", 0x14: "Ariana",
+    0x15: "The Black Knight", 0x16: "Melissa", 0x17: "Utomo", 0x18: "Taynith",
+}
 # Champion select (bank 3; scripts/capture_screens.py CHARACTER_SELECT_LCD_ON
 # and the tile-map dump in tmp/probe/textscreens.py): text screen whose four
 # portraits use tiles $10-$1F, $20-$2F, $30-$3F and $80-$8F (4x4 each).

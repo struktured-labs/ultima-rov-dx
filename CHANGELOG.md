@@ -2,6 +2,42 @@
 
 ## [Unreleased]
 
+### Changed (named NPCs in their own colours on the map, 2026-10-11)
+
+- Each named NPC now has its own natural colour on the map, allocated per area like the
+  creatures (`rov_palettes.yaml` `npcs`, with a `why` per entry): Chuckles jester green/red,
+  Dr Cat orange tabby, Kador white, Sherry mouse brown-grey, Klip and Klop one chestnut horse,
+  Beh Lem slate grey, Utomo saffron, Finn sailor blue, Ariana plum, and the NPCs that share a
+  graphic by template: Penumbra midnight blue, Taynith forest green, Melissa rose (hooded
+  figure `$46`), Johann green, Loubet teal, Zoltan purple (townsman `$6A`). Unnamed townsfolk,
+  Lord British, guards and royals keep their shared palettes.
+- Allocation: NPCs go after creatures and shared classes; when a room wants more than 6
+  palettes, folk is loaded before them and the NPCs that do not fit wear folk brown. A
+  shared-graphic NPC whose area lists one named variant only gets that variant's colours in a
+  single palette. Overflow: town `$01` (Johann, Loubet brown) and Pride/Abyss `$38` (Dr Cat
+  brown).
+- Talk-dialog portraits of the named NPCs use exactly their map colours (`npc:`); royal
+  portraits (Lord British, Gnu Gnu, Eep Eep) have a skin-tone face with royal red only in the
+  outline / crown shade instead of a red face with a navy outline.
+- Parade: the two friends pages show the NPC colours (page 2 preloads 3 palettes).
+- Runtime: bank 9 `NAT_NPC` (`$7A00`), WRAM3 scratch `NAT_TM` (`$D1C0`), `NAT_NPCS`
+  (`$D200`); `TIER_TAB` also carries the NPC template tiers. Worst-case allocation
+  ~+1% vs HEAD on the same scenes (the NEED/PH/SZ clear is unrolled).
+- SameBoy vs ecffaca: blocked writes unchanged (OAM 24, pre-existing parade; VRAM/BGPD/OBPD 0);
+  re-colour stress in towns `$01`/`$55`: OCPD writes all at LY 146 (VBlank), 0 blocked, Prep8
+  ends by LY 79 (HEAD 74); parade OCPD writes LY 147-150, 0 blocked.
+
+### Changed (talk-dialog portraits in their speakers' colours, 2026-10-11)
+
+- Every talk-dialog portrait now takes the colours of the speaker's map sprite instead of the
+  shared `earth` skin tones (named NPCs: their map colours, royals softened, see above), signs pale gold like the map sign, and the Black Knight a near-black helm
+  (dark steel plates, grey trim, black outline) like his sprite. `rov_palettes.yaml`
+  `dialog_portraits`, keyed by the portrait byte of the speaker's text record (`sprite` = map
+  graphic whose colours are used, or explicit `colors`).
+- Runtime: bank-8 `DlgPortrait8` (from `SceneHook`, LCD off) reads the portrait byte the game
+  keeps on its stack at the dialog LCD-on 0:`$1323` and loads BG palette 5 from `PORTRAIT_TAB`
+  (bank 8 `$7F00`); text, frame and side panel unchanged. SameBoy: no new blocked writes.
+
 ### Changed (natural creature colours, 2026-10-10)
 
 - Monsters use one natural colour per creature everywhere (`rov_palettes.yaml` `creatures`:

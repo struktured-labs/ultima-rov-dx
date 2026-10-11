@@ -91,9 +91,12 @@ class RomTemplatesTest(unittest.TestCase):
         off = GL.file_offset(2, syms["TIER_TAB"])
         from ultima_rov_dx import creatures as CR
         cr = CR.build(self.pal, self.cats, self.temps)
-        self.assertEqual(set(cr.tiered_keys), {0x0C, 0x0E, 0x1A, 0x1C, 0x1E, 0x20, 0x22, 0x24, 0x26, 0x2C, 0x32})
-        tab = M.tier_table(self.temps, M.tiers(self.temps, set(cr.tiered_keys)))
-        self.assertEqual(tab, M.tier_table(self.temps, self.tier))         # untiered creatures: tier 0 anyway
+        self.assertEqual(set(cr.tiered_keys), {0x0C, 0x0E, 0x1A, 0x1C, 0x1E, 0x20, 0x22, 0x24, 0x26, 0x2C, 0x32,
+                                               0x46, 0x6A})                # + the shared-graphic named NPCs
+        tab = M.tier_table(self.temps, cr.tiers)
+        npc_t = {t.index for t in self.temps if t.key in (0x46, 0x6A)}
+        creature = {i: 0 if i in npc_t else v for i, v in cr.tiers.items()}
+        self.assertEqual(M.tier_table(self.temps, creature), M.tier_table(self.temps, {i: 0 if i in npc_t else v for i, v in self.tier.items()}))
         self.assertEqual(out[off:off + len(tab)], tab)
         self.assertEqual(set(self.rom[GL.BANK2_FREE[0]:GL.BANK2_FREE[1]]), {0xFF})   # was unused fill
         alloc = GL.file_offset(2, 0x5FE6)

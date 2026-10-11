@@ -61,7 +61,7 @@ End game, death, rune shrine, credits (ending.md): 7:`$40BF` rune shrine, 0:`$0A
 `$D710` UI theme, `$D711/$D712` live-refresh counters, `$D716` MAP_CACHED, `$D717` HERO_CACHED (champion in OBJ palette 0), `$D718` menu cursor colours, `$D720` HRAM backup (12),
 `$D740` `ITEM_PAL` (64), `$D780` inventory copy (64), `$D7C0` REC_TIER (16, colour tier per object record), `$D7D0` ITEM_CACHE (15, floor items `$C5B0+k` last coloured), `$D7DF` PREP_DONE (shadow OAM coloured by Prep8 since the last DMA), `$DB10` ENTRY_TIER (40, tier per OAM entry), code section `wram2c` at `$DB40-$DBFF` (see monsters.md). Tables `$DC00` `LUT_MENU`, `$DD00` `LUT_GAME` (`$DD00-$DD1F` = HERO_BG portrait colours), `$DE00` `BG_THEMES` (8x64).
 HRAM `$FFF3-$FFFE`: WRAM1 reader installed only while used (see menu.md).
-Bank 8: `$5600` PICTURE_LUT, `$5700` PICTURE_FIX, `$5C00` LUT_TITLE, `$5D00` LUT_LOGO, `$6000` BRAND_TILES, `$6600` BRAND_CELLS,
+Bank 8: `$7F00` PORTRAIT_TAB (talk-dialog portrait colours, menu.md), `$5600` PICTURE_LUT, `$5700` PICTURE_FIX, `$5C00` LUT_TITLE, `$5D00` LUT_LOGO, `$6000` BRAND_TILES, `$6600` BRAND_CELLS,
 `$6800` AREA_THEME (512: `$D13E` = 0, then 1), `$6A00` METAPAL (16 sets x 128), `$7200` THEME_BG_ROM (32 x 64), `$7A00` THEME_OBJ_ROM (32 x 8),
 `$7B00` RT_SLOT (WRAM slot per theme), `$7B20` MP_IDX (METAPAL set per theme), `$7B40` HERO_OBJ_ROM (4 x 8, player palette per champion).
 Scenes (ending.md): `$5800` SCENE_LUTS (4 x 256), `$5E00` SCENES ((ret lo, ret hi, ROM theme or `$FF` = card tint, LUT, OBJ)*, hi = 0 ends),
@@ -69,6 +69,7 @@ Scenes (ending.md): `$5800` SCENE_LUTS (4 x 256), `$5E00` SCENES ((ret lo, ret h
 `$7C80` CARD_UI (low byte of BASE_BG's UI palette), `$7D00` GOLD_DIGITS (160: side-panel digits `$E8-$F1` in gold for VRAM bank 1 `$8E80`),
 `$7E00` PARADE_PAL_ROM (25: OBJ palette per byte of the parade lists 7:`$7CA6`, copied over ENTRY_TIER while the parade is up; ending.md).
 `$7E20` KNIGHT_ROM (8), `$7E28` ROYAL_ROM (8), `$7E30` KNIGHT_FALLBACK (Black Knight borrow, monsters.md); WRAM2 `$DB39-$DB3A` KNIGHT_LO/HI (scratch).
+Bank 9 (allocator tables): `$7000` NAT_KEY_CLASS, `$7200` NAT_TPL, `$7300` NAT_FB, `$7400` NAT_COL, `$7600` NAT_PARADE, `$7800` NAT_PLIST, `$7900` NAT_FOLK, `$7A00` NAT_NPC (64: 1 = named-NPC class). WRAM bank 3 scratch: `$D000` NAT_SIG, `$D100` NEED, `$D140` PH, `$D180` SZ, `$D1C0` NAT_TM (tier mask / solo NPC tier), `$D200` NAT_NPCS (16), `$D300` NAT_ORD, `$D3F0` NAT_N (monsters.md).
 Bank 7: `$7FF8-$7FFD` ParadeLoad (`$FF` padding after the ending text).
 Bank 2: `$7F34-$7FB9` AllocHook (allocator `$5FE6` hook), `$7FBA` TIER_TAB (70: tier nibble per template). Object records `$D000-$D0FF` (WRAM1, 16 bytes; monsters.md).
 Inventory/side panel: `$D100-$D11F` bag, `$D125` B item, `$D126` A item, `$D134` armour (see menu.md).

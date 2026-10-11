@@ -52,6 +52,49 @@ heroes:
     sprite:   ["#FFFFFF", "#FFE0C0", "#B07838", "#1C3018"]
     portrait: ["#FFF8E8", "#F0C8A0", "#A87048", "#382010"]
 
+# Talk-dialog portraits (0:$1323, notes/menu.md "Talk dialog portraits"):
+# every speaker's 4x4 portrait (tiles $D4-$E3) is drawn in BG palette
+# `earth` of the UI theme (skin tones). Each entry gives one portrait the
+# colours of the speaker's map sprite, so a character looks the same on the
+# map and in its dialog. Key `portrait`: the portrait byte (first byte of the
+# speaker's text record, game_layout.DIALOG_PORTRAITS). `npc`: a name from
+# `npcs` (or one of its variants): its colours 1-3 become the portrait's
+# shades 1-3 (1 skin / light, 2 hair and shading, 3 outline). `sprite`: a map
+# graphic id (its creatures / obj_categories colours, same mapping). Or
+# `colors` (4; colour 0 = the UI theme's paper, which is also the box around
+# the face). Portrait bytes $02-$05 and $19 are used by no text record.
+dialog_portraits:
+  # royals keep the royal sprite on the map; their portraits keep a skin-tone
+  # face (shade 1), warm brown shading (2) and royal red only in the darkest
+  # shade (crown, robe, outline): option A. Alternatives kept for later:
+  # B shade 2 #B88060, outline navy #302058 (the royal sprite's); C #D07850, maroon #601828.
+  lord_british: { portrait: 0x01, colors: ["#FFF8E8", "#FFE0B0", "#C08860", "#902830"] }
+  gnu_gnu:      { portrait: 0x00, colors: ["#FFF8E8", "#FFE0B0", "#C08860", "#902830"] }
+  eep_eep:      { portrait: 0x09, colors: ["#FFF8E8", "#FFE0B0", "#C08860", "#902830"] }
+  sign:                                            # signs (talk $01/$02): the map sign is an `item`
+    portrait: 0x08                                 # sprite (pale yellow plaque); shade 1 fills the
+    colors: ["#FFF8E8", "#F8F0C0", "#E8B030", "#704010"]   # whole picture, so a softer pale gold
+  black_knight:     # portrait $15 (talk $1A): near-black helm like his sprite (creatures.black_knight),
+    portrait: 0x15  # not its shade order: the helm's plates are portrait shade 1, so dark steel
+    colors: ["#FFF8E8", "#343844", "#A0A8B8", "#040408"]   # plates, grey trim, black outline
+  # named NPCs: exactly their map colours (`npcs`, shades 1-3)
+  sherry:       { portrait: 0x06, npc: sherry }
+  beh_lem:      { portrait: 0x07, npc: beh_lem }
+  kador:        { portrait: 0x0A, npc: kador }
+  chuckles:     { portrait: 0x0B, npc: chuckles }
+  klip:         { portrait: 0x0C, npc: klip_klop }
+  klop:         { portrait: 0x0D, npc: klip_klop }
+  dr_cat:       { portrait: 0x0E, npc: dr_cat }
+  penumbra:     { portrait: 0x0F, npc: penumbra }
+  johann:       { portrait: 0x10, npc: johann }
+  loubet:       { portrait: 0x11, npc: loubet }
+  zoltan:       { portrait: 0x12, npc: zoltan }
+  finn:         { portrait: 0x13, npc: finn }
+  ariana:       { portrait: 0x14, npc: ariana }
+  melissa:      { portrait: 0x16, npc: melissa }
+  utomo:        { portrait: 0x17, npc: utomo }
+  taynith:      { portrait: 0x18, npc: taynith }
+
 # Per-area-theme BG color overrides (theme names come from
 # palettes/bg_tile_categories.yaml `area_themes`). Palettes not listed keep
 # the colors above. The runtime swaps the whole BG set when the player
@@ -322,6 +365,89 @@ wand_fire: ["#FFFFFF", "#FFE070", "#F88828", "#D82810"]
 # white, $FF = black): every CGB palette gets the same colour, so blanking
 # frames are uniform instead of showing each palette's colour 0.
 flat_bg: ["#FFFFFF", "#B0B0B0", "#606060", "#000000"]
+
+# Named NPCs (Carmelo, 2026-10-11): each talking character has its own natural
+# colour on the map, allocated per area like the creatures (OBJ palettes 1-6,
+# creatures.py), and its dialog portrait uses the same three colours
+# (`dialog_portraits` npc:). Shades as on the map sprite: 1 light (skin,
+# highlights, the shadow under the feet), 2 mid (hair, trim), 3 dark (the
+# body and outline: the colour you see on the map; the portrait's outline).
+# NPCs are allocated after the creatures; when a room wants more than 6
+# palettes the NPCs that do not fit wear the shared `folk` colours.
+# Graphics shared by several NPCs ($46, $6A): `colors` = the generic sprite
+# (folk colours), `variants` = the named NPCs by template (tiers 1-3).
+# Talk ids / templates: reverse_engineering/notes/menu.md "Talk dialog portraits".
+npcs:
+  sherry:       # $40, B34/B36 (talk $04/$06): Sherry the mouse
+    ids: [0x40]
+    colors: ["#FFFFFF", "#F0D8D0", "#A89080", "#504038"]
+    why: brown-grey mouse fur, pink-white belly
+  kador:        # $4E, B37 (talk $07)
+    ids: [0x4E]
+    colors: ["#FFFFFF", "#FFFFF8", "#C8C0B8", "#585050"]
+    why: white dog with a grey outline
+  utomo:        # $54, B42 (talk $12)
+    ids: [0x54]
+    colors: ["#FFFFFF", "#F8D0A0", "#C08848", "#A04810"]
+    why: saffron monk's robe
+  finn:         # $58, B45 (talk $15)
+    ids: [0x58]
+    colors: ["#FFFFFF", "#FFD8B0", "#B08060", "#204C88"]
+    why: sailor blue
+  ariana:       # $5A, B3C (talk $0C)
+    ids: [0x5A]
+    colors: ["#FFFFFF", "#FFE0C8", "#E0B048", "#803058"]
+    why: blonde girl in a plum dress
+  dr_cat:       # $5C, B3E (talk $0E)
+    ids: [0x5C]
+    colors: ["#FFFFFF", "#FFD898", "#E89038", "#7A3810"]
+    why: orange tabby cat
+  beh_lem:      # $5E, B38 (talk $08)
+    ids: [0x5E]
+    colors: ["#FFFFFF", "#D8DCE8", "#8C94AC", "#343C58"]
+    why: slate-grey gargoyle
+  klip_klop:    # $60 front / $62 back half, B39/B3A (talk $09/$0A): one horse, two talkers
+    ids: [0x60, 0x62]
+    colors: ["#FFFFFF", "#F8D8A8", "#C07838", "#5A2C10"]
+    why: chestnut horse; Klip and Klop are the two halves of one horse, so one colour
+  chuckles:     # $70 (large $F0), B2B/B33/B3B (talk $03/$0B/$1C): the jester
+    ids: [0x70]
+    colors: ["#FFFFFF", "#FFD8B0", "#E04838", "#2C6C34"]
+    why: jester motley, green with red trim
+  hooded:       # $46: generic hooded figure (A23, A3F) in folk colours
+    ids: [0x46]
+    colors: ["#FFFFFF", "#FFD8B0", "#C07840", "#402010"]
+    why: unnamed townsfolk keep the shared folk brown
+    variants:
+      - name: penumbra
+        templates: [B3F]
+        colors: ["#FFFFFF", "#FFD8B8", "#B08870", "#283878"]
+        why: "Penumbra (talk $0F): the astronomer's midnight-blue robe"
+      - name: taynith
+        templates: [B44]
+        colors: ["#FFFFFF", "#FFD8B8", "#B08870", "#2C6034"]
+        why: "Taynith (talk $14): forest-green hood"
+      - name: melissa
+        templates: [B46]
+        colors: ["#FFFFFF", "#FFD8B8", "#B87868", "#882848"]
+        why: "Melissa (talk $16): rose-red cloak"
+  townsman:     # $6A: generic townsman (A3E, B30) in folk colours
+    ids: [0x6A]
+    colors: ["#FFFFFF", "#FFD8B0", "#C07840", "#402010"]
+    why: unnamed townsfolk keep the shared folk brown
+    variants:
+      - name: johann
+        templates: [B2A, B40]
+        colors: ["#FFFFFF", "#FFD8B0", "#B08060", "#2E6A2E"]
+        why: "Johann (talk $10/$1D): green tunic"
+      - name: loubet
+        templates: [B41]
+        colors: ["#FFFFFF", "#FFD8B0", "#B08060", "#206878"]
+        why: "Loubet (talk $11): teal coat"
+      - name: zoltan
+        templates: [B43, B47]
+        colors: ["#FFFFFF", "#FFD8B0", "#B08060", "#6A2C8C"]
+        why: "Zoltan (talk $13/$17): purple robe"
 
 # Natural creature colours (Carmelo, Oct 2026: "colors should naturally be
 # assigned to creatures, but, if the game has harder versions of the same

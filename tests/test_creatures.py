@@ -43,8 +43,11 @@ class CreatureTableTest(unittest.TestCase):
             self.assertEqual(cr.class_tiers[cr.cls(name)], 1 + len(ent.get("variants") or []), name)
             self.assertTrue(ent.get("why"), f"{name}: rationale missing")
         self.assertEqual(cr.names[cr.folk - 1], "folk")
-        cols = {cr.class_col[8 * c:8 * c + 8] for c in range(1, len(cr.names) + 1)}
-        self.assertEqual(len(cols), len(cr.names))       # every class its own colours
+        generic = {cr.cls(n) for n, e in self.pal["npcs"].items() if e.get("variants")}   # $46 / $6A: folk
+        cols = {cr.class_col[8 * c:8 * c + 8] for c in range(1, len(cr.names) + 1) if c not in generic}
+        self.assertEqual(len(cols), len(cr.names) - len(generic))     # every class its own colours
+        for c in generic:
+            self.assertEqual(cr.class_col[8 * c:8 * c + 8], cr.class_col[8 * cr.folk:8 * cr.folk + 8])
 
     def test_variants_only_where_rom_has_tougher_templates(self):
         tiered = {n for n, e in self.pal["creatures"].items() if e.get("variants")}
@@ -91,7 +94,70 @@ class CreatureTableTest(unittest.TestCase):
             self.assertFalse(set(plan.loads[k]) & set(plan.pages[k - 1].values()), k)
         for k, page in enumerate(plan.pages):
             self.assertEqual(len(set(page.values())), len(page))        # one palette per class
-        self.assertEqual(plan.loads[1], [])                               # friends again: nothing to load
+        self.assertEqual(plan.loads[1], [5, 6, 7])                        # Lord British stays, 3 new friends
+        self.assertEqual(plan.pages[0], {"royal": 1, "sherry": 2, "chuckles": 3, "dr_cat": 4})
+        self.assertEqual(plan.pages[1], {"royal": 1, "beh_lem": 5, "ariana": 6, "kador": 7})
+
+    def test_npcs(self):
+        # named NPCs: own map colours (with a why); shared graphics by template; generic folk unchanged
+        cr, pal = self.cr, self.pal
+        for name, ent in pal["npcs"].items():
+            self.assertTrue(ent.get("why"), name)
+            for k in ent["ids"]:
+                self.assertEqual(cr.names[cr.class_of_key(k) - 1], name, hex(k))
+                self.assertTrue(cr.npc[cr.class_of_key(k)], name)
+                self.assertNotIn(k, self.cat["ids"]["folk"])
+            for v in ent.get("variants") or []:
+                self.assertTrue(v.get("why"), v["name"])
+                c = cr.alias[v["name"]]
+                self.assertTrue(cr.npc[c])
+                for tn in v["templates"]:
+                    t = next(t for t in self.temps if t.name == tn)
+                    self.assertEqual(cr.tpl[t.index], (c - cr.class_of_key(t.key)) << 6 | cr.class_of_key(t.key), tn)
+        self.assertEqual(sorted(cr.alias), sorted(
+            ["sherry", "kador", "utomo", "finn", "ariana", "dr_cat", "beh_lem", "klip_klop", "chuckles", "hooded",
+             "penumbra", "taynith", "melissa", "townsman", "johann", "loubet", "zoltan"]))
+        for n in ("folk", "royal", "item", "troll", "rat"):
+            self.assertFalse(cr.npc[cr.cls(n)], n)
+        for k in (0x42, 0x44, 0x4A, 0x6E):                              # unnamed townsfolk
+            self.assertEqual(cr.class_of_key(k), cr.folk, hex(k))
+        for k in (0x48, 0x4C, 0x50, 0x56):                              # royals and guards unchanged
+            self.assertEqual(cr.class_of_key(k), cr.cls("royal"), hex(k))
+        for c in range(1, len(cr.names) + 1):                           # NPCs fall back to folk brown first
+            if cr.npc[c] and cr.class_tiers[c]:
+                self.assertEqual(cr.fallback[CR.FALLBACKS * c], cr.folk, cr.names[c - 1])
+        t = {t.name: t for t in self.temps}
+        self.assertEqual(cr.tiers[t["B3F"].index], 1)                   # Penumbra
+        self.assertEqual(cr.tiers[t["B46"].index], 3)                   # Melissa
+        self.assertEqual(cr.tiers.get(t["A23"].index, 0), 0)            # generic hooded figure: folk
+        self.assertEqual(cr.tiers[t["B47"].index], 3)                   # Zoltan
+
+    def test_npc_allocation(self):
+        cr = self.cr
+        cls = cr.cls
+        # castle: Lord British (royal) + Chuckles: both fit
+        a = CR.allocate(cr, [0x4C, 0x70], 2)
+        self.assertEqual((a.pal[cls("royal")], a.pal[cls("chuckles")]), (1, 2))
+        # NPC listed first still goes after the creatures
+        a = CR.allocate(cr, [0x5C, 0x0A], 2)
+        self.assertEqual((a.pal[cls("bat")], a.pal[cls("dr_cat")]), (1, 2))
+        # town 01: item, Sherry, hooded (Penumbra), Gnu Gnu, Dr Cat, townsman (Johann B2A, Loubet B41)
+        b = {t.name: t for t in self.temps}
+        lst = [(0x10, 0x80 | b["B3F"].index - M.NORMAL_TYPES), (0x20, 0x80 | b["B2A"].index - M.NORMAL_TYPES),
+               (0x30, 0x80 | b["B41"].index - M.NORMAL_TYPES)]
+        a = CR.allocate(cr, [0x3A, 0x40, 0x46, 0x56, 0x5C, 0x6A], 6, lst, c508=0xC0)
+        self.assertEqual(sorted(a.colors), [1, 2, 3, 4, 5, 6])
+        self.assertFalse(a.shared)
+        # seven: creatures, royal, item first; folk goes in before the NPCs; the NPC left over wears folk
+        a = CR.allocate(cr, [0x40, 0x0A, 0x14, 0x16, 0x4C, 0x08, 0x5C], 7)
+        self.assertEqual(a.pal[cls("folk")], 6)
+        self.assertEqual((a.pal[cls("sherry")], a.pal[cls("dr_cat")]), (6, 6))
+        self.assertEqual((a.objpal[0x40], a.objpal[0x5C]), (6, 6))
+        for n in ("bat", "rat", "spider", "royal", "item"):
+            self.assertIn(a.pal[cls(n)], range(1, 6), n)
+        # generic folk already loaded: NPCs past palette 6 share it
+        a = CR.allocate(cr, [0x42, 0x0A, 0x14, 0x16, 0x4C, 0x08, 0x5C], 7)
+        self.assertEqual(a.pal[cls("dr_cat")], a.pal[cls("folk")])
 
 
 class BankedCPU:
@@ -241,8 +307,8 @@ class NaturalRuntimeTest(unittest.TestCase):
             after = self.w2(c, S["BASE_OBJ"], 64)
             dirty = sum(1 << p for p in range(8) if before[8 * p:8 * p + 8] != after[8 * p:8 * p + 8])
             self.assertEqual(c.mem[S["NAT_DIRTY"]], dirty, n)
-        self.assertLess(worst, 7000)          # M-cycles (~31 lines): LCD-on, or NatPrep9 below NAT_LY only
-        self.assertLessEqual(S["NAT_LY"] + 7000 // 228, 130)   # room left for OamPass before VBlank
+        self.assertLess(worst, 7300)          # M-cycles (~32 lines): LCD-on, or NatPrep9 below NAT_LY only
+        self.assertLessEqual(S["NAT_LY"] + 7300 // 228, 130)   # room left for OamPass before VBlank
 
     def test_prep_only_on_change_and_ly_guard(self):
         S = self.S

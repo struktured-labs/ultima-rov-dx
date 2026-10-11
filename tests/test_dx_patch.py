@@ -367,6 +367,61 @@ class TablesTest(unittest.TestCase):
         for hero, (first, last) in enumerate(((0x10, 0x1F), (0x20, 0x2F), (0x30, 0x3F), (0x80, 0x8F))):
             self.assertEqual(rngs.get((first, last)), 1 + hero, f"champion {hero} portrait")
 
+    def test_dialog_portraits(self):
+        # every talk-dialog portrait has its speaker's colours; the Black Knight's is near-black
+        import copy
+        from ultima_rov_dx import dx_patch, palettes as P
+        pal, bg, obj = self.inputs["palettes"], self.inputs["bg_categories"], self.inputs["obj_categories"]
+        t = dx_patch.build_tables(pal, bg, obj)
+        self.assertEqual(t.portrait_pal, list(pal["bg_palettes"]).index("earth"))
+        tab = t.dlg_portraits
+        ents = {tab[1 + 9 * i]: tab[2 + 9 * i:10 + 9 * i] for i in range(tab[0])}
+        self.assertEqual(set(ents), set(GL.DIALOG_PORTRAITS))
+        paper = t.bg_themes[64 * dx_patch.SLOT_UI + 8 * t.portrait_pal:][:2]
+        for pid, col in ents.items():
+            self.assertEqual(col[:2], paper, f"portrait {pid:#x}: colour 0 is the dialog paper")
+        enc = lambda cols: b"".join(P.bgr555(c).to_bytes(2, "little") for c in cols)
+        from ultima_rov_dx import creatures as CR, monsters as M
+        cr = CR.build(pal, obj, M.templates(ROM.read_bytes()))
+        n_npc = 0
+        for name, spec in pal["dialog_portraits"].items():
+            if "npc" in spec:                                        # exactly the NPC's map colours
+                c = cr.alias[spec["npc"]]
+                self.assertEqual(ents[spec["portrait"]][2:], cr.class_col[8 * c + 2:8 * c + 8], name)
+                n_npc += 1
+        self.assertEqual(n_npc, 16)
+        # royals: skin-tone face (shade 1), no navy outline, red only in the darkest shade
+        royal = pal["obj_palettes"]["royal"]["colors"]
+        rgb = lambda w: (w & 31, w >> 5 & 31, w >> 10 & 31)
+        for pid in (0x00, 0x01, 0x09):
+            e = ents[pid]
+            r1, g1, b1 = rgb(e[2] | e[3] << 8)
+            self.assertTrue(r1 > g1 > b1 and r1 >= 28, f"{pid:#x}: skin face")
+            r3, g3, b3 = rgb(e[6] | e[7] << 8)
+            self.assertTrue(r3 > 2 * b3 and r3 > 2 * g3, f"{pid:#x}: red outline, not navy")
+            self.assertNotEqual(e[2:], enc(royal[1:]))
+        bk = ents[0x15]
+        luma = lambda w: (w & 31) + (w >> 5 & 31) + (w >> 10 & 31)
+        shades = [luma(bk[2 * i] | bk[2 * i + 1] << 8) for i in range(4)]
+        self.assertLess(shades[1], 3 * 10)                           # helm plates: dark steel
+        self.assertLess(shades[3], 3 * 2)                            # outline: near-black
+        for bad in ({"x": {"portrait": 0x01, "sprite": 0x4C, "colors": ["#FFF8E8"] * 4}},
+                    {"x": {"portrait": 0x01, "colors": ["#000000"] * 4}},
+                    {"x": {"portrait": 0x01, "sprite": 0x4D}},
+                    {"x": {"portrait": 0x100, "sprite": 0x4C}}):
+            p2 = copy.deepcopy(pal)
+            p2["dialog_portraits"] = bad
+            with self.assertRaises(dx_patch.PatchError):
+                dx_patch.build_tables(p2, bg, obj)
+        p2 = copy.deepcopy(pal)
+        p2["dialog_portraits"]["dup"] = {"portrait": 0x15, "sprite": 0x52}
+        with self.assertRaises(dx_patch.PatchError):
+            dx_patch.build_tables(p2, bg, obj)
+        p2 = copy.deepcopy(pal)
+        p2["dialog_portraits"]["x"] = {"portrait": 0x02, "npc": "nobody"}
+        with self.assertRaises(dx_patch.PatchError):
+            dx_patch.build_tables(p2, bg, obj)
+
     def test_heroes_need_four(self):
         from ultima_rov_dx import dx_patch
         pal = dict(self.inputs["palettes"])
@@ -478,8 +533,9 @@ class RealRomBuildTest(unittest.TestCase):
             for name, p in page.items():
                 c = cr.cls(name)
                 self.assertEqual(plan.colors[64 * k + 8 * p:64 * k + 8 * p + 8], cr.class_col[8 * c:8 * c + 8], name)
-        self.assertEqual(plan.pages[0], {"royal": 1, "folk": 2})      # Lord British: royal, as in his castle
-        self.assertEqual(plan.pages[2], {"troll": 3, "ghost": 4, "gremlin": 5, "slime": 6})
+        self.assertEqual(plan.pages[0], {"royal": 1, "sherry": 2, "chuckles": 3, "dr_cat": 4})   # LB royal; NPC colours
+        self.assertEqual(plan.pages[1], {"royal": 1, "beh_lem": 5, "ariana": 6, "kador": 7})
+        self.assertEqual(plan.pages[2], {"troll": 2, "ghost": 3, "gremlin": 4, "slime": 0})
         b9 = GL.file_offset(9, 0x4000) - 0x4000
         self.assertEqual(self.out[b9 + syms["NAT_PARADE"]:][:len(plan.colors)], plan.colors)
         self.assertEqual(self.out[b9 + syms["NAT_PLIST"]:][:len(plan.plist)], plan.plist)
@@ -555,6 +611,44 @@ class RealRomBuildTest(unittest.TestCase):
         w2 = GL.file_offset(GL.DX_RUNTIME_BANK, syms["W2_IMAGE_ROM"]) - syms["W2_BASE"]
         self.assertEqual(self.out[w2 + syms["HERO_BG"]:w2 + syms["HERO_BG"] + 32], t.hero_bg)
         self.assertEqual(self.out[w2 + syms["HERO_CACHED"]], 0xFF)            # first Slot always loads
+
+    def test_dialog_portraits_in_rom(self):
+        # PORTRAIT_TAB in bank 8; the portrait byte DlgPortrait8 reads is the D pushed at 0:$12B8
+        import build_dx
+        from ultima_rov_dx import dx_patch, monsters as MON
+        from ultima_rov_dx.sm83asm import assemble
+        inputs = build_dx.load_inputs()
+        t = dx_patch.build_tables(*(inputs[k] for k in ("palettes", "bg_categories", "obj_categories")))
+        _, syms = assemble([("dx.asm", dx_patch._asm_source())])
+        off = GL.file_offset(GL.DX_RUNTIME_BANK, syms["PORTRAIT_TAB"])
+        self.assertEqual(self.out[off:off + len(t.dlg_portraits)], t.dlg_portraits)
+        o = self.original
+        self.assertEqual(o[0x1323:0x1325], b"\xe0\x40")                  # ldh [rLCDC],a: the dialog LCD-on
+        self.assertEqual(self.out[0x1323:0x1325], b"\xef\x6d")           # rst $28; mode byte $6D (dialog)
+        self.assertEqual(syms["DLG_RET"], 0x1324)
+        # push de / push hl / push bc at $12B8; pop hl at $12FC and $130C; pop de at $1372
+        self.assertEqual((o[0x129B], o[0x12B8], o[0x12B9], o[0x12BA], o[0x12FC], o[0x130C], o[0x1372]),
+                         (0x57, 0xD5, 0xE5, 0xC5, 0xE1, 0xE1, 0xD1))
+        rd = lambda bank, a: o[bank * 0x4000 + a - 0x4000]
+        def record(tid):
+            bank = 4 if tid < 0x12 else 6
+            p = rd(4, 0x69F9 + 2 * tid) | rd(4, 0x69FA + 2 * tid) << 8
+            name = bytearray()
+            while rd(bank, p + 1 + len(name)) and len(name) < 24:
+                name.append(rd(bank, p + 1 + len(name)))
+            return rd(bank, p), bytes(name)
+        talkers = {}
+        for tp in MON.templates(o):
+            if tp.damage >= 0x80:
+                talkers.setdefault(record(tp.damage & 0x7F)[0], set()).add(tp.key)
+        for pid, who in GL.DIALOG_PORTRAITS.items():
+            self.assertIn(pid, talkers, who)
+        self.assertIn(b"Lord", record(0x05)[1])
+        self.assertIn(b"Knight", record(0x1A)[1])
+        for name, spec in inputs["palettes"]["dialog_portraits"].items():
+            if "sprite" in spec:
+                self.assertIn(spec["sprite"], talkers[spec["portrait"]], f"{name}: sprite of a speaker with that portrait")
+        self.assertIn(0x52, talkers[0x15])                                  # the Black Knight's sprite
 
     def test_champion_sprite_colours(self):
         # start a game as each champion: OBJ palette 0 (the player) follows $D133, palettes 1-7 don't

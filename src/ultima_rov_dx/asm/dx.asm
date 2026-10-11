@@ -160,6 +160,9 @@ CARD_TINT       equ $7C00   ; bank 8: 16 x 8 bytes, title-card UI palette per du
 CARD_UI         equ $7C80   ; bank 8: low byte of BASE_BG's UI palette (where CARD_TINT goes)
 GOLD_DIGITS     equ $7D00   ; bank 8: DIGIT_LEN bytes, side-panel digits $E8-$F1 redrawn in gold (VRAM bank 1)
 PARADE_PAL_ROM  equ $7E00   ; bank 8: PARADE_LEN bytes, OBJ palette per byte of the parade lists 7:$7CA6-$7CBE (builder, from OBJPAL)
+PORTRAIT_TAB    equ $7F00   ; bank 8: talk-dialog portrait colours: count, (portrait byte, 8 colour bytes)* (builder, rov_palettes.yaml dialog_portraits)
+DLG_RET         equ $1324   ; return address of the talk dialog's LCD-on site 0:$1323 (rst $28)
+DLG_PORTRAIT_SP equ 25      ; DlgPortrait8: SP offset of the speaker's portrait byte (D pushed at 0:$12B8, popped at 0:$1372)
 PARADE_TAB      equ ENTRY_TIER  ; WRAM2: PARADE_PAL_ROM copied over ENTRY_TIER (unused off map screens, cleared at every LCD-on)
 ; Natural creature colours (reverse_engineering/notes/monsters.md "Colours",
 ; creatures.py): each creature type has its own colour everywhere, tougher
@@ -171,12 +174,13 @@ BANK9_ORG       equ $4000
 BANK9_SIG_ADDR  equ $4001   ; bank 9 signature byte (SigBank: VBlank interrupting bank-9 code)
 NAT_KEY_CLASS   equ $7000   ; bank 9: 64, base colour class per sprite key >> 1
 NAT_TIERS       equ $7100   ; bank 9: 64, tiers per base class (1-3; 0 = variant class)
-NAT_TPL         equ $7200   ; bank 9: 139, template U -> tier << 6 | base class (tier >= 1 only)
+NAT_TPL         equ $7200   ; bank 9: 139, template U -> tier << 6 | base class (tier >= 1; NPC graphics also tier 0)
 NAT_FB          equ $7300   ; bank 9: 3 per class, nearest-coloured base classes (more than 6 classes)
 NAT_COL         equ $7400   ; bank 9: 8 per class (64), the colours; tiers of a creature are consecutive classes
 NAT_PARADE      equ $7600   ; bank 9: 64 per parade page: colours of OBJ palette p at 8 x p (creatures.parade_plan)
 NAT_PLIST       equ $7800   ; bank 9: 16 per parade page: the OBJ palettes it loads, $FF-terminated
 NAT_FOLK        equ $7900   ; bank 9: class of the ship (surface maps reserve it)
+NAT_NPC         equ $7A00   ; bank 9: 64, 1 = named-NPC class (allocated after the others; overflow wears folk)
 BANK9_SIG       equ $9D     ; byte at bank 9 $4001 (builder: differs from banks 1-8)
 NAT_FIRST       equ 1       ; OBJ palettes NAT_FIRST..NAT_LAST are allocated per area
 NAT_LAST        equ 6
@@ -189,8 +193,10 @@ NAT_SIG         equ $D000   ; 19: slot count, area id, area flag, 16 slot ids of
 NAT_NEED        equ $D100   ; 64 per class: tiers wanted (0 = not loaded)
 NAT_PH          equ $D140   ; 64 per class: first OBJ palette | TIERED
 NAT_SZ          equ $D180   ; 64 per class: palettes owned (0 = shares another class's)
+NAT_TM          equ $D1C0   ; 64 per class: tiers in the area list (bit mask), then the solo NPC variant (0 = none)
 NAT_ORD         equ $D300   ; base classes in allocation order
 NAT_N           equ $D3F0   ; their count
+NAT_NPCS        equ $D200   ; 16: classes of the loaded named-NPC slots (allocated after the others)
 SYNC_MODE       equ 8       ; TierFar mode: SyncDirty8
 NAT_LY          equ 96      ; NatPrep9 reallocates only below this line (or in VBlank): Prep8 ends before VBlank
 PARADE_LISTS    equ $7CA6   ; bank 7: the parade's five 4-graphic lists ($FF-terminated, 5 bytes each)
@@ -875,6 +881,7 @@ Brand:
 ; next area). Returns A = the caller's bank (from BANK_SIG).
 SceneHook:
         push bc
+        call DlgPortrait8               ; talk dialog: per-speaker portrait colours
         ld a, h                         ; the attract-loop parade: its sprites
         cp high(PARADE_RET)             ; take their gameplay colours
         jr nz, .np
@@ -1326,6 +1333,56 @@ SyncDirty8:
 .x:
         pop bc
         jp SigBank
+
+; From SceneHook (bank 8, SVBK = 2, LCD off, after SetTheme and before
+; SyncBG), HL = return address of the LCD-on site. At the talk dialog
+; 0:$1323 (HL = DLG_RET) the speaker's portrait byte (first byte of its text
+; record, notes/menu.md "Talk dialog portraits") is on the game's stack as D
+; of the pair pushed at 0:$12B8. Stack here: [SceneHook][bc][SceneTramp]
+; [W2LcdOnBody][W2LcdOn][hl][de][bc][LcdOnGame][af][rst ret][game DE] (+ our
+; HL). A PORTRAIT_TAB entry for that byte replaces the 4 colours of BG palette
+; PORTRAIT_PAL (`earth`: on dialogs only the portrait tiles $D4-$E3 use it,
+; text_screen ranges); CUR_THEME = $FE, so the next screen reloads its
+; theme. Other speakers keep `earth`. Preserves HL; BC, DE clobbered
+; (SceneHook saved BC and reloads DE).
+DlgPortrait8:
+        ld a, h
+        cp high(DLG_RET)
+        ret nz
+        ld a, l
+        cp low(DLG_RET)
+        ret nz
+        push hl
+        ld hl, sp+DLG_PORTRAIT_SP
+        ld c, [hl]                      ; portrait byte
+        ld hl, PORTRAIT_TAB
+        ld a, [hl+]                     ; entry count
+        or a
+        jr z, .x
+        ld b, a
+.l:
+        ld a, [hl+]
+        cp c
+        jr z, .hit
+        ld de, 8
+        add hl, de
+        dec b
+        jr nz, .l
+        jr .x
+.hit:
+        ld de, BASE_BG + PORTRAIT_PAL * 8
+        ld b, 8
+.c:
+        ld a, [hl+]
+        ld [de], a
+        inc e
+        dec b
+        jr nz, .c
+        ld a, $FE
+        ld [CUR_THEME], a
+.x:
+        pop hl
+        ret
 Bank8bEnd:
 
 ; ======================================================== WRAM bank 2 image
@@ -2715,7 +2772,8 @@ NatLcd9:
         call NatSig
 ; OBJ palettes NAT_FIRST..NAT_LAST for the loaded sprite slots ($C539 count,
 ; $C580 ids): one class per creature / folk / royal / item in slot order
-; (plus folk for the ship on surface maps, MAP_THEME 0); a creature with
+; (plus folk for the ship on surface maps, MAP_THEME 0), then the named NPCs
+; (folk first if they overflow); a creature or shared-graphic NPC with
 ; tougher templates in the area list ($C5C0) is widened to one palette per
 ; tier while palettes are left; classes past NAT_LAST share the palette of
 ; their nearest-coloured loaded class (NAT_FB). Writes BASE_OBJ (NAT_DIRTY
@@ -2727,13 +2785,19 @@ NatAssign9:
         ldh [rSVBK], a
         ld hl, NAT_NEED                 ; NEED, PH, SZ = 0
         xor a
-        ld b, 192
+        ld b, 192 / 4
 .z:
+        ld [hl+], a
+        ld [hl+], a
+        ld [hl+], a
         ld [hl+], a
         dec b
         jr nz, .z
-; classes of the loaded slots, in slot order
+; classes of the loaded slots, in slot order: creatures and the shared
+; classes first, then the named NPCs (NAT_NPC); if they do not all fit,
+; folk goes in before the NPCs, so the ones left over share folk (NAT_FB)
         ld de, NAT_ORD
+        ld c, low(NAT_NPCS)
         call NatCount
         jr z, .nos
         ld b, a
@@ -2744,7 +2808,18 @@ NatAssign9:
         jr z, .sn
         push hl
         call NatKey                     ; A = class of id A
+        ld l, a
+        ld h, high(NAT_NPC)
+        bit 0, [hl]
+        jr z, .cre
+        ld h, high(NAT_NPCS)            ; named NPC: later
+        ld l, c
+        ld [hl], a
+        inc c
+        jr .spo
+.cre:
         call NatAdd
+.spo:
         pop hl
 .sn:
         dec b
@@ -2756,6 +2831,51 @@ NatAssign9:
         ld a, [NAT_FOLK]                ; surface map: the ship's palette
         call NatAdd
 .nf:
+        ld a, c
+        or a
+        jr z, .fits                     ; no NPC loaded
+        push de                         ; first NPC position
+        ld b, c
+        ld hl, NAT_NPCS
+.nl:
+        ld a, [hl+]
+        push hl
+        call NatAdd
+        pop hl
+        dec b
+        jr nz, .nl
+        pop hl
+        ld a, e                         ; (low(NAT_ORD) = 0: E = count)
+        cp NAT_LAST - NAT_FIRST + 2
+        jr c, .fits
+        ld a, [NAT_FOLK]
+        ld c, a
+        push hl
+        ld l, a
+        ld h, high(NAT_NEED)
+        ld a, [hl]
+        or a
+        pop hl
+        jr nz, .fits                    ; folk already loaded
+        push hl
+        ld l, c
+        ld h, high(NAT_NEED)
+        ld [hl], 1
+        pop hl
+        push de
+.ins:                                   ; NAT_ORD[L..E-1] -> [L+1..E]
+        dec e
+        ld a, [de]
+        inc e
+        ld [de], a
+        dec e
+        ld a, e
+        cp l
+        jr nz, .ins
+        ld [hl], c
+        pop de
+        inc e
+.fits:
         ld a, e
         ld [NAT_N], a
 ; tiers wanted: the highest tier of each loaded creature in the area list
@@ -2795,9 +2915,23 @@ NatAssign9:
         rlca
         rlca
         and 3
+        ld b, a                         ; B = tier
         inc a
         cp [hl]
-        jr c, .lp
+        jr c, .lm
+        ld [hl], a
+.lm:
+        ld a, 1
+        inc b
+.lb:
+        dec b
+        jr z, .lt
+        add a
+        jr .lb
+.lt:
+        set 6, l
+        set 7, l                        ; L = TM
+        or [hl]
         ld [hl], a
 .lp:
         pop hl
@@ -2809,6 +2943,43 @@ NatAssign9:
         ld a, [NAT_N]
         or a
         jp z, .objpal
+; a shared-graphic NPC whose area lists one named variant only: TM = that
+; tier (its colours, one palette, NEED = 1); every other class TM = 0
+        ld b, a
+        ld de, NAT_ORD
+.so:
+        ld a, [de]
+        inc e
+        ld l, a
+        ld h, high(NAT_NPC)
+        ld a, [hl]
+        ld h, high(NAT_TM)
+        set 6, l
+        set 7, l
+        or a
+        jr z, .s0
+        ld a, [hl]
+        ld c, 1
+        cp 2
+        jr z, .s1
+        inc c
+        cp 4
+        jr z, .s1
+        inc c
+        cp 8
+        jr z, .s1
+.s0:
+        ld [hl], 0
+        jr .s2
+.s1:
+        ld [hl], c
+        res 6, l
+        res 7, l
+        ld [hl], 1
+.s2:
+        dec b
+        jr nz, .so
+        ld a, [NAT_N]
 ; sizes: 1 each, a creature widened to its tiers while palettes are left
         ld b, a
         ld a, NAT_LAST - NAT_FIRST + 1
@@ -2940,7 +3111,13 @@ NatAssign9:
         ld a, [hl]
         and 7
         push af                         ; first palette
-        ld l, c
+        ld a, c
+        or low(NAT_TM)
+        ld l, a
+        ld h, high(NAT_TM)
+        ld a, [hl]                      ; solo NPC variant
+        add c
+        ld l, a
         ld h, 0
         add hl, hl
         add hl, hl
@@ -3089,6 +3266,9 @@ NatAdd:
         ld a, l
         ld [de], a
         inc e
+        or low(NAT_TM)
+        ld l, a
+        ld [hl], 0                      ; no tiers seen yet
         ret
 ; 8 bytes HL -> DE (WRAM2 BASE_OBJ, SVBK = 2); NZ if any changed. HL += 8.
 ; Clobbers BC.

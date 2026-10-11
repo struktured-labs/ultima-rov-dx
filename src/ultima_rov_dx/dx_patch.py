@@ -73,6 +73,8 @@ class Tables:
     card_tint: bytes = bytes(128)                  # 16 x 8: title-card UI palette per dungeon (bank 8 CARD_TINT)
     card_ui: int = 0                               # BG palette index of the UI palette (CARD_TINT target)
     digit_pal: int = -1                            # BG palette of the gold side-panel digits (-1: off)
+    dlg_portraits: bytes = b"\0"                   # talk-dialog portrait colours: count, (portrait byte, 8 colour bytes)* (bank 8 PORTRAIT_TAB)
+    portrait_pal: int = -1                         # BG palette of the dialog portrait tiles $D4-$E3 (text_screen ranges)
 
 
 
@@ -349,6 +351,7 @@ def build_tables(pal_data: dict[str, Any], bg_cat: dict[str, Any], obj_cat: dict
     else:
         hero_obj = enc["obj"][:8] * 4
         hero_bg = bytes(32)
+    dlg_portraits, portrait_pal = dialog_portraits(pal_data, obj_cat, text_ranges, bg_sets[ui_theme])
     # scenes (bg_tile_categories.yaml `scenes`): LCD-on sites whose screen gets its own
     # theme, picture LUT and OBJ palette 0 (ending, credits, death screen...)
     scene_entries, scene_luts, scene_obj, scene_names = bytearray(), bytearray(), bytearray(), []
@@ -434,7 +437,95 @@ def build_tables(pal_data: dict[str, Any], bg_cat: dict[str, Any], obj_cat: dict
                   lut_menu, bytes(item_pal), SLOT_UI if ui_theme else 0, menu_obj, fire_obj, ship_pal,
                   bytes(text_ranges), theme_bg_rom, bytes(rt_slot), tuple(theme_names), first_map,
                   bytes(mp_idx), hero_obj, hero_bg, bytes(scene_entries), bytes(scene_luts), bytes(scene_obj),
-                  tuple(scene_names), bytes(card_tint), ui, digit_pal)
+                  tuple(scene_names), bytes(card_tint), ui, digit_pal, dlg_portraits, portrait_pal)
+
+
+MAX_DIALOG_PORTRAITS = 28   # PORTRAIT_TAB: 1 + 9 * n bytes in bank 8 $7F00-$7FFF
+
+
+def sprite_colors(pal_data: dict[str, Any], obj_cat: dict[str, Any], key: int) -> list[str]:
+    """The 4 map colours of sprite graphic ``key`` (id & $7E): its `creatures`
+    entry (base colour), else its obj_categories class (or `default`)."""
+    for sec in ("creatures", "npcs"):
+        for ent in (pal_data.get(sec) or {}).values():
+            if key in (ent.get("ids") or []):
+                return list(ent["colors"])
+    cls = next((c for c, ids in (obj_cat.get("ids") or {}).items() if key in ids), obj_cat.get("default"))
+    spec = (pal_data.get("obj_palettes") or {}).get(cls)
+    if spec is None:
+        raise PatchError(f"sprite {key:#04x}: class {cls!r} has no obj_palettes entry")
+    return list(spec["colors"])
+
+
+def npc_colors(pal_data: dict[str, Any], name: str) -> list[str] | None:
+    """Colours of `npcs` entry ``name`` or of the variant called ``name``."""
+    for ename, ent in (pal_data.get("npcs") or {}).items():
+        if ename == name:
+            return list(ent["colors"])
+        for v in ent.get("variants") or []:
+            if v.get("name") == name:
+                return list(v["colors"])
+    return None
+
+
+def dialog_portraits(pal_data: dict[str, Any], obj_cat: dict[str, Any], text_ranges: bytes,
+                     ui_bg: bytes) -> tuple[bytes, int]:
+    """PORTRAIT_TAB for rov_palettes.yaml `dialog_portraits` and the BG palette of
+    the dialog portrait tiles (GL.PORTRAIT_TILES, text_screen ranges).
+
+    The talk dialog (0:$1323) draws the speaker's 4x4 portrait into tiles
+    $D4-$E3; its portrait byte is the first byte of the speaker's text record
+    (GL.DIALOG_PORTRAITS). An entry replaces that palette's colours on the
+    dialogs showing that portrait: `colors` (4), or `sprite` = the speaker's
+    map graphic id, whose colours 1-3 (sprite_colors) become the portrait's
+    shades 1-3, so the face matches the map sprite. Colour 0 is always the UI
+    theme's (the paper around the face); an explicit colour 0 must equal it."""
+    n = text_ranges[0]
+    pals = set()
+    for t in GL.PORTRAIT_TILES:
+        hit = [text_ranges[1 + 3 * i + 2] for i in range(n)
+               if text_ranges[1 + 3 * i] <= t <= text_ranges[1 + 3 * i + 1]]
+        pals.add(hit[-1] if hit else -1)
+    portrait_pal = pals.pop() if len(pals) == 1 else -2
+    specs = pal_data.get("dialog_portraits") or {}
+    if not specs:
+        return b"\0", portrait_pal
+    if portrait_pal < 0:
+        raise PatchError("dialog_portraits: the text_screen ranges must give tiles $D4-$E3 one palette")
+    if len(specs) > MAX_DIALOG_PORTRAITS:
+        raise PatchError(f"dialog_portraits: at most {MAX_DIALOG_PORTRAITS} entries")
+    paper = ui_bg[8 * portrait_pal:8 * portrait_pal + 2]
+    out = bytearray([len(specs)])
+    seen: dict[int, str] = {}
+    for name, spec in specs.items():
+        pid = spec.get("portrait") if isinstance(spec, dict) else None
+        if not isinstance(pid, int) or not 0 <= pid <= 0xFF:
+            raise PatchError(f"dialog_portraits.{name}: portrait must be a byte (first byte of the text record)")
+        if pid in seen:
+            raise PatchError(f"dialog_portraits: portrait {pid:#04x} in both {seen[pid]} and {name}")
+        seen[pid] = name
+        if sum(k in spec for k in ("colors", "sprite", "npc")) != 1:
+            raise PatchError(f"dialog_portraits.{name}: give one of `colors`, `sprite`, `npc`")
+        if "npc" in spec:
+            cols = npc_colors(pal_data, spec["npc"])
+            if cols is None:
+                raise PatchError(f"dialog_portraits.{name}: npc {spec['npc']!r} is not an `npcs` entry or variant")
+            enc = paper + b"".join(P.bgr555(c).to_bytes(2, "little") for c in cols[1:])
+        elif "sprite" in spec:
+            key = spec["sprite"]
+            if not isinstance(key, int) or key & 0x81:
+                raise PatchError(f"dialog_portraits.{name}: sprite must be a graphic id (even, < $80)")
+            cols = sprite_colors(pal_data, obj_cat, key)
+            enc = paper + b"".join(P.bgr555(c).to_bytes(2, "little") for c in cols[1:])
+        else:
+            cols = spec.get("colors") or []
+            if len(cols) != 4:
+                raise PatchError(f"dialog_portraits.{name} needs 4 colours")
+            enc = b"".join(P.bgr555(c).to_bytes(2, "little") for c in cols)
+            if enc[:2] != paper:
+                raise PatchError(f"dialog_portraits.{name}: colour 0 must be the UI theme's paper colour")
+        out += bytes([pid]) + enc
+    return bytes(out), portrait_pal
 
 
 def _asm_source() -> str:
@@ -592,7 +683,7 @@ def build(original: bytes, pal_data: dict[str, Any], bg_cat: dict[str, Any], obj
     # creatures with variants (rov_palettes.yaml `creatures`)
     cr = creatures(original, pal_data, obj_cat)
     temps = MON.templates(original)
-    tier_tab = MON.tier_table(temps, MON.tiers(temps, set(cr.tiered_keys)))
+    tier_tab = MON.tier_table(temps, cr.tiers)
     tier_off = GL.file_offset(2, syms["TIER_TAB"])
     if any(b != 0xFF for b in original[tier_off:tier_off + len(tier_tab)]):
         raise PatchError("TIER_TAB overwrites non-free bytes")
@@ -633,6 +724,15 @@ def build(original: bytes, pal_data: dict[str, Any], bg_cat: dict[str, Any], obj
         raise PatchError(f"ROM banks 1-7 are not told apart by their byte at $4001 ({sig.hex()})")
     put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["BANK_SIG"]), sig, "BANK_SIG")
     put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["HERO_OBJ_ROM"]), t.hero_obj, "HERO_OBJ_ROM")
+    # talk-dialog portrait colours (bank 8 DlgPortrait8 from SceneHook)
+    if (syms["PORTRAIT_TAB"] < syms["PARADE_PAL_ROM"] + syms["PARADE_LEN"]
+            or syms["PORTRAIT_TAB"] + 1 + 9 * MAX_DIALOG_PORTRAITS > 0x8000
+            or syms["DLG_RET"] != GL.TALK_DIALOG_SITE[1] + 1 or GL.TALK_DIALOG_SITE[0] != 0
+            or GL.TALK_DIALOG_SITE not in GL.DIALOG_LCD_ON_SITES):
+        raise PatchError("PORTRAIT_TAB / DLG_RET layout")
+    if len(t.dlg_portraits) > 1 and t.portrait_pal != syms["PORTRAIT_PAL"]:
+        raise PatchError("dialog_portraits: the portrait tiles' palette is not PORTRAIT_PAL")
+    put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["PORTRAIT_TAB"]), t.dlg_portraits, "PORTRAIT_TAB")
     # title-card tints and the gold side-panel digits (bank 8, SceneHook)
     put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["CARD_TINT"]), t.card_tint, "CARD_TINT")
     put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["CARD_UI"]), bytes([(syms["BASE_BG"] + 8 * t.card_ui) & 0xFF]), "CARD_UI")
@@ -644,7 +744,7 @@ def build(original: bytes, pal_data: dict[str, Any], bg_cat: dict[str, Any], obj
     hr_used = {syms[k] for k in ("HR_DISPATCH", "HR_LCDMODE", "HR_SLOTG", "HR_CGB", "PARADE_LIST", "PARADE_ON")}
     nat_tabs = [("NAT_KEY_CLASS", cr.key_class), ("NAT_TIERS", cr.class_tiers), ("NAT_TPL", cr.tpl),
                 ("NAT_FB", cr.fallback), ("NAT_COL", cr.class_col), ("NAT_PARADE", plan.colors),
-                ("NAT_PLIST", plan.plist), ("NAT_FOLK", bytes([cr.folk]))]
+                ("NAT_PLIST", plan.plist), ("NAT_FOLK", bytes([cr.folk])), ("NAT_NPC", cr.npc[:64])]
     nat_hr = [syms[k] for k in ("NAT_DIRTY", "PARADE_CUR", "PARADE_STEP", "PARADE_TGT")]
     sig9 = syms["BANK9_SIG"]
     if (syms["Bank9End"] > syms["NAT_KEY_CLASS"] or any(syms[k] & 0xFF for k, _ in nat_tabs)
@@ -659,7 +759,7 @@ def build(original: bytes, pal_data: dict[str, Any], bg_cat: dict[str, Any], obj
             or len(cr.names) + 1 > 0x40 or len(cr.tpl) > 256 or len(plan.colors) != 64 * 5 or len(plan.plist) != 16 * 5
             or any(p not in range(syms["NAT_FIRST"], syms["NAT_LAST"] + 1) for p in plan.loads[0])):
         raise PatchError("natural colour layout: bank 9 / NAT_* / BANK9_SIG")
-    end = syms["NAT_FOLK"] + 1
+    end = syms["NAT_NPC"] + 64
     for (k, data), nxt in zip(nat_tabs, [syms[k] for k, _ in nat_tabs[1:]] + [end]):
         if syms[k] + len(data) > nxt or nxt > 0x8000:
             raise PatchError(f"{k}: {len(data)} bytes overflow")

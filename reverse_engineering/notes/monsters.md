@@ -117,7 +117,7 @@ graphic get a variant (tier rule below).
 | OBJ palette | use |
 |---|---|
 | 0 | avatar / player (champion colours rewritten per hero) |
-| 1-6 | assigned per area to the creature/folk/royal/item classes present (below) |
+| 1-6 | assigned per area to the creature/folk/royal/item/named-NPC classes present (below) |
 | 7 | `obp1` — cursor, wand fire, hit flash (DMG OBP1 sprites) |
 
 ### Per-area allocation (`creatures.py`, bank-9 `NatLcd9` / `NatPrep9`)
@@ -133,6 +133,18 @@ graphic get a variant (tier rule below).
   then would a class share its nearest-colour class's palette. Observed: Injustice `00*`
   (slime), Selfishness `4C` (centipede, troll, skeleton), Pride/Abyss `2B*` (jagger), `38*`
   (troll); no class sharing anywhere.
+* Named NPCs (`rov_palettes.yaml` `npcs`, bank 9 `NAT_NPC` `$7A00` = 1 per NPC class) are
+  classes too, allocated after the creature / folk / royal / item classes (the slot scan
+  defers them to WRAM3 `NAT_NPCS` `$D200`). If the area wants more than 6 base classes and no
+  generic folk sprite is loaded, folk is inserted before the NPCs; NPCs past palette 6 share
+  folk (their `NAT_FB` lists folk first). The NPCs that share a graphic (`$46` hooded figure:
+  Penumbra B3F, Taynith B44, Melissa B46; `$6A` townsman: Johann B2A/B40, Loubet B41, Zoltan
+  B43/B47) are tiers 1-3 of that class by template (`TIER_TAB`, `NAT_TPL`; tier 0 = the generic
+  A23/A3F/B2C, A3E/B30 in folk colours). The list scan ORs a tier bit per class into WRAM3
+  `NAT_TM` (`$D1C0`); an NPC class whose area lists exactly one named tier gets that tier's
+  colours in a single, untiered palette (`NAT_TM` = tier, added to the class in the colour
+  copy). Overflow (scan of 215 area/flag snapshots): town `$01` (6 classes: Johann and Loubet
+  wear folk) and Pride/Abyss `38*` (8 classes: Dr Cat folk).
 * The black-knight borrow and per-area `obj_themes` are gone (the builder rejects
   `tier_palettes`, `knight_borrow`, `obj_themes`).
 

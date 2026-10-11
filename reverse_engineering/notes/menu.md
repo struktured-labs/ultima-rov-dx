@@ -78,6 +78,27 @@ $3DB8 $3FD9`, 1:`$4336 $5121`. None uses HL/DE/A after the return.
 * Map LCD-on restores `MAP_THEME` (set by `Slot`), so closing the menu or a dialog brings the area
   colours back.
 
+## Talk dialog portraits
+* 0:`$126E` (from the bump handler 0:`$1227`, which reads `[$C528]` = NPC record + 1): talk id =
+  record byte 10 & `$7F` (`[$C535]`); text record = bank 4 `$69F9 + 2*id` (records in bank 4 for
+  ids < `$12`, else bank 6): portrait byte P, name, then (NPC position or `$FF`, text)* (the text
+  is picked by the NPC's position `[$FF8F]`).
+* P is pushed as D at 0:`$12B8` and popped at 0:`$1372`; `$034A`/`$2BD5` copy bank 2
+  `$(P+$66)33` (256 bytes) into tiles `$D4-$E3` and draw them 4x4 at `$9C46` (P+`$66` = `$FE`/`$FF`:
+  no portrait; the other `$034A` callers 0:`$0A3C $14BF $1808`, 3:`$6E97 $6F7C` pass none).
+* Portrait bytes (`game_layout.DIALOG_PORTRAITS`): `$00` Gnu Gnu, `$01` Lord British, `$06` Sherry,
+  `$07` Beh Lem, `$08` sign, `$09` Eep Eep, `$0A` Kador, `$0B` Chuckles, `$0C` Klip, `$0D` Klop,
+  `$0E` Dr Cat, `$0F` Penumbra, `$10` Johann, `$11` Loubet, `$12` Zoltan, `$13` Finn, `$14` Ariana,
+  `$15` The Black Knight, `$16` Melissa, `$17` Utomo, `$18` Taynith. `$02-$05` and `$19` are in
+  bank 2 but no text record uses them. Talk ids `$19` (template B30) and `$1B` (B2C) point into
+  other text (portrait bytes `$E7`/`$74`): unused templates, not forced.
+* DX: the portrait tiles use BG palette 5 (`earth`, text_screen ranges); nothing else on the
+  dialog does. `SceneHook` calls `DlgPortrait8` at every game LCD-on (LCD off); at the return
+  address `DLG_RET` = `$1324` it reads P from the game's stack (SP+25 there) and, if
+  `PORTRAIT_TAB` (bank 8 `$7F00`: count, (P, 4 colours)*) has it, overwrites `BASE_BG` palette 5
+  and sets `CUR_THEME = $FE` (the next screen reloads its theme); `SyncBG` then writes CRAM with
+  the LCD still off. Colours: `rov_palettes.yaml` `dialog_portraits` (named NPCs: exactly their `npcs` map colours; royals: skin face, royal red outline; signs and the Black Knight explicit).
+
 ## Known limits
 * On theme-0 maps (overworld, castle) item palettes keep their own colour 0, so the A/B icons sit
   on a small tinted square (wood = peach, stone = grey) inside the cream panel. Cavern/menu themes
