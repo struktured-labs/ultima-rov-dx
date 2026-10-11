@@ -27,7 +27,7 @@ reachable from the menu; 0:`$14FF` (LCDC `$8F`, text from bank 1 `$7F98`) is ano
 ## Item ids (`$00-$3F`, icon atlas bank 3 `$4B00`)
 00 armour, 01 bow, 02 crossbow, 03 arrow, 04 shuriken, 05 boomerang, 06 flask, 07 staff, 08 dagger,
 09 coin, 0A/0B armour, 0C rounded frame, 0D burst, 0E rock, 0F pick, 10 heart, 11 whip, 12 chain,
-14 star, 17 lamp, 18 caltrops, 19-1B swords, 1D-1F keys, 20 armour, 21 chest, 22 food bowl,
+14 star, 17 Lightning Amulet (fires lightning: OBJ $D4/$D6), 18 caltrops, 19-1B swords, 1D-1F keys, 20 armour, 21 chest, 22 food bowl,
 23 red potion, 24-2B runes (hand, heart, sword, scales, flame, chalice, ankh, ?), 2C/2D rope,
 2E boots, 2F food, 30 net, 31 ring, 32 chalice, 33 hammer, 36 ankh, 37 pipes, 38 compass,
 3D green potion, 3E star, 3F burst. The palette of each is `item_palettes` in

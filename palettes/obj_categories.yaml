@@ -18,9 +18,10 @@ player: avatar
 # Graphics listed nowhere (people-bank $76-$7E: no template) use `default`.
 default: folk
 # The ship while sailing: tiles $B8-$BF in a slot the loader never filled
-# (bank 0 $FF96 = $2B under the player). Brown hull; surface areas always
-# reserve the folk palette for it.
-ship: folk
+# (bank 0 $FF96 = $2B under the player). Its own class (rov_palettes.yaml
+# `ship`: white/cream sail, wood hull, dark outline; Carmelo's pick, option A);
+# surface areas always reserve a palette for it.
+ship: ship
 # Verified in the Cavern of Hatred (areas 0x18/0x19): 0x40 imp, 0x46 hooded
 # rogue. 0x40 and 0x5E only appear as talking NPCs (template damage byte
 # >= $80 = talk id): folk.

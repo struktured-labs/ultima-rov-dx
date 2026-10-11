@@ -336,7 +336,8 @@ def build_tables(pal_data: dict[str, Any], bg_cat: dict[str, Any], obj_cat: dict
     if len(sets) > MP_SETS:
         raise PatchError(f"at most {MP_SETS} distinct metatile palette maps (have {len(sets)})")
     metapals = sets + [bytes(128)] * (MP_SETS - len(sets))
-    ship_pal = _index(obj_names, obj_cat.get("ship", obj_cat.get("player", obj_names[0])), "ship")
+    ship_cat = obj_cat.get("ship", obj_cat.get("player", obj_names[0]))
+    ship_pal = _index(obj_names, ship_cat if ship_cat in obj_names else "folk", "ship")   # until NatAssign9 runs
     # champions (WRAM1 $D133: 0 Mariah, 1 Iolo, 2 Dupre, 3 Shamino): player sprite colours
     # (OBJ palette 0) and the matching portrait on the champion select (BG palettes 1-4)
     def enc4(cols: list[str], what: str) -> bytes:
@@ -628,6 +629,18 @@ def dialog_portraits(pal_data: dict[str, Any], obj_cat: dict[str, Any], text_ran
     return bytes(out), portrait_pal, b"".join(pool), bytes(slots), borrow
 
 
+def nat_surf(bg_cat: dict[str, Any]) -> bytes:
+    """NAT_SURF (bank 9): 1 per ROM theme drawn from the surface atlas (theme 0 = base
+    and every area theme marked `surface: true`, e.g. the overworld). NatAssign9 reserves
+    the folk palette for the sailing ship on those maps."""
+    out = bytearray(ROM_THEMES)
+    out[0] = 1
+    for t, spec in enumerate((bg_cat.get("area_themes") or {}).values(), 1):
+        if t < ROM_THEMES and spec.get("surface"):
+            out[t] = 1
+    return bytes(out)
+
+
 def _asm_source() -> str:
     return resources.files("ultima_rov_dx").joinpath("asm/dx.asm").read_text(encoding="utf-8")
 
@@ -848,7 +861,8 @@ def build(original: bytes, pal_data: dict[str, Any], bg_cat: dict[str, Any], obj
     hr_used = {syms[k] for k in ("HR_DISPATCH", "HR_LCDMODE", "HR_SLOTG", "HR_CGB", "PARADE_LIST", "PARADE_ON")}
     nat_tabs = [("NAT_KEY_CLASS", cr.key_class), ("NAT_TIERS", cr.class_tiers), ("NAT_TPL", cr.tpl),
                 ("NAT_FB", cr.fallback), ("NAT_COL", cr.class_col), ("NAT_PARADE", plan.colors),
-                ("NAT_PLIST", plan.plist), ("NAT_FOLK", bytes([cr.folk])), ("NAT_NPC", cr.npc[:64])]
+                ("NAT_PLIST", plan.plist), ("NAT_FOLK", bytes([cr.folk, cr.ship])), ("NAT_NPC", cr.npc[:64]),
+                ("NAT_SURF", nat_surf(bg_cat))]
     nat_hr = [syms[k] for k in ("NAT_DIRTY", "PARADE_CUR", "PARADE_STEP", "PARADE_TGT")]
     sig9 = syms["BANK9_SIG"]
     if (syms["Bank9End"] > syms["NAT_KEY_CLASS"] or any(syms[k] & 0xFF for k, _ in nat_tabs)
@@ -863,7 +877,7 @@ def build(original: bytes, pal_data: dict[str, Any], bg_cat: dict[str, Any], obj
             or len(cr.names) + 1 > 0x40 or len(cr.tpl) > 256 or len(plan.colors) != 64 * 5 or len(plan.plist) != 16 * 5
             or any(p not in range(syms["NAT_FIRST"], syms["NAT_LAST"] + 1) for p in plan.loads[0])):
         raise PatchError("natural colour layout: bank 9 / NAT_* / BANK9_SIG")
-    end = syms["NAT_NPC"] + 64
+    end = syms["NAT_SURF"] + ROM_THEMES
     for (k, data), nxt in zip(nat_tabs, [syms[k] for k, _ in nat_tabs[1:]] + [end]):
         if syms[k] + len(data) > nxt or nxt > 0x8000:
             raise PatchError(f"{k}: {len(data)} bytes overflow")

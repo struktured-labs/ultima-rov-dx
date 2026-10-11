@@ -76,8 +76,12 @@ class CreatureTableTest(unittest.TestCase):
         self.assertEqual((a.pal[bat], a.pal[troll], a.size[troll], a.pal[rat]), (1, 2, 3, 5))
         self.assertEqual((a.objpal[0x22], a.objpal[0x0A]), (0x82, 1))
         self.assertEqual(a.colors[4], cr.class_col[8 * (troll + 2):8 * (troll + 3)])
-        a = CR.allocate(cr, [0x14], 1, surface=True)                      # ship: folk palette on the surface
+        a = CR.allocate(cr, [0x14], 1, surface=True)                      # ship: its own palette on the surface
         self.assertEqual((a.pal[rat], a.ship_pal), (1, 2))
+        self.assertEqual(cr.names[cr.ship - 1], "ship")                     # white/cream sail (option A), not folk
+        self.assertNotEqual(cr.ship, cr.folk)
+        self.assertEqual(a.colors[2], CR._enc(self.pal["ship"]["colors"], "ship"))
+        self.assertNotIn(folk, a.pal)                                       # no townsfolk loaded: no folk palette
         # seven classes: the last shares its nearest-coloured loaded class; variants merged first
         ids = [0x14, 0x0A, 0x16, 0x04, 0x2A, 0x28, 0x10]
         a = CR.allocate(cr, ids, 7)

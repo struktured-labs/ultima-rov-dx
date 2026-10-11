@@ -2,6 +2,34 @@
 
 ## [Unreleased]
 
+### Fixed (Carmelo's a44eb26 review, 2026-10-11)
+
+- Sailing: the ship and the land around it no longer turn blue. The overworld has its own
+  ROM theme (9), so the surface test (`MAP_THEME` 0) missed it and the ship kept a stale
+  palette; `NatSurf` + bank-9 `NAT_SURF` mark surface themes. The voyage redraw (bank 1
+  `$544E`, new hook `cell_redraw`) copied map cells without attributes; it now writes them
+  (`W2Cell`).
+- The ship has its own colours (option A of the sail mockups): white/cream sail, wood rigging,
+  near-black hull (`rov_palettes.yaml` `ship`, class `ship`, bank-9 `NAT_SHIP`). Surface areas
+  reserve one OBJ palette for it; every overworld / town / Abyss-isle area still fits in
+  palettes 1-6 (at most 5 classes, area 04).
+- Weapon sprites (arrows, bolts, boomerang, throwing axe, whip, hit puff, wand fireball, wand
+  cast spark, Lightning Amulet bolt) share the projectile palette 7 (wood / straw / rust with
+  dark outlines) instead of the champion's (Iolo's arrows and boomerang were green). The sword
+  blade stays with the champion.
+- Portraits: Lord British (robe red off the hair), Chuckles (brow and ear skin), Utomo,
+  Taynith (cloak off the face), Penumbra (hairline), Eep Eep (the hole under him earth brown,
+  not a red puddle), Gnu Gnu (neck and jaw stay skin; shirt folds red).
+- Floor items: heart key red, rock grey; the Cavern of Selfishness boulders and cobbles grey
+  stone. Item $17 (was labelled "lamp") is the Lightning Amulet: gold on the floor, in the
+  menu and on the side panel.
+- Flask of oil ($06): fire palette (orange flame, dark glass) instead of water. Dropped with
+  the LCD on it was drawn in the floor slots' default fire (gold-orange) and turned blue when
+  `LiveFloor`'s attribute sweep caught up (~1 s); now both are fire. Cheese ($2F, and $35,
+  what a dropped cheese becomes) is cheese yellow (gold) instead of wood brown.
+- Music: not changed. The dungeon song and the slow-down in crowded rooms match the original
+  (the driver ticks once per main-loop pass, so game lag slows it there too).
+
 ### Changed (talk-dialog portraits in per-tile colours, 2026-10-11)
 
 - Portraits break the one-palette limit: each of the 16 portrait tiles picks its palette.

@@ -88,7 +88,12 @@ SWEEP_HI        equ $D715
 MAP_CACHED      equ $D716   ; ROM theme held in WRAM slot SLOT_MAP ($FF = none; set by bank-8 MapTheme)
 HERO_CACHED     equ $D717   ; champion whose colours are in OBJ palette 0 ($FF = none; set by bank-8 HeroObj)
 FIRE_OBJ        equ $DFF0   ; 4 colours of the wand's fireball (OBJ palette 7 on map screens, via OBP0)
-FIRE_TILES      equ $38     ; wand projectile tiles $38-$47 (items $06-$08, either button)
+FIRE_TILES      equ $38     ; wand projectile tiles $38-$47 (item $06)
+SPELL_SLOT      equ $0A     ; OBJ tiles $D0-$D7 (slot 10 when unloaded): wand cast spark $D0/$D2, Lightning Amulet bolt $D4/$D6
+BODY_TILES      equ $68     ; champion body OBJ tiles $68-$7F; weapons below: arrows $00-$07,
+                            ; bolts $08-$0F, sword $10-$17, whip $20-$27, hit puff $30-$37,
+                            ; wand fire $38-$47, boomerang $48-$57, throwing axe $58-$67
+SWORD_TILES     equ $10     ; melee blade beside the attack pose (champion palette)
 FIRE_PAL        equ 7
 SWEEP_CELLS     equ 16      ; cells per frame (replaces the 4-cell side-panel refresh)
 STAND_G         equ $FF96   ; graphic under the player ($2B = ship, bank 0 $2331)
@@ -181,7 +186,9 @@ NAT_FB          equ $7300   ; bank 9: 3 per class, nearest-coloured base classes
 NAT_COL         equ $7400   ; bank 9: 8 per class (64), the colours; tiers of a creature are consecutive classes
 NAT_PARADE      equ $7600   ; bank 9: 64 per parade page: colours of OBJ palette p at 8 x p (creatures.parade_plan)
 NAT_PLIST       equ $7800   ; bank 9: 16 per parade page: the OBJ palettes it loads, $FF-terminated
-NAT_FOLK        equ $7900   ; bank 9: class of the ship (surface maps reserve it)
+NAT_FOLK        equ $7900   ; bank 9: townsfolk class (overflowing named NPCs wear it)
+NAT_SHIP        equ $7901   ; bank 9: class of the sailing ship (surface maps reserve it)
+NAT_SURF        equ $7B00   ; bank 9: 32, 1 = ROM theme drawn from the surface atlas (the ship can sail there)
 NAT_NPC         equ $7A00   ; bank 9: 64, 1 = named-NPC class (allocated after the others; overflow wears folk)
 BANK9_SIG       equ $9D     ; byte at bank 9 $4001 (builder: differs from banks 1-8)
 NAT_FIRST       equ 1       ; OBJ palettes NAT_FIRST..NAT_LAST are allocated per area
@@ -420,6 +427,35 @@ section patch_term, $4B3C, $4B3C        ; bank1:$4B3C (9 bytes)
         nop
         nop
         nop
+; bank1:$544E (36 bytes): copy one metatile from the shadow map (HL =
+; $C1xx-$C4xx, VRAM = HL - $2900) after the wait for LY $91. The original
+; tile writes are kept byte for byte and in order; the rewrite (rows by
+; `set 5`: metatiles start on even rows) frees room for the CGB attribute
+; call. Used while sailing: the ship voyage redraws the map one metatile per
+; frame with the LCD on, and those cells kept the old (water) palette.
+section patch_cell, $544E, $544E
+        call $0680                      ; HL = shadow map cell of [$FF91]
+        call $02DC                      ; wait for LY $91
+        call .c
+        set 5, l
+        call .c
+        ldh a, [HR_CGB]
+        or a
+        ret z
+        ld a, 2
+        ldh [rSVBK], a
+        jp W2Cell                       ; returns through HudExit
+.c:
+        ld e, l
+        ld a, h
+        sub $29
+        ld d, a
+        ld a, [hl+]
+        ld [de], a
+        inc e
+        ld a, [hl-]
+        ld [de], a
+        ret
 section patch_slot, $4F6C, $4F6C        ; bank1:$4F6C
         call Far8Slot
 section patch_hud_icons, $04E6, $04E6   ; $04E6: call $01A9; ld a,1; ld [$2100],a; ret
@@ -1674,10 +1710,12 @@ OamPass:
         jr z, .menu
         or a
         jr nz, .pl
-        ld a, e                         ; map: the wand's fireball
-        sub FIRE_TILES
-        cp 16
-        jr nc, .pl
+        ld a, e                         ; map: weapon sprites (tiles below the
+        and $F8                         ; body $68-$7F: arrows, bolts, whip,
+        cp SWORD_TILES                  ; hit puff, wand fire, boomerang, axe)
+        jr z, .pl                       ; share the projectile palette; the
+        cp BODY_TILES                   ; sword blade ($10-$17, attack pose)
+        jr nc, .pl                      ; stays with the champion
         ld a, FIRE_PAL
         jr .apply
 .menu:
@@ -1719,7 +1757,7 @@ SyncBG:
         ld hl, BASE_BG
         ld b, 8
         ld c, rBCPD
-        jp SyncGroup
+        jr SyncGroup
 
 ; Rebuild OBJ palettes 0-6 from OBP0 and 7 from OBP1.
 SyncOBJ:
@@ -2390,8 +2428,14 @@ Far9:
         jp hl
 
 ; A = OBJ palette of a sprite tile in a slot the loader has not filled
-; ($C539 count): the champion (attack pose), or the ship while sailing.
+; ($C539 count), E = slot: the projectile palette for slot 10 ($D0-$D7: the
+; wand's cast spark $D0/$D2, the Lightning Amulet's bolt $D4/$D6), else the
+; champion (attack pose), or the ship while sailing.
 UnloadedPal:
+        ld a, e
+        cp SPELL_SLOT
+        ld a, FIRE_PAL
+        ret z
         ldh a, [STAND_G]
         cp SHIP_G
         ld a, PLAYER_PAL
@@ -2467,6 +2511,7 @@ W2Meta:
         ld a, [hl]
         sub 4
         ld c, a                         ; C = tile
+.attr:                                  ; DE = map cell, C = top-left tile
         ld h, high(LUT)
         ld a, 1
         ldh [rVBK], a
@@ -2498,6 +2543,21 @@ W2Meta:
         xor a
         ldh [rVBK], a
         ret
+
+; Metatile copied by bank1 $544E (SVBK = 2, from patch_cell): HL = shadow
+; map cell (bottom row), VRAM = HL - $2900. Map metatiles are t, t+2 / t+1,
+; t+3, so W2Meta's attribute writes apply. Keeps BC.
+W2Cell:
+        push bc
+        res 5, l
+        ld c, [hl]                      ; C = top-left tile
+        ld e, l
+        ld a, h
+        sub $29
+        ld d, a                         ; DE = VRAM cell
+        call W2Meta.attr
+        pop bc
+        jr W2Prep.exit                  ; A = 1, back through HudExit (flags unused)
 
 ; Scene LCD-on (game sites, SVBK = 2): bank-8 SceneHook may replace the
 ; theme, LUT and OBJ palette 0 for the screen being switched on (SCENES
@@ -2556,6 +2616,7 @@ W2Prep:
         ldh [HR_VBLANK], a
         ldh a, [rLCDC]
         or a
+.exit:
         ld a, 1
         jp HudExit
 W2bEnd:
@@ -2876,7 +2937,7 @@ NatLcd9:
 ; their nearest-coloured loaded class (NAT_FB). Writes BASE_OBJ (NAT_DIRTY
 ; bit per changed palette), OBJPAL of the loaded keys and SHIP_PAL.
 NatAssign9:
-        ld a, [MAP_THEME]
+        call NatSurf                    ; Z = surface map (the ship's own palette)
         push af
         ld a, 3
         ldh [rSVBK], a
@@ -2925,7 +2986,7 @@ NatAssign9:
         pop af
         or a
         jr nz, .nf
-        ld a, [NAT_FOLK]                ; surface map: the ship's palette
+        ld a, [NAT_SHIP]                ; surface map: the ship's palette
         call NatAdd
 .nf:
         ld a, c
@@ -3279,7 +3340,7 @@ NatAssign9:
         dec b
         jr nz, .ol
 .ship:
-        ld a, [NAT_FOLK]
+        ld a, [NAT_SHIP]
         or low(NAT_PH)
         ld l, a
         ld h, high(NAT_PH)
@@ -3292,6 +3353,25 @@ NatAssign9:
         or a
         ret z
         ld [SHIP_PAL], a
+        ret
+
+; A = 0 on a surface map (SVBK = 2): MAP_THEME is the surface slot, or the
+; dungeon-cache slot holding a ROM theme marked surface (NAT_SURF: the
+; overworld has its own theme, so MAP_THEME 0 alone missed it and the ship
+; kept a stale palette, blue after a voyage). Else A != 0.
+NatSurf:
+        ld a, [MAP_THEME]
+        or a
+        ret z
+        cp SLOT_MAP
+        ret nz
+        ld a, [MAP_CACHED]
+        and ROM_THEMES - 1
+        add low(NAT_SURF)
+        ld l, a
+        ld h, high(NAT_SURF)
+        ld a, [hl]
+        xor 1
         ret
 
 ; Sprite-slot signature (count, area, flag, 16 ids) against the last one

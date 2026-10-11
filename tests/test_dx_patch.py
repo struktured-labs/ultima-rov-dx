@@ -95,6 +95,20 @@ class TablesTest(unittest.TestCase):
         self.assertFalse(bg["item_palettes"].get("earth"))
         self.assertNotIn(pal.index("earth"), set(t.item_pal))
 
+    def test_key_and_rock_item_palettes(self):
+        # heart key red (fire), star key and lamp gold, rock grey (stone); Selfishness boulders grey
+        ip = self.inputs["bg_categories"]["item_palettes"]
+        where = {i: name for name, ids in ip.items() for i in ids}
+        self.assertEqual((where[0x1D], where[0x1E], where[0x17], where[0x0E]), ("fire", "gold", "gold", "stone"))
+        # flask of oil: the floor slots' default fire, so a live drop keeps one colour (was gold -> blue)
+        self.assertEqual(where[0x06], "fire")
+        self.assertEqual((where[0x2F], where[0x35]), ("gold", "gold"))      # cheese, dropped cheese: cheese yellow
+        self.assertEqual(self.inputs["bg_categories"]["ui_overrides"][0x40], "fire")
+        stone = self.inputs["palettes"]["bg_themes"]["selfishness"]["stone"]["colors"]
+        for c in stone[1:3]:
+            r, g, b = (int(c[k:k + 2], 16) for k in (1, 3, 5))
+            self.assertLess(max(r, g, b) - min(r, g, b), 24, c)   # grey, not sand
+
     def test_menu_tables(self):
         from ultima_rov_dx import dx_patch
         t = dx_patch.build_tables(self.inputs["palettes"], self.inputs["bg_categories"], self.inputs["obj_categories"])
@@ -538,10 +552,14 @@ class TablesTest(unittest.TestCase):
                          ("utomo", 0x17), ("taynith", 0x18)):
             base, extra, tiles = dec[pid]
             self.assertGreaterEqual(sum(v > 0 for v in tiles), 4, npc)
-            self.assertLessEqual(sum(v > 0 for v in tiles[5:7] + tiles[9:11]), 1, f"{npc}: face tiles skin")
+            # face tiles keep the skin light / mid shades: the base palette, or an extra that only
+            # swaps the line colour (hairline / hood-edge tiles, e.g. penumbra_hairline)
+            skin = lambda v: v == 0 or extra[v - 1][:6] == base[:6]
+            self.assertLessEqual(sum(not skin(v) for v in tiles[5:7] + tiles[9:11]), 1, f"{npc}: face tiles skin")
             m = cr.class_col[8 * cr.alias[npc]:8 * cr.alias[npc] + 8]
             for e in extra:
-                self.assertLess(min(hue_d(w(e, 2), w(m, 3)), hue_d(w(e, 2), w(m, 2))), 30, npc)
+                k = 3 if e[:6] == base[:6] else 2          # skin-keeping extra: its line carries the hue
+                self.assertLess(min(hue_d(w(e, k), w(m, 3)), hue_d(w(e, k), w(m, 2))), 30, npc)
         self.assertEqual(len(dec[0x0B][1]), 2)                             # jester: red and green
         self.assertGreater(hue_d(w(dec[0x0B][1][0], 2), w(dec[0x0B][1][1], 2)), 90)
         for pid in (0x00, 0x01, 0x09):
@@ -738,6 +756,38 @@ class RealRomBuildTest(unittest.TestCase):
             off = GL.file_offset(GL.DX_RUNTIME_BANK, syms[name])
             self.assertEqual(self.out[off:off + len(data)], data, name)
             self.assertLessEqual(syms[name] + len(data), 0x8000, name)
+
+    def test_ship_palette_on_surface_themes(self):
+        # the sailing ship wears the folk palette on every surface-atlas map (NatAssign9 via
+        # NatSurf): the overworld has its own ROM theme (not slot 0), so NAT_SURF must flag it,
+        # else the ship kept a stale OBJ palette (blue sea creature) after a voyage
+        import build_dx
+        from ultima_rov_dx import dx_patch
+        from ultima_rov_dx.sm83asm import assemble
+        bg = build_dx.load_inputs()["bg_categories"]
+        _, syms = assemble([("dx.asm", dx_patch._asm_source())])
+        surf = self.out[GL.file_offset(9, syms["NAT_SURF"]):][:dx_patch.ROM_THEMES]
+        self.assertEqual(surf, dx_patch.nat_surf(bg))
+        area_theme = self.out[GL.file_offset(GL.DX_RUNTIME_BANK, syms["AREA_THEME"]):][:512]
+        for half, key in ((0, "surface_areas"), (256, "surface_areas_alt")):
+            for area in bg.get(key) or []:
+                self.assertEqual(surf[area_theme[half + area]], 1, f"{key} {area:#x}")
+        self.assertTrue(all(surf[area_theme[a]] for a in (2, 3, 4, 5)))     # the overworld seas
+        self.assertEqual(syms["NAT_SURF"] & 0xFF, 0)
+
+    def test_cell_redraw_hook(self):
+        # bank1 $544E (one metatile from the shadow map, used by the voyage redraw): the
+        # DMG path keeps the original calls and tile copies; only CGB goes to W2Cell
+        from ultima_rov_dx import dx_patch
+        from ultima_rov_dx.sm83asm import assemble
+        _, syms = assemble([("dx.asm", dx_patch._asm_source())])
+        code = self.out[0x544E:0x5472]
+        self.assertEqual(code[:6], bytes.fromhex("cd8006cddc02"))      # call $0680; call $02DC
+        cgb = bytes.fromhex("f09bb7c8")                                   # ldh a,[HR_CGB]; or a; ret z
+        i = code.index(cgb)
+        self.assertNotIn(bytes.fromhex("e070"), code[:i])                 # no SVBK write before the test
+        self.assertEqual(code[i + 4:i + 11], bytes([0x3E, 2, 0xE0, 0x70, 0xC3, syms["W2Cell"] & 0xFF, syms["W2Cell"] >> 8]))
+        self.assertEqual(code[-11:], bytes.fromhex("5d7cd629572a121c3a12c9"))   # copy 2 tiles, HL back
 
     def test_hero_tables_in_rom(self):
         import build_dx

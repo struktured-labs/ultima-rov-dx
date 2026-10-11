@@ -30,6 +30,12 @@ obj_palettes:
   item:    { colors: ["#FFFFFF", "#FFF8A0", "#E8B030", "#704010"] }  # chests, sparkles, missiles
   obp1:    { colors: ["#FFFFFF", "#E0E0E0", "#909090", "#202020"] }  # sprites using DMG OBP1
 
+# The sailing ship (obj_categories `ship: ship`), shades as its tiles $B8-$BF:
+# 1 sail fill and the waterline, 2 sail edges / rigging / upper hull, 3 hull
+# and outline. Option A of the sail mockups (Carmelo 2026-10-11): white/cream
+# sail, wood-brown rigging, near-black hull for contrast on the water.
+ship: { colors: ["#FFFFFF", "#FFFCEC", "#7C5428", "#1C1008"] }
+
 # The four champions, in the order of WRAM1 $D133 (0 Mariah, 1 Iolo, 2 Dupre,
 # 3 Shamino; reverse_engineering/notes/heroes.md). `sprite` replaces OBJ
 # palette 0 (avatar) once the game has started: walking, attack poses, the
@@ -74,14 +80,18 @@ portrait_palettes:
   jester_green:    { colors: ["#FFF8E8", "#98F09F", "#27B733", "#0A270C"], why: "Chuckles' left hat lobe: map trim green" }
   melissa_rose:    { colors: ["#FFF8E8", "#F9B8D0", "#DF477F", "#3E0F21"], why: "Melissa's hood: map rose" }
   penumbra_indigo: { colors: ["#FFF8E8", "#C4C7FA", "#686FD9", "#14184E"], why: "Penumbra's hair and robe: map indigo" }
+  penumbra_hairline: { colors: ["#FFF8E8", "#F0C0A0", "#A86848", "#14184E"], why: "Penumbra's hairline tiles: skin light and shading (forehead, eyes) with her indigo hair line" }
   taynith_forest:  { colors: ["#FFF8E8", "#A1E8AF", "#31A848", "#0B2811"], why: "Taynith's hood and robe: map forest green" }
+  taynith_rim:     { colors: ["#FFF8E8", "#F0C0A0", "#A86848", "#0B2811"], why: "Taynith's hood edge tiles: skin light and shading (her cheek) with the hood's forest-green line (the hood pixels there are all line)" }
   ariana_gold:     { colors: ["#FFF8E8", "#F7CF63", "#A07B17", "#271F0A"], why: "Ariana's hair: map gold (colour 2)" }
   utomo_saffron:   { colors: ["#FFF8E8", "#FCC688", "#BF6D10", "#2F1C05"], why: "Utomo's topknot and shoulders: map saffron (only outline pixels there)" }
   zoltan_purple:   { colors: ["#FFF8E8", "#DFBDF3", "#A757D5", "#2D0F3E"], why: "Zoltan's bandana and its tail: map purple" }
   finn_blue:       { colors: ["#FFF8E8", "#B7D3F7", "#4588DE", "#0A203B"], why: "Finn's striped cap and collar: map sailor blue" }
   loubet_teal:     { colors: ["#FFF8E8", "#98E7ED", "#189FA9", "#06282A"], why: "Loubet's hair and coat: map teal" }
   johann_olive:    { colors: ["#FFF8E8", "#D0DD77", "#7F8E23", "#1C1F08"], why: "Johann's hair and collar: map olive" }
+  eep_earth:       { colors: ["#FFF8E8", "#E4C898", "#9C7046", "#22160C"], why: "Eep Eep's hole: sandy rim, earth-brown shading, dark pit" }
   royal_gold:      { colors: ["#FFF8E8", "#FBCF59", "#A87E0E", "#282007"], why: "crowns: gold" }
+  gnu_shoulder:    { colors: ["#FFF8E8", "#F8CCA0", "#E04848", "#4A0C14"], why: "Gnu Gnu's shoulder tiles: skin light (neck and jaw share shade 1 with the shirt fill), shirt folds royal red at ecffaca mid luminance, royal-red line" }
   royal_red:       { colors: ["#FFF8E8", "#D83838", "#902030", "#4A0C14"], bold: true, why: "royal robes: Lord British's map red (#D03838); line = royal_skin's, so outlines and beards run on across tile edges. BOLD like jester_red" }
 
 dialog_portraits:
@@ -92,13 +102,13 @@ dialog_portraits:
   # hue. Royals: skin face, gold crown, red robe (Lord British's map sprite).
   lord_british:
     { portrait: 0x01, colors: royal_skin,
-      tiles: ["YYYY", "....", "....", "R..R"], pals: { Y: royal_gold, R: royal_red }, why: "crown gold, shoulders royal red, face and beard skin" }
+      tiles: ["YYYY", "....", "....", "...."], pals: { Y: royal_gold }, why: "crown gold, face, beard and hair skin. The bottom corner tiles are 5 rows of hair over 3 rows of shoulder, all shade 1, so royal red there painted the hair ends red (Carmelo, v5 review): they stay skin; the dark collar line below the beard keeps the royal-red line" }
   gnu_gnu:
     { portrait: 0x00, colors: royal_skin,
-      tiles: ["YYYY", "Y..Y", "....", "R..R"], pals: { Y: royal_gold, R: royal_red }, why: "crown (top row, sides) gold, shoulders royal red, face skin" }
+      tiles: ["YYYY", "Y..Y", "....", "R..R"], pals: { Y: royal_gold, R: gnu_shoulder }, why: "crown (top row, sides) gold, face skin. The bottom corner tiles hold the shirt and, in their inner columns, his jaw and neck in the same shade 1 as the shirt fill, so royal red painted the neck red (Carmelo, v5 review). gnu_shoulder keeps shade 1 skin (face wins) and puts the shirt's folds and outline in royal red" }
   eep_eep:
     { portrait: 0x09, colors: royal_skin,
-      tiles: ["....", "....", "....", "RRRR"], pals: { R: royal_red }, why: "collar royal red (whole bottom row: the band runs under the beard), face skin" }
+      tiles: ["....", "....", "....", "EEEE"], pals: { E: eep_earth }, why: "Eep Eep is a bald round head peeking out of a hole (map sprite $50: the head over a dark ring on the ground). The bottom row is that hole and its rim, not a collar: royal red made it a red puddle (Carmelo, v5 review). Face keeps royal_skin (his map sprite is in the royal palette), the hole earth brown" }
   sign:                                            # signs (talk $01/$02): the map sign is an `item`
     portrait: 0x08                                 # sprite (pale yellow plaque); shade 1 fills the
     colors: ["#FFF8E8", "#E8D4A0", "#A47812", "#2F1B07"]   # whole picture, so a softer pale gold
@@ -115,13 +125,13 @@ dialog_portraits:
   kador:        { portrait: 0x0A, npc: kador, line: "#1F1F1F" }
   chuckles:
     { portrait: 0x0B, colors: skin,
-      tiles: ["GGRR", "G..R", "...R", "...."], pals: { G: jester_green, R: jester_red }, why: "jester hat: left lobe green, right lobe and hair red (map body); face skin" }
+      tiles: ["GGRR", "....", "....", "...."], pals: { G: jester_green, R: jester_red }, why: "jester hat: left lobe green, right lobe red (map body); face, brows, ear and hair skin. Row 2 left holds the right eyebrow (hat green made it green) and row 2/3 right the ear gap (hat red made it red), Carmelo v5 review: face wins; the hair is near-black in either palette" }
   klip:         { portrait: 0x0C, npc: klip_klop, line: "#2F180C" }
   klop:         { portrait: 0x0D, npc: klip_klop, line: "#2F180C" }
   dr_cat:       { portrait: 0x0E, npc: dr_cat, line: "#341704" }
   penumbra:
     { portrait: 0x0F, colors: skin,
-      tiles: ["IIII", "I..I", "I...", "I..."], pals: { I: penumbra_indigo }, why: "hair and robe indigo, face skin" }
+      tiles: ["IIII", "IHHI", "I...", "I..."], pals: { I: penumbra_indigo, H: penumbra_hairline }, why: "hair and robe indigo, face skin. Row 2 middle tiles are the hairline: the fringe is all line pixels over her forehead and eyes, so penumbra_hairline keeps skin light and shading with the indigo line (v5 review: the fringe was skin-palette brown)" }
   johann:
     { portrait: 0x10, colors: skin,
       tiles: ["OOOO", "O..O", "O..O", "OOOO"], pals: { O: johann_olive }, why: "hair and collar olive, face skin" }
@@ -142,10 +152,10 @@ dialog_portraits:
       tiles: ["RRRR", "R..R", "R..R", "R..R"], pals: { R: melissa_rose }, why: "hood rose all round, face skin" }
   utomo:
     { portrait: 0x17, colors: skin,
-      tiles: ["SSSS", "....", "....", "S..S"], pals: { S: utomo_saffron }, why: "topknot and shoulders saffron (outline only: no fill pixels), face skin" }
+      tiles: ["SSSS", "....", "....", "...."], pals: { S: utomo_saffron }, why: "topknot saffron (outline only), face skin. The bottom corners are neck skin plus outline, so saffron only tinted the neck orange: skin" }
   taynith:
     { portrait: 0x18, colors: skin,
-      tiles: ["FFFF", "F..F", "F..F", "FFFF"], pals: { F: taynith_forest }, why: "hood and robe forest green, face skin" }
+      tiles: ["FFFF", "K..F", "K..F", "FFFF"], pals: { F: taynith_forest, K: taynith_rim }, why: "hood and robe forest green, face skin. The left column tiles hold only dark hood pixels plus the edge of her right cheek, so they take taynith_rim (skin light and shading, forest-green line): the cheek stays skin and the hood stays green (v5 review: the cheek was hood green)" }
 
 # Per-area-theme BG color overrides (theme names come from
 # palettes/bg_tile_categories.yaml `area_themes`). Palettes not listed keep
@@ -204,7 +214,7 @@ bg_themes:
 
   selfishness:  # The Cavern of Selfishness: greed, sand and hoarded gold
     ui:     { colors: ["#D8CC98", "#9C9478", "#C82818", "#201808"] }  # side panel
-    stone:  { colors: ["#D8CC98", "#B8A070", "#705C38", "#201808"] }  # floor + cobbled rock
+    stone:  { colors: ["#D8CC98", "#A8A49C", "#64605C", "#1C1A18"] }  # floor + cobbled rock, boulders: grey stone on the sand
     wood:   { colors: ["#D8CC98", "#C08840", "#704818", "#241404"] }  # doors, chests, furniture, ladders
     earth:  { colors: ["#D8CC98", "#C09058", "#7C5428", "#281808"] }  # brick, rubble
     grass:  { colors: ["#D8CC98", "#98C058", "#487828", "#142008"] }  # plants
@@ -409,9 +419,15 @@ scene_obj:
 # shade index through OBP0).
 menu_cursor: ["#FFFFFF", "#F8E080", "#F09838", "#D83020"]
 
-# The wand's fireball (sprite tiles $38-$47 on map screens, OBJ palette 7,
-# shade index through OBP0): yellow core, orange flame, red edge.
-wand_fire: ["#FFFFFF", "#FFE070", "#F88828", "#D82810"]
+# Weapon sprites on map screens (OBJ palette 7, shade index through OBP0):
+# every champion weapon tile below the body ($00-$67: arrows, crossbow bolts,
+# whip, hit puff, the wand's fireball, boomerang, throwing axe; not the sword
+# blade $10-$17, which stays with the attack pose). They wore the champion's
+# palette (Iolo's arrows and boomerang green, Carmelo 2026-10-11). Shades as
+# the tiles use them: 1 straw (fletching, boomerang face, fire core), 2 wood
+# (arrow shaft, boomerang edge, axe), 3 dark rust (arrowhead, bolt, whip, fire
+# edge). The fireball (shades 1 and 3 only) stays yellow with a red-brown edge.
+wand_fire: ["#FFFFFF", "#F8E088", "#B07038", "#B03418"]
 
 # Colours for a DMG palette whose four shades are alike (BGP/OBP $00 = blank
 # white, $FF = black): every CGB palette gets the same colour, so blanking

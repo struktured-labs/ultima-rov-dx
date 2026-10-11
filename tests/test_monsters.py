@@ -20,6 +20,16 @@ from ultima_rov_dx import monsters as M  # noqa: E402
 ROM = ROOT / "rom" / "Ultima - Runes of Virtue (USA).gb"
 
 
+def surface_map(m, syms):
+    """NatSurf (dx.asm): the surface slot, or the cached dungeon slot holding a surface ROM theme."""
+    slot = m[2, syms["MAP_THEME"]]
+    if slot == 0:
+        return True
+    if slot != syms["SLOT_MAP"]:
+        return False
+    return m[9, syms["NAT_SURF"] + (m[2, syms["MAP_CACHED"]] & (syms["ROM_THEMES"] - 1))] == 1
+
+
 def _T(u, gfx, hp, dmg):
     return M.Template(u, 1, gfx, 0, hp, 0, dmg)
 
@@ -191,7 +201,7 @@ class RuntimeColoursTest(unittest.TestCase):
                     lst, j = [], 0xC5C0
                     while j < 0xC600 and m[j + 1]:
                         lst.append((m[j], m[j + 1])); j += 2
-                    al = CR.allocate(cr, slots, n, lst, m[0xC508], surface=m[2, syms["MAP_THEME"]] == 0)
+                    al = CR.allocate(cr, slots, n, lst, m[0xC508], surface=surface_map(m, syms))
                     for i in range(16):
                         if m[1, 0xD000 + 16 * i] == 0xFF:
                             continue

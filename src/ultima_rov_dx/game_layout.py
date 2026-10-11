@@ -108,6 +108,9 @@ HOOKS: tuple[Hook, ...] = (
          "call $01A9 in the metatile slot loader -> call Far8Slot"),
     Hook("hud_icons", 0x04E6, bytes.fromhex("cda9013e01ea0021c9"),
          "tail of $04C1 (A/B item icons -> tiles $F8-$FF): call $01A9; ld a,1; ld [$2100],a; ret -> call $01A9; jp HudTramp"),
+    Hook("cell_redraw", file_offset(1, 0x544E), bytes.fromhex("cd80065d7cd62957cddc02cd6c547dc61f6f3e008c677bc61f5f3e008a572a121c7e12c9"),
+         "bank1 $544E: one metatile copied from the shadow map ($C1xx) to $98xx in VBlank (map redraw "
+         "after a ship voyage / scroll step), no attributes -> same copy, then W2Cell writes the 4 attributes"),
     Hook("logo_dissolve", file_offset(7, 0x4BD1), bytes.fromhex("7e12"),
          "title dissolve copies $98xx->$9Cxx with LCD on -> rst $20 (copies attribute too)"),
     Hook("record_alloc", file_offset(2, 0x5FE6), bytes.fromhex("0100d0"),

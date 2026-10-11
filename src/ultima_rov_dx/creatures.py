@@ -60,7 +60,8 @@ class Creatures:
     class_col: bytes = bytes(8 * MAX_CLASSES)             # class id -> 4 BGR555 colours
     tpl: bytes = b""                                      # template U -> tier << 6 | base class (tier >= 1 only)
     fallback: bytes = bytes(FALLBACKS * MAX_CLASSES)      # base class id -> nearest-coloured base classes
-    folk: int = 0                                         # class of the ship (surface maps)
+    folk: int = 0                                         # townsfolk class (overflowing NPCs wear it)
+    ship: int = 0                                         # class of the sailing ship (surface maps reserve it)
     tiered_keys: frozenset = frozenset()
     tiers: dict = field(default_factory=dict)             # template index -> tier (monsters.tiers + NPC templates)
     npc: bytes = bytes(MAX_CLASSES)                       # class id -> 1 for named-NPC classes (bank 9 NAT_NPC)
@@ -173,6 +174,14 @@ def build(pal_data: dict[str, Any], obj_cat: dict[str, Any], temps: list[MON.Tem
             if k in key_owner:
                 raise CreatureError(f"ids.{cat}: id {k:#x} also in {key_owner[k]}")
             key_owner[k] = cat
+    # the sailing ship: its own class (rov_palettes.yaml `ship`) when obj_categories `ship: ship`
+    if obj_cat.get("ship") == "ship":
+        if "ship" not in pal_data:
+            raise CreatureError("obj_categories ship: ship needs rov_palettes.yaml `ship` colours")
+        base = len(names) + 1
+        names.append("ship")
+        cols += _enc(pal_data["ship"].get("colors"), "ship")
+        tiers_of[base] = 1
     if len(names) >= MAX_CLASSES:
         raise CreatureError(f"too many colour classes ({len(names)} >= {MAX_CLASSES})")
     for k in ("default", "ship"):
@@ -188,7 +197,8 @@ def build(pal_data: dict[str, Any], obj_cat: dict[str, Any], temps: list[MON.Tem
         ct[c] = n
     cr.class_tiers = bytes(ct)
     cr.class_col = bytes(cols) + bytes(8 * MAX_CLASSES - len(cols))
-    cr.folk = names.index(obj_cat["ship"]) + 1
+    cr.folk = names.index("folk") + 1
+    cr.ship = names.index(obj_cat["ship"]) + 1
     # tiers from the ROM (monsters.tiers) over every creature graphic; a creature
     # with variants needs exactly that many tiers, one without needs one
     ckeys = {k for ks in creature_keys.values() for k in ks}
@@ -260,9 +270,9 @@ def allocate(cr: Creatures, slots: list[int], count: int, area_list: list[tuple[
         if c not in need:
             need[c] = 1
             order.append(c)
-    if surface and cr.folk not in need:
-        need[cr.folk] = 1
-        order.append(cr.folk)
+    if surface and cr.ship not in need:
+        need[cr.ship] = 1
+        order.append(cr.ship)
     npcs = [c for c in order if cr.npc[c]]
     order = [c for c in order if not cr.npc[c]]
     if npcs and len(order) + len(npcs) > LAST_PAL - FIRST_PAL + 1 and cr.folk not in need:
@@ -317,7 +327,7 @@ def allocate(cr: Creatures, slots: list[int], count: int, area_list: list[tuple[
         for t in range(size[c]):
             u = c + t + solo.get(c, 0)
             colors[pal[c] + t] = cr.class_col[8 * u:8 * u + 8]
-    return Allocation(order, need, size, pal, shared, objpal, colors, pal.get(cr.folk), solo)
+    return Allocation(order, need, size, pal, shared, objpal, colors, pal.get(cr.ship), solo)
 
 
 PARADE_PREF = (1, 2, 3, 4, 5, 6, 7, 0)   # 0 / 7 only when 1-6 are taken: the parade shows no player or OBP1 sprite
