@@ -367,6 +367,21 @@ class TablesTest(unittest.TestCase):
         for hero, (first, last) in enumerate(((0x10, 0x1F), (0x20, 0x2F), (0x30, 0x3F), (0x80, 0x8F))):
             self.assertEqual(rngs.get((first, last)), 1 + hero, f"champion {hero} portrait")
 
+    @staticmethod
+    def _portraits(t):
+        """PORTRAIT_TAB decoded: portrait byte -> (base palette (8 bytes, paper first),
+        [extra palettes], 16 tile values 0 base / 1 / 2 extra)."""
+        from ultima_rov_dx import dx_patch
+        paper = t.bg_themes[64 * dx_patch.SLOT_UI + 8 * t.portrait_pal:][:2]
+        tab, pool = t.dlg_portraits, t.portrait_pool
+        pal = lambda i: paper + pool[6 * i:6 * i + 6]
+        out = {}
+        for i in range(tab[0]):
+            e = tab[1 + 8 * i:9 + 8 * i]
+            tiles = [e[4 + k // 4] >> (6 - 2 * (k % 4)) & 3 for k in range(16)]
+            out[e[0]] = (pal(e[1]), [pal(x) for x in e[2:4] if x != 0xFF], tiles)
+        return out
+
     def test_dialog_portraits(self):
         # every talk-dialog portrait has its speaker's colours; the Black Knight's is near-black
         import copy
@@ -374,8 +389,8 @@ class TablesTest(unittest.TestCase):
         pal, bg, obj = self.inputs["palettes"], self.inputs["bg_categories"], self.inputs["obj_categories"]
         t = dx_patch.build_tables(pal, bg, obj)
         self.assertEqual(t.portrait_pal, list(pal["bg_palettes"]).index("earth"))
-        tab = t.dlg_portraits
-        ents = {tab[1 + 9 * i]: tab[2 + 9 * i:10 + 9 * i] for i in range(tab[0])}
+        dec = self._portraits(t)
+        ents = {pid: d[0] for pid, d in dec.items()}
         self.assertEqual(set(ents), set(GL.DIALOG_PORTRAITS))
         paper = t.bg_themes[64 * dx_patch.SLOT_UI + 8 * t.portrait_pal:][:2]
         for pid, col in ents.items():
@@ -383,13 +398,42 @@ class TablesTest(unittest.TestCase):
         enc = lambda cols: b"".join(P.bgr555(c).to_bytes(2, "little") for c in cols)
         from ultima_rov_dx import creatures as CR, monsters as M
         cr = CR.build(pal, obj, M.templates(ROM.read_bytes()))
+        import colorsys
+        hsv = lambda w: colorsys.rgb_to_hsv(w & 31, w >> 5 & 31, w >> 10 & 31)
+        sat = lambda w: hsv(w)[1]
+        hue_d = lambda a, b: (lambda d: 360 * min(d, 1 - d))(abs(hsv(a)[0] - hsv(b)[0]))
         n_npc = 0
         for name, spec in pal["dialog_portraits"].items():
-            if "npc" in spec:                                        # exactly the NPC's map colours
+            if "npc" in spec:                                        # the NPC's map colours
                 c = cr.alias[spec["npc"]]
-                self.assertEqual(ents[spec["portrait"]][2:], cr.class_col[8 * c + 2:8 * c + 8], name)
+                e, m = ents[spec["portrait"]], cr.class_col[8 * c:8 * c + 8]
+                self.assertEqual(e[2:4], m[2:4], name)                   # shade 1 always the map's
+                if "mid" not in spec:
+                    self.assertEqual(e[4:6], m[4:6], name)
+                if not spec.get("line"):
+                    self.assertEqual(e[6:8], m[6:8], name)
+                else:                                                    # darker, same hue family
+                    luma = lambda w: (w & 31) + (w >> 5 & 31) + (w >> 10 & 31)
+                    self.assertLess(luma(e[6] | e[7] << 8), luma(m[6] | m[7] << 8), name)
+                    if isinstance(spec["line"], str) and sat(m[6] | m[7] << 8) > 0.3:
+                        self.assertLess(hue_d(e[6] | e[7] << 8, m[6] | m[7] << 8), 25, name)
                 n_npc += 1
-        self.assertEqual(n_npc, 16)
+        self.assertEqual(n_npc, 6)                                    # animals + Beh Lem; humans: skin + map-hue tiles (test_portrait_tiles)
+        # map body colours (shade 3): NPCs that share a sprite or are often seen together
+        # have clearly different hues (v4: Johann / Taynith / Chuckles not all dark green)
+        body = lambda n: int.from_bytes(cr.class_col[8 * cr.alias[n] + 6:][:2], "little")
+        for grp in (("johann", "loubet", "zoltan"), ("penumbra", "taynith", "melissa"),
+                    ("johann", "taynith", "chuckles"), ("melissa", "zoltan"), ("finn", "johann")):
+            for i, a in enumerate(grp):
+                self.assertGreater(sat(body(a)), 0.45, a)
+                for b in grp[i + 1:]:
+                    self.assertGreater(hue_d(body(a), body(b)), 40, (a, b))
+        # human faces: light and mid shades are skin tones (red > green > blue), not clothing colours
+        rgb = lambda w: (w & 31, w >> 5 & 31, w >> 10 & 31)
+        for pid in (0x00, 0x01, 0x0B, 0x0F, 0x10, 0x11, 0x12, 0x13, 0x14, 0x16, 0x17, 0x18):
+            for k in (2, 4):
+                r_, g_, b_ = rgb(ents[pid][k] | ents[pid][k + 1] << 8)
+                self.assertTrue(r_ > g_ > b_ and r_ >= 18, f"portrait {pid:#x} shade {k // 2}: skin")
         # royals: skin-tone face (shade 1), no navy outline, red only in the darkest shade
         royal = pal["obj_palettes"]["royal"]["colors"]
         rgb = lambda w: (w & 31, w >> 5 & 31, w >> 10 & 31)
@@ -421,6 +465,102 @@ class TablesTest(unittest.TestCase):
         p2["dialog_portraits"]["x"] = {"portrait": 0x02, "npc": "nobody"}
         with self.assertRaises(dx_patch.PatchError):
             dx_patch.build_tables(p2, bg, obj)
+        p2 = copy.deepcopy(pal)
+        p2["dialog_portraits"]["x"] = {"portrait": 0x02, "npc": "johann", "line": 2}
+        with self.assertRaises(dx_patch.PatchError):
+            dx_patch.build_tables(p2, bg, obj)
+
+    def test_portrait_contrast_like_ecffaca(self):
+        # every portrait palette (base and per-tile extras) keeps the value contrast of the
+        # ecffaca portraits (all drawn in the UI theme's earth palette: BGR555 531E / 25B5 /
+        # 0866): light and mid within 8% of its luminance, the line shade at most 8% lighter.
+        # Exceptions: the Black Knight's inverted near-black helm (dark steel plates in shade
+        # 1), and `bold` palettes (a hat / robe that is a shade-1 fill in a saturated hue, which
+        # cannot be light): light 90-140, mid darker, line <= the ecffaca line.
+        from ultima_rov_dx import dx_patch, palettes as P
+        pal, bg, obj = self.inputs["palettes"], self.inputs["bg_categories"], self.inputs["obj_categories"]
+        dec = self._portraits(dx_patch.build_tables(pal, bg, obj))
+        luma = lambda w: 0.299 * (w & 31) * 255 / 31 + 0.587 * (w >> 5 & 31) * 255 / 31 + 0.114 * (w >> 10 & 31) * 255 / 31
+        ref = [luma(w) for w in (0x531E, 0x25B5, 0x0866)]
+        enc = lambda cols: b"".join(P.bgr555(c).to_bytes(2, "little") for c in cols)
+        bold = {enc(v["colors"]) for v in pal["portrait_palettes"].values() if v.get("bold")}
+        self.assertEqual(len(bold), 2)                                   # jester red, royal red
+        for pid, (base, extra, _) in dec.items():
+            for e in [base] + extra:
+                l = [luma(e[2 * k] | e[2 * k + 1] << 8) for k in (1, 2, 3)]
+                if pid == 0x15:
+                    continue
+                if e in bold:
+                    self.assertTrue(90 <= l[0] <= 140 and l[1] < l[0], f"portrait {pid:#x} bold: {l}")
+                else:
+                    for k in (0, 1):
+                        self.assertLessEqual(abs(l[k] - ref[k]), 0.08 * ref[k], f"portrait {pid:#x} shade {k + 1}: {l[k]:.0f}")
+                self.assertLessEqual(l[2], 1.08 * ref[2], f"portrait {pid:#x} line: {l[2]:.0f}")
+
+    def test_portrait_tiles(self):
+        # v5: face tiles skin, hair / hat / hood / clothes tiles in the NPC's map hue, from up
+        # to two more UI palettes that the dialog screen does not show
+        import copy, colorsys
+        from ultima_rov_dx import dx_patch, palettes as P, creatures as CR, monsters as M
+        pal, bg, obj = self.inputs["palettes"], self.inputs["bg_categories"], self.inputs["obj_categories"]
+        t = dx_patch.build_tables(pal, bg, obj)
+        dec = self._portraits(t)
+        names = list(pal["bg_palettes"])
+        # borrowable: grass, water, stone, wood (dialog screen: ui text, gold frames / star /
+        # digits, fire hearts, earth portrait; the A/B icons take any item palette)
+        self.assertEqual(t.portrait_borrow, tuple(names.index(n) for n in ("grass", "water", "stone", "wood")))
+        icons = {p for p in t.item_pal} | {0}
+        for i1 in range(8):
+            for i2 in range(8):
+                s1, s2 = t.portrait_slots[2 * (8 * i1 + i2):][:2]
+                self.assertNotEqual(s1, s2)
+                if i1 in icons and i2 in icons:
+                    for s_ in (s1, s2):
+                        self.assertIn(s_, t.portrait_borrow)
+                        self.assertNotIn(s_, (i1, i2))                     # never an icon's palette
+        ui = t.bg_themes[64 * dx_patch.SLOT_UI:][:64]
+        self.assertTrue(all(ui[8 * p:8 * p + 2] == ui[:2] for p in t.portrait_borrow))   # same paper
+        enc = lambda cols: b"".join(P.bgr555(c).to_bytes(2, "little") for c in cols)
+        named = pal["portrait_palettes"]
+        for name, spec in pal["dialog_portraits"].items():
+            base, extra, tiles = dec[spec["portrait"]]
+            rows = spec.get("tiles") or ["...."] * 4
+            letters = sorted({c for r in rows for c in r} - {"."})
+            self.assertEqual(tiles, [0 if c == "." else 1 + letters.index(c) for r in rows for c in r], name)
+            self.assertEqual(extra, [enc(named[spec["pals"][c]]["colors"]) for c in letters], name)
+        # every human NPC and royal has coloured tiles; their hue is the map's (body or mid)
+        cr = CR.build(pal, obj, M.templates(ROM.read_bytes()))
+        hsv = lambda w: colorsys.rgb_to_hsv(w & 31, w >> 5 & 31, w >> 10 & 31)
+        hue_d = lambda a, b: (lambda d: 360 * min(d, 1 - d))(abs(hsv(a)[0] - hsv(b)[0]))
+        w = lambda b, k: b[2 * k] | b[2 * k + 1] << 8
+        for npc, pid in (("chuckles", 0x0B), ("penumbra", 0x0F), ("johann", 0x10), ("loubet", 0x11),
+                         ("zoltan", 0x12), ("finn", 0x13), ("ariana", 0x14), ("melissa", 0x16),
+                         ("utomo", 0x17), ("taynith", 0x18)):
+            base, extra, tiles = dec[pid]
+            self.assertGreaterEqual(sum(v > 0 for v in tiles), 4, npc)
+            self.assertLessEqual(sum(v > 0 for v in tiles[5:7] + tiles[9:11]), 1, f"{npc}: face tiles skin")
+            m = cr.class_col[8 * cr.alias[npc]:8 * cr.alias[npc] + 8]
+            for e in extra:
+                self.assertLess(min(hue_d(w(e, 2), w(m, 3)), hue_d(w(e, 2), w(m, 2))), 30, npc)
+        self.assertEqual(len(dec[0x0B][1]), 2)                             # jester: red and green
+        self.assertGreater(hue_d(w(dec[0x0B][1][0], 2), w(dec[0x0B][1][1], 2)), 90)
+        for pid in (0x00, 0x01, 0x09):
+            self.assertGreaterEqual(len(dec[pid][1]), 1, f"royal {pid:#x}: robe / crown")
+        bad = [{"tiles": ["ABC.", "....", "....", "...."], "pals": {"A": "skin", "B": "skin", "C": "skin"}},
+               {"tiles": ["A...", "....", "....", "...."], "pals": {}},
+               {"tiles": ["A...", "....", "...."], "pals": {"A": "skin"}},
+               {"tiles": ["A...", "....", "....", "...."], "pals": {"A": "nonesuch"}},
+               {"tiles": ["A...", "....", "....", "...."], "pals": {"A": ["#000000"] * 4}}]
+        for b in bad:
+            p2 = copy.deepcopy(pal)
+            p2["dialog_portraits"]["chuckles"] = {"portrait": 0x0B, "colors": "skin", **b}
+            with self.assertRaises(dx_patch.PatchError, msg=str(b)):
+                dx_patch.build_tables(p2, bg, obj)
+        bg2 = copy.deepcopy(bg)                                           # no palette left to borrow
+        bg2["text_screen"]["ranges"] += [{"first": 0x80 + i, "last": 0x80 + i, "palette": n}
+                                         for i, n in enumerate(("grass", "water", "stone"))]
+        with self.assertRaises(dx_patch.PatchError):
+            dx_patch.build_tables(pal, bg2, obj)
 
     def test_heroes_need_four(self):
         from ultima_rov_dx import dx_patch
@@ -622,6 +762,9 @@ class RealRomBuildTest(unittest.TestCase):
         _, syms = assemble([("dx.asm", dx_patch._asm_source())])
         off = GL.file_offset(GL.DX_RUNTIME_BANK, syms["PORTRAIT_TAB"])
         self.assertEqual(self.out[off:off + len(t.dlg_portraits)], t.dlg_portraits)
+        for sym, data in (("PORTRAIT_POOL", t.portrait_pool), ("PORTRAIT_SLOTS", t.portrait_slots)):
+            off = GL.file_offset(GL.DX_RUNTIME_BANK, syms[sym])
+            self.assertEqual(self.out[off:off + len(data)], data, sym)
         o = self.original
         self.assertEqual(o[0x1323:0x1325], b"\xe0\x40")                  # ldh [rLCDC],a: the dialog LCD-on
         self.assertEqual(self.out[0x1323:0x1325], b"\xef\x6d")           # rst $28; mode byte $6D (dialog)

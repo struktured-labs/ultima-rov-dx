@@ -124,7 +124,7 @@ BG_THEMES       equ $DE00   ; 4 slots x 64: BG base colours (0 surface, 1 curren
 W2_IMAGE_LEN    equ $1000
 MAX_THEMES      equ 4           ; WRAM theme slots: BG_THEMES $DE00-$DEFF; $DF00-$DFFF holds W2 code (section wram2b)
 SLOT_MAP        equ 1           ; WRAM slot that caches the current dungeon's ROM theme
-ROM_THEMES      equ 32          ; themes in bank 8 (THEME_BG_ROM, THEME_OBJ_ROM, RT_SLOT, MP_IDX)
+ROM_THEMES      equ 32          ; themes in bank 8 (THEME_BG_ROM, RT_SLOT, MP_IDX)
 MP_SETS         equ 16          ; metatile palette sets in METAPAL (themes share them via MP_IDX)
 AREA_FLAG       equ $D13E       ; WRAM bank 1: second area set (Injustice, Dishonor, Pride, Abyss; bank 0 $2355)
 HELPER          equ $FFF3   ; 12 bytes of HRAM: reads WRAM bank 1 for WRAM2 code (installed only while used)
@@ -147,7 +147,8 @@ BRAND_VRAM      equ $8A00   ; tile $A0 with LCDC $89 (signed tile data, $80-$FF 
 AREA_THEME      equ $6800   ; bank 8: ROM theme per area id [$D12F], 256 with AREA_FLAG = 0, then 256 with 1
 METAPAL         equ $6A00   ; bank 8: palette per metatile graphic, 128 per set (MP_SETS)
 THEME_BG_ROM    equ $7200   ; bank 8: 64 bytes of BG base colours per ROM theme
-THEME_OBJ_ROM   equ $7A00   ; bank 8: reserved (was OBJ palette 5 per ROM theme; creatures keep one colour everywhere)
+PORTRAIT_POOL   equ $7A00   ; bank 8: talk-dialog portrait palettes, colours 1-3 (6 bytes) each, MAX_PORTRAIT_POOL (builder)
+MAX_PORTRAIT_POOL equ 42
 RT_SLOT         equ $7B00   ; bank 8: WRAM slot per ROM theme (0 surface, 1 dungeon cache, 2 entrance, 3 UI)
 MP_IDX          equ $7B20   ; bank 8: METAPAL set per ROM theme
 SCENE_LUTS      equ $5800   ; bank 8: 256-byte LUTs of scene pictures (MAX_SCENE_LUTS, SCENES LUT index)
@@ -160,7 +161,8 @@ CARD_TINT       equ $7C00   ; bank 8: 16 x 8 bytes, title-card UI palette per du
 CARD_UI         equ $7C80   ; bank 8: low byte of BASE_BG's UI palette (where CARD_TINT goes)
 GOLD_DIGITS     equ $7D00   ; bank 8: DIGIT_LEN bytes, side-panel digits $E8-$F1 redrawn in gold (VRAM bank 1)
 PARADE_PAL_ROM  equ $7E00   ; bank 8: PARADE_LEN bytes, OBJ palette per byte of the parade lists 7:$7CA6-$7CBE (builder, from OBJPAL)
-PORTRAIT_TAB    equ $7F00   ; bank 8: talk-dialog portrait colours: count, (portrait byte, 8 colour bytes)* (builder, rov_palettes.yaml dialog_portraits)
+PORTRAIT_TAB    equ $7F00   ; bank 8: talk-dialog portraits: count, (portrait byte, base, extra 1, extra 2, 4 tile-map bytes)* (builder, rov_palettes.yaml dialog_portraits)
+PORTRAIT_SLOTS  equ $7B80   ; bank 8: 64 x 2: the two UI palettes a portrait borrows, per (A icon palette * 8 + B icon palette)
 DLG_RET         equ $1324   ; return address of the talk dialog's LCD-on site 0:$1323 (rst $28)
 DLG_PORTRAIT_SP equ 25      ; DlgPortrait8: SP offset of the speaker's portrait byte (D pushed at 0:$12B8, popped at 0:$1372)
 PARADE_TAB      equ ENTRY_TIER  ; WRAM2: PARADE_PAL_ROM copied over ENTRY_TIER (unused off map screens, cleared at every LCD-on)
@@ -1334,17 +1336,24 @@ SyncDirty8:
         pop bc
         jp SigBank
 
-; From SceneHook (bank 8, SVBK = 2, LCD off, after SetTheme and before
-; SyncBG), HL = return address of the LCD-on site. At the talk dialog
-; 0:$1323 (HL = DLG_RET) the speaker's portrait byte (first byte of its text
-; record, notes/menu.md "Talk dialog portraits") is on the game's stack as D
-; of the pair pushed at 0:$12B8. Stack here: [SceneHook][bc][SceneTramp]
-; [W2LcdOnBody][W2LcdOn][hl][de][bc][LcdOnGame][af][rst ret][game DE] (+ our
-; HL). A PORTRAIT_TAB entry for that byte replaces the 4 colours of BG palette
-; PORTRAIT_PAL (`earth`: on dialogs only the portrait tiles $D4-$E3 use it,
-; text_screen ranges); CUR_THEME = $FE, so the next screen reloads its
-; theme. Other speakers keep `earth`. Preserves HL; BC, DE clobbered
-; (SceneHook saved BC and reloads DE).
+; From SceneHook (bank 8, SVBK = 2, LCD off, after BuildLut + SetTheme and
+; before SyncBG / FillAttrs8), HL = return address of the LCD-on site. At the
+; talk dialog 0:$1323 (HL = DLG_RET) the speaker's portrait byte (first byte
+; of its text record, notes/menu.md "Talk dialog portraits") is on the game's
+; stack as D of the pair pushed at 0:$12B8. Stack here: [SceneHook][bc]
+; [SceneTramp][W2LcdOnBody][W2LcdOn][hl][de][bc][LcdOnGame][af][rst ret]
+; [game DE] (+ our HL). A PORTRAIT_TAB entry for that byte (portrait byte,
+; base, extra 1, extra 2 = PORTRAIT_POOL palettes or $FF, 4 tile-map bytes)
+; gives the portrait up to three BG palettes: the base goes into PORTRAIT_PAL
+; (`earth`), the extras into two UI palettes that the dialog screen does not
+; show, PORTRAIT_SLOTS[A icon palette * 8 + B icon palette] (the side-panel
+; A/B item icons keep theirs). The tile map gives each of the 16 portrait
+; tiles $D4-$E3 (row-major) its palette, 2 bits per tile from bit 7 (0 base,
+; 1 extra 1, 2 extra 2), written into the live LUT, so FillAttrs8 and the
+; dialog's own attribute writes use it. CUR_THEME = $FE: the next screen
+; reloads its theme (restores the borrowed palettes) and rebuilds the LUT.
+; Other speakers keep `earth`. Preserves HL; BC, DE clobbered (SceneHook
+; saved BC and reloads DE).
 DlgPortrait8:
         ld a, h
         cp high(DLG_RET)
@@ -1364,23 +1373,111 @@ DlgPortrait8:
         ld a, [hl+]
         cp c
         jr z, .hit
-        ld de, 8
+        ld de, 7
         add hl, de
         dec b
         jr nz, .l
         jr .x
 .hit:
-        ld de, BASE_BG + PORTRAIT_PAL * 8
-        ld b, 8
-.c:
-        ld a, [hl+]
-        ld [de], a
-        inc e
-        dec b
-        jr nz, .c
+        push hl                         ; D, E = the two borrowed palettes
+        ld a, [INV+$26]                 ; (A icon, B icon: HudItemsLut)
+        call ItemPal
+        and 7
+        add a
+        add a
+        add a
+        ld e, a
+        ld a, [INV+$25]
+        call ItemPal
+        and 7
+        add e
+        add a
+        add low(PORTRAIT_SLOTS)
+        ld l, a
+        ld h, high(PORTRAIT_SLOTS)
+        ld d, [hl]
+        inc l
+        ld e, [hl]
+        pop hl
+        ld a, [hl+]                     ; base
+        ld c, PORTRAIT_PAL
+        call .pal
+        ld a, [hl+]                     ; extra 1
+        ld c, d
+        call .pal
+        ld a, [hl+]                     ; extra 2
+        ld c, e
+        call .pal
+        ld bc, LUT + $D4
+.m:
+        ld a, [hl+]                     ; 4 tiles per byte
+        push hl
+        ld h, a
+        ld l, 4
+.t:
+        ld a, h
+        rlca
+        rlca
+        ld h, a
+        and 3
+        jr z, .s0
+        dec a
+        ld a, d
+        jr z, .st
+        ld a, e
+        jr .st
+.s0:
+        ld a, PORTRAIT_PAL
+.st:
+        ld [bc], a
+        inc c
+        dec l
+        jr nz, .t
+        pop hl
+        ld a, c
+        cp low(LUT + $E4)
+        jr nz, .m
         ld a, $FE
         ld [CUR_THEME], a
 .x:
+        pop hl
+        ret
+; A = PORTRAIT_POOL palette ($FF: none), C = BG palette: its colours 1-3
+; (colour 0 stays the theme's paper). Advances nothing; keeps DE, HL.
+.pal:
+        cp $FF
+        ret z
+        push hl
+        ld l, a
+        add a
+        add l
+        add a                           ; 6 bytes per palette
+        ld l, a
+        ld h, high(PORTRAIT_POOL)
+        ld a, c
+        add a
+        add a
+        add a
+        add low(BASE_BG) + 2
+        ld c, a
+        ld b, high(BASE_BG)
+        ld a, [hl+]
+        ld [bc], a
+        inc c
+        ld a, [hl+]
+        ld [bc], a
+        inc c
+        ld a, [hl+]
+        ld [bc], a
+        inc c
+        ld a, [hl+]
+        ld [bc], a
+        inc c
+        ld a, [hl+]
+        ld [bc], a
+        inc c
+        ld a, [hl]
+        ld [bc], a
         pop hl
         ret
 Bank8bEnd:

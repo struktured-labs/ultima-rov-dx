@@ -73,8 +73,11 @@ class Tables:
     card_tint: bytes = bytes(128)                  # 16 x 8: title-card UI palette per dungeon (bank 8 CARD_TINT)
     card_ui: int = 0                               # BG palette index of the UI palette (CARD_TINT target)
     digit_pal: int = -1                            # BG palette of the gold side-panel digits (-1: off)
-    dlg_portraits: bytes = b"\0"                   # talk-dialog portrait colours: count, (portrait byte, 8 colour bytes)* (bank 8 PORTRAIT_TAB)
+    dlg_portraits: bytes = b"\0"                   # talk-dialog portraits: count, (portrait byte, base, extra 1, extra 2, tile map 4)* (bank 8 PORTRAIT_TAB)
     portrait_pal: int = -1                         # BG palette of the dialog portrait tiles $D4-$E3 (text_screen ranges)
+    portrait_pool: bytes = b""                     # 6 per portrait palette: colours 1-3 (bank 8 PORTRAIT_POOL)
+    portrait_slots: bytes = bytes([0xFF]) * 128    # 64 x 2: borrowed UI palettes per (A icon palette, B icon palette) (bank 8 PORTRAIT_SLOTS)
+    portrait_borrow: tuple = ()                    # UI palettes no dialog-screen tile uses (besides the A/B icons)
 
 
 
@@ -351,7 +354,8 @@ def build_tables(pal_data: dict[str, Any], bg_cat: dict[str, Any], obj_cat: dict
     else:
         hero_obj = enc["obj"][:8] * 4
         hero_bg = bytes(32)
-    dlg_portraits, portrait_pal = dialog_portraits(pal_data, obj_cat, text_ranges, bg_sets[ui_theme])
+    dlg_portraits, portrait_pal, portrait_pool, portrait_slots, portrait_borrow = dialog_portraits(
+        pal_data, obj_cat, text_ranges, bg_sets[ui_theme], lut_menu, bytes(item_pal), bytes(lut_game))
     # scenes (bg_tile_categories.yaml `scenes`): LCD-on sites whose screen gets its own
     # theme, picture LUT and OBJ palette 0 (ending, credits, death screen...)
     scene_entries, scene_luts, scene_obj, scene_names = bytearray(), bytearray(), bytearray(), []
@@ -437,10 +441,11 @@ def build_tables(pal_data: dict[str, Any], bg_cat: dict[str, Any], obj_cat: dict
                   lut_menu, bytes(item_pal), SLOT_UI if ui_theme else 0, menu_obj, fire_obj, ship_pal,
                   bytes(text_ranges), theme_bg_rom, bytes(rt_slot), tuple(theme_names), first_map,
                   bytes(mp_idx), hero_obj, hero_bg, bytes(scene_entries), bytes(scene_luts), bytes(scene_obj),
-                  tuple(scene_names), bytes(card_tint), ui, digit_pal, dlg_portraits, portrait_pal)
+                  tuple(scene_names), bytes(card_tint), ui, digit_pal, dlg_portraits, portrait_pal,
+                  portrait_pool, portrait_slots, portrait_borrow)
 
 
-MAX_DIALOG_PORTRAITS = 28   # PORTRAIT_TAB: 1 + 9 * n bytes in bank 8 $7F00-$7FFF
+MAX_DIALOG_PORTRAITS = 31   # PORTRAIT_TAB: 1 + 8 * n bytes in bank 8 $7F00-$7FFF
 
 
 def sprite_colors(pal_data: dict[str, Any], obj_cat: dict[str, Any], key: int) -> list[str]:
@@ -468,18 +473,68 @@ def npc_colors(pal_data: dict[str, Any], name: str) -> list[str] | None:
     return None
 
 
+PORTRAIT_LINE = "#301808"      # natural dark brown the `line` mix darkens a portrait's outline toward
+
+
+def portrait_npc_colors(cols: list[str], spec: dict[str, Any], name: str) -> list[str]:
+    """A face portrait from its NPC's map colours: `mid` replaces shade 2 (the
+    portrait's face shading, where a clothing / hair colour would tint the
+    skin); `line` replaces shade 3 (outline, eyes, hair): a colour (the map
+    body hue at portrait-line darkness) or 0-1 = mix toward PORTRAIT_LINE."""
+    cols = list(cols)
+    if "mid" in spec:
+        P.bgr555(spec["mid"])
+        cols[2] = spec["mid"]
+    t = spec.get("line", 0)
+    if isinstance(t, str):                    # explicit dark line colour (same hue family as the map)
+        P.bgr555(t)
+        cols[3] = t
+        return cols
+    if not isinstance(t, (int, float)) or not 0 <= t <= 1:
+        raise PatchError(f"dialog_portraits.{name}: line must be 0-1 or a colour")
+    if t:
+        a, b = (tuple(int(c[i:i + 2], 16) for i in (1, 3, 5)) for c in (cols[3], PORTRAIT_LINE))
+        cols[3] = "#%02X%02X%02X" % tuple(round(x * (1 - t) + y * t) for x, y in zip(a, b))
+    return cols
+
+
+MAX_PORTRAIT_POOL = 42     # PORTRAIT_POOL: 6 bytes per palette, bank 8 $7A00-$7AFF
+
+
+def _portrait_cols(pal_data: dict[str, Any], c: Any, what: str) -> list[str]:
+    """4 colours: a list, or the name of a `portrait_palettes` entry."""
+    if isinstance(c, str):
+        named = (pal_data.get("portrait_palettes") or {}).get(c)
+        if named is None:
+            raise PatchError(f"{what}: {c!r} is not a portrait_palettes entry")
+        c = named.get("colors") if isinstance(named, dict) else named
+    if not isinstance(c, list) or len(c) != 4:
+        raise PatchError(f"{what} needs 4 colours")
+    for x in c:
+        P.bgr555(x)
+    return list(c)
+
+
 def dialog_portraits(pal_data: dict[str, Any], obj_cat: dict[str, Any], text_ranges: bytes,
-                     ui_bg: bytes) -> tuple[bytes, int]:
-    """PORTRAIT_TAB for rov_palettes.yaml `dialog_portraits` and the BG palette of
-    the dialog portrait tiles (GL.PORTRAIT_TILES, text_screen ranges).
+                     ui_bg: bytes, lut_menu: bytes = bytes(256), item_pal: bytes = bytes(64),
+                     lut_game: bytes = bytes(256)) -> tuple[bytes, int, bytes, bytes, tuple[int, ...]]:
+    """PORTRAIT_TAB, PORTRAIT_POOL and PORTRAIT_SLOTS for rov_palettes.yaml
+    `dialog_portraits`, the BG palette of the dialog portrait tiles
+    (GL.PORTRAIT_TILES, text_screen ranges) and the UI palettes a portrait may
+    borrow.
 
     The talk dialog (0:$1323) draws the speaker's 4x4 portrait into tiles
-    $D4-$E3; its portrait byte is the first byte of the speaker's text record
-    (GL.DIALOG_PORTRAITS). An entry replaces that palette's colours on the
-    dialogs showing that portrait: `colors` (4), or `sprite` = the speaker's
-    map graphic id, whose colours 1-3 (sprite_colors) become the portrait's
-    shades 1-3, so the face matches the map sprite. Colour 0 is always the UI
-    theme's (the paper around the face); an explicit colour 0 must equal it."""
+    $D4-$E3 (row-major); its portrait byte is the first byte of the speaker's
+    text record (GL.DIALOG_PORTRAITS). An entry gives the portrait a base
+    palette (in the portrait tiles' palette): `colors` (4, or a
+    `portrait_palettes` name), `sprite` = the speaker's map graphic id (its
+    colours 1-3, sprite_colors), or `npc` = a named NPC's map colours
+    (`mid` / `line` override shades 2 / 3). `tiles` (4 rows of 4 letters,
+    '.' = base) and `pals` (letter -> 4 colours or a `portrait_palettes`
+    name, at most 2 letters) colour single tiles from up to two more
+    palettes: UI palettes that no dialog-screen tile uses (DlgPortrait8
+    borrows two that the side-panel A/B icons do not use). Colour 0 is always
+    the UI theme's paper; an explicit colour 0 must equal it."""
     n = text_ranges[0]
     pals = set()
     for t in GL.PORTRAIT_TILES:
@@ -489,14 +544,35 @@ def dialog_portraits(pal_data: dict[str, Any], obj_cat: dict[str, Any], text_ran
     portrait_pal = pals.pop() if len(pals) == 1 else -2
     specs = pal_data.get("dialog_portraits") or {}
     if not specs:
-        return b"\0", portrait_pal
+        return b"\0", portrait_pal, b"", bytes([0xFF]) * 128, ()
     if portrait_pal < 0:
         raise PatchError("dialog_portraits: the text_screen ranges must give tiles $D4-$E3 one palette")
     if len(specs) > MAX_DIALOG_PORTRAITS:
         raise PatchError(f"dialog_portraits: at most {MAX_DIALOG_PORTRAITS} entries")
     paper = ui_bg[8 * portrait_pal:8 * portrait_pal + 2]
+    # dialog screen (BuildLut .dialog): UI palette, text_screen ranges, start-menu
+    # entries $E4-$F7 (side panel), A/B icons $F8-$FF = item palettes (or the UI's)
+    shown = {lut_game[0xFF] & 7, portrait_pal}
+    shown |= {text_ranges[1 + 3 * i + 2] for i in range(n)}
+    shown |= {lut_menu[t] & 7 for t in range(0xE4, 0xF8)}
+    icons = {p & 7 for p in item_pal} | {lut_game[0xFF] & 7, 0}
+    borrow = tuple(p for p in range(8) if p not in shown and ui_bg[8 * p:8 * p + 2] == paper)
+    slots = bytearray()
+    for i1 in range(8):
+        for i2 in range(8):
+            free = [p for p in borrow if p not in (i1, i2)] + [0xFF, 0xFF]
+            slots += bytes(free[:2])
+    pool: list[bytes] = []
+
+    def pool_idx(cols: list[str]) -> int:
+        enc = b"".join(P.bgr555(c).to_bytes(2, "little") for c in cols[1:])
+        if enc not in pool:
+            pool.append(enc)
+        return pool.index(enc)
+
     out = bytearray([len(specs)])
     seen: dict[int, str] = {}
+    max_extra = 0
     for name, spec in specs.items():
         pid = spec.get("portrait") if isinstance(spec, dict) else None
         if not isinstance(pid, int) or not 0 <= pid <= 0xFF:
@@ -510,22 +586,46 @@ def dialog_portraits(pal_data: dict[str, Any], obj_cat: dict[str, Any], text_ran
             cols = npc_colors(pal_data, spec["npc"])
             if cols is None:
                 raise PatchError(f"dialog_portraits.{name}: npc {spec['npc']!r} is not an `npcs` entry or variant")
-            enc = paper + b"".join(P.bgr555(c).to_bytes(2, "little") for c in cols[1:])
+            cols = portrait_npc_colors(cols, spec, name)
         elif "sprite" in spec:
             key = spec["sprite"]
             if not isinstance(key, int) or key & 0x81:
                 raise PatchError(f"dialog_portraits.{name}: sprite must be a graphic id (even, < $80)")
             cols = sprite_colors(pal_data, obj_cat, key)
-            enc = paper + b"".join(P.bgr555(c).to_bytes(2, "little") for c in cols[1:])
         else:
-            cols = spec.get("colors") or []
-            if len(cols) != 4:
-                raise PatchError(f"dialog_portraits.{name} needs 4 colours")
-            enc = b"".join(P.bgr555(c).to_bytes(2, "little") for c in cols)
-            if enc[:2] != paper:
+            cols = _portrait_cols(pal_data, spec["colors"], f"dialog_portraits.{name}.colors")
+            if P.bgr555(cols[0]).to_bytes(2, "little") != paper:
                 raise PatchError(f"dialog_portraits.{name}: colour 0 must be the UI theme's paper colour")
-        out += bytes([pid]) + enc
-    return bytes(out), portrait_pal
+        rows = spec.get("tiles") or ["...."] * 4
+        tp = spec.get("pals") or {}
+        if (not isinstance(rows, list) or len(rows) != 4
+                or any(not isinstance(r, str) or len(r) != 4 for r in rows)):
+            raise PatchError(f"dialog_portraits.{name}.tiles: 4 rows of 4 letters")
+        letters = sorted({ch for r in rows for ch in r} - {"."})
+        if set(letters) != set(tp) or len(letters) > 2:
+            raise PatchError(f"dialog_portraits.{name}: `tiles` letters {letters} must be the `pals` keys (at most 2)")
+        extra = [0xFF, 0xFF]
+        for k, ch in enumerate(letters):
+            c = _portrait_cols(pal_data, tp[ch], f"dialog_portraits.{name}.pals.{ch}")
+            if P.bgr555(c[0]).to_bytes(2, "little") != paper:
+                raise PatchError(f"dialog_portraits.{name}.pals.{ch}: colour 0 must be the UI theme's paper colour")
+            extra[k] = pool_idx(c)
+        max_extra = max(max_extra, len(letters))
+        tmap = bytearray(4)
+        for t in range(16):
+            ch = rows[t // 4][t % 4]
+            v = 0 if ch == "." else 1 + letters.index(ch)
+            tmap[t // 4] |= v << (6 - 2 * (t % 4))
+        out += bytes([pid, pool_idx(cols), *extra]) + tmap
+    if len(pool) > MAX_PORTRAIT_POOL:
+        raise PatchError(f"dialog_portraits: {len(pool)} distinct palettes > {MAX_PORTRAIT_POOL}")
+    for i1 in icons:
+        for i2 in icons:
+            if sum(p not in (i1, i2) for p in borrow) < max_extra:
+                raise PatchError(f"dialog_portraits: a portrait uses {max_extra} extra palettes but with "
+                                 f"A/B icons in palettes {i1}, {i2} only {sorted(set(borrow) - {i1, i2})} are free "
+                                 f"on the dialog screen")
+    return bytes(out), portrait_pal, b"".join(pool), bytes(slots), borrow
 
 
 def _asm_source() -> str:
@@ -579,7 +679,7 @@ def build(original: bytes, pal_data: dict[str, Any], bg_cat: dict[str, Any], obj
     if syms["ROM_THEMES"] != ROM_THEMES or syms["SLOT_MAP"] != SLOT_MAP or syms["MP_SETS"] != MP_SETS:
         raise PatchError("ROM_THEMES / SLOT_MAP mismatch between dx.asm and dx_patch.py")
     if (syms["AREA_THEME"] & 0xFF or syms["METAPAL"] & 0xFF or syms["THEME_BG_ROM"] & 0xFF
-            or (syms["THEME_OBJ_ROM"] & 0xFF) + 8 * ROM_THEMES > 0x100 or (syms["RT_SLOT"] & 0xFF) + ROM_THEMES > 0x100
+            or syms["PORTRAIT_POOL"] & 0xFF or (syms["RT_SLOT"] & 0xFF) + ROM_THEMES > 0x100
             or (syms["MP_IDX"] & 0xFF) + ROM_THEMES > 0x100 or syms["METAPAL"] & 0x7F):
         raise PatchError("bank 8 theme tables must be page aligned (MapTheme / Slot index them by low byte)")
     if (syms["W2_IMAGE_ROM"] + syms["W2_IMAGE_LEN"] > syms["PICTURE_LUT"]
@@ -588,8 +688,8 @@ def build(original: bytes, pal_data: dict[str, Any], bg_cat: dict[str, Any], obj
             or syms["LUT_LOGO_ROM"] + 256 > syms["BRAND_TILES"]
             or syms["BRAND_TILES"] + syms["BRAND_TILES_LEN"] > syms["BRAND_CELLS"] or syms["BRAND_CELLS"] + 256 > syms["AREA_THEME"]
             or syms["AREA_THEME"] + 512 > syms["METAPAL"] or syms["METAPAL"] + 128 * MP_SETS > syms["THEME_BG_ROM"]
-            or syms["THEME_BG_ROM"] + 64 * ROM_THEMES > syms["THEME_OBJ_ROM"]
-            or syms["THEME_OBJ_ROM"] + 8 * ROM_THEMES > syms["RT_SLOT"] or syms["RT_SLOT"] + ROM_THEMES > syms["MP_IDX"] or syms["MP_IDX"] + ROM_THEMES > syms["HERO_OBJ_ROM"]
+            or syms["THEME_BG_ROM"] + 64 * ROM_THEMES > syms["PORTRAIT_POOL"]
+            or syms["PORTRAIT_POOL"] + 6 * MAX_PORTRAIT_POOL > syms["RT_SLOT"] or syms["MAX_PORTRAIT_POOL"] != MAX_PORTRAIT_POOL or syms["RT_SLOT"] + ROM_THEMES > syms["MP_IDX"] or syms["MP_IDX"] + ROM_THEMES > syms["HERO_OBJ_ROM"]
             or (syms["HERO_OBJ_ROM"] & 0xFF) + 32 > 0x100 or syms["HERO_OBJ_ROM"] + 32 > 0x8000):
         raise PatchError("bank 8 table layout overlap")
     if (syms["CARD_TINT"] & 0xFF or syms["HERO_OBJ_ROM"] + 32 > syms["CARD_TINT"] or syms["CARD_TINT"] + 128 > syms["CARD_UI"]
@@ -726,13 +826,17 @@ def build(original: bytes, pal_data: dict[str, Any], bg_cat: dict[str, Any], obj
     put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["HERO_OBJ_ROM"]), t.hero_obj, "HERO_OBJ_ROM")
     # talk-dialog portrait colours (bank 8 DlgPortrait8 from SceneHook)
     if (syms["PORTRAIT_TAB"] < syms["PARADE_PAL_ROM"] + syms["PARADE_LEN"]
-            or syms["PORTRAIT_TAB"] + 1 + 9 * MAX_DIALOG_PORTRAITS > 0x8000
+            or syms["PORTRAIT_TAB"] + 1 + 8 * MAX_DIALOG_PORTRAITS > 0x8000
+            or syms["HERO_OBJ_ROM"] + 32 > syms["PORTRAIT_SLOTS"] or syms["PORTRAIT_SLOTS"] + 128 > syms["CARD_TINT"]
+            or (syms["PORTRAIT_SLOTS"] & 0xFF) + 128 > 0x100
             or syms["DLG_RET"] != GL.TALK_DIALOG_SITE[1] + 1 or GL.TALK_DIALOG_SITE[0] != 0
             or GL.TALK_DIALOG_SITE not in GL.DIALOG_LCD_ON_SITES):
         raise PatchError("PORTRAIT_TAB / DLG_RET layout")
     if len(t.dlg_portraits) > 1 and t.portrait_pal != syms["PORTRAIT_PAL"]:
         raise PatchError("dialog_portraits: the portrait tiles' palette is not PORTRAIT_PAL")
     put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["PORTRAIT_TAB"]), t.dlg_portraits, "PORTRAIT_TAB")
+    put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["PORTRAIT_POOL"]), t.portrait_pool, "PORTRAIT_POOL")
+    put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["PORTRAIT_SLOTS"]), t.portrait_slots, "PORTRAIT_SLOTS")
     # title-card tints and the gold side-panel digits (bank 8, SceneHook)
     put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["CARD_TINT"]), t.card_tint, "CARD_TINT")
     put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["CARD_UI"]), bytes([(syms["BASE_BG"] + 8 * t.card_ui) & 0xFF]), "CARD_UI")

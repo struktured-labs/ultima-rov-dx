@@ -61,8 +61,8 @@ End game, death, rune shrine, credits (ending.md): 7:`$40BF` rune shrine, 0:`$0A
 `$D710` UI theme, `$D711/$D712` live-refresh counters, `$D716` MAP_CACHED, `$D717` HERO_CACHED (champion in OBJ palette 0), `$D718` menu cursor colours, `$D720` HRAM backup (12),
 `$D740` `ITEM_PAL` (64), `$D780` inventory copy (64), `$D7C0` REC_TIER (16, colour tier per object record), `$D7D0` ITEM_CACHE (15, floor items `$C5B0+k` last coloured), `$D7DF` PREP_DONE (shadow OAM coloured by Prep8 since the last DMA), `$DB10` ENTRY_TIER (40, tier per OAM entry), code section `wram2c` at `$DB40-$DBFF` (see monsters.md). Tables `$DC00` `LUT_MENU`, `$DD00` `LUT_GAME` (`$DD00-$DD1F` = HERO_BG portrait colours), `$DE00` `BG_THEMES` (8x64).
 HRAM `$FFF3-$FFFE`: WRAM1 reader installed only while used (see menu.md).
-Bank 8: `$7F00` PORTRAIT_TAB (talk-dialog portrait colours, menu.md), `$5600` PICTURE_LUT, `$5700` PICTURE_FIX, `$5C00` LUT_TITLE, `$5D00` LUT_LOGO, `$6000` BRAND_TILES, `$6600` BRAND_CELLS,
-`$6800` AREA_THEME (512: `$D13E` = 0, then 1), `$6A00` METAPAL (16 sets x 128), `$7200` THEME_BG_ROM (32 x 64), `$7A00` THEME_OBJ_ROM (32 x 8),
+Bank 8: `$7F00` PORTRAIT_TAB (talk-dialog portraits: count, (P, base, extra 1, extra 2, 4 tile-map bytes)*, menu.md), `$7A00` PORTRAIT_POOL (42 x 6: portrait palette colours 1-3), `$7B80` PORTRAIT_SLOTS (64 x 2: borrowed UI palettes per A/B icon palettes), `$5600` PICTURE_LUT, `$5700` PICTURE_FIX, `$5C00` LUT_TITLE, `$5D00` LUT_LOGO, `$6000` BRAND_TILES, `$6600` BRAND_CELLS,
+`$6800` AREA_THEME (512: `$D13E` = 0, then 1), `$6A00` METAPAL (16 sets x 128), `$7200` THEME_BG_ROM (32 x 64),
 `$7B00` RT_SLOT (WRAM slot per theme), `$7B20` MP_IDX (METAPAL set per theme), `$7B40` HERO_OBJ_ROM (4 x 8, player palette per champion).
 Scenes (ending.md): `$5800` SCENE_LUTS (4 x 256), `$5E00` SCENES ((ret lo, ret hi, ROM theme or `$FF` = card tint, LUT, OBJ)*, hi = 0 ends),
 `$5F00` SCENE_OBJ (8 per scene OBJ palette 0), `$5FF0` BANK_SIG (byte at `$4001` of banks 1-7), `$7C00` CARD_TINT (16 x 8, title-card UI palette per `$FF8F`),

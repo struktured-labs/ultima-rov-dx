@@ -63,37 +63,89 @@ heroes:
 # graphic id (its creatures / obj_categories colours, same mapping). Or
 # `colors` (4; colour 0 = the UI theme's paper, which is also the box around
 # the face). Portrait bytes $02-$05 and $19 are used by no text record.
+# Talk-dialog portrait palettes (dialog_portraits `colors` / `pals`): [paper, light, mid, line].
+# Contrast rule: light / mid / line at the ecffaca portrait luminance (208 / 123 / 31, +-8%,
+# line may be darker; tests/test_dx_patch.py). `bold` palettes colour a shade-1 fill (hat, robe)
+# in a saturated hue that cannot be light: light ~100, line <= 34.
+portrait_palettes:
+  skin:            { colors: ["#FFF8E8", "#F0C0A0", "#A86848", "#301810"], why: "ecffaca earth: natural face (light skin, skin shadow, dark brown line)" }
+  royal_skin:      { colors: ["#FFF8E8", "#F8CCA0", "#AC6F44", "#4A0C14"], why: "royal faces: skin, warm shading, dark royal-red line (v3)" }
+  jester_red:      { colors: ["#FFF8E8", "#E83838", "#982028", "#400810"], bold: true, why: "Chuckles' right hat lobe and hair: map body red. BOLD: the lobe is a shade-1 fill, red at 208 would be pink" }
+  jester_green:    { colors: ["#FFF8E8", "#98F09F", "#27B733", "#0A270C"], why: "Chuckles' left hat lobe: map trim green" }
+  melissa_rose:    { colors: ["#FFF8E8", "#F9B8D0", "#DF477F", "#3E0F21"], why: "Melissa's hood: map rose" }
+  penumbra_indigo: { colors: ["#FFF8E8", "#C4C7FA", "#686FD9", "#14184E"], why: "Penumbra's hair and robe: map indigo" }
+  taynith_forest:  { colors: ["#FFF8E8", "#A1E8AF", "#31A848", "#0B2811"], why: "Taynith's hood and robe: map forest green" }
+  ariana_gold:     { colors: ["#FFF8E8", "#F7CF63", "#A07B17", "#271F0A"], why: "Ariana's hair: map gold (colour 2)" }
+  utomo_saffron:   { colors: ["#FFF8E8", "#FCC688", "#BF6D10", "#2F1C05"], why: "Utomo's topknot and shoulders: map saffron (only outline pixels there)" }
+  zoltan_purple:   { colors: ["#FFF8E8", "#DFBDF3", "#A757D5", "#2D0F3E"], why: "Zoltan's bandana and its tail: map purple" }
+  finn_blue:       { colors: ["#FFF8E8", "#B7D3F7", "#4588DE", "#0A203B"], why: "Finn's striped cap and collar: map sailor blue" }
+  loubet_teal:     { colors: ["#FFF8E8", "#98E7ED", "#189FA9", "#06282A"], why: "Loubet's hair and coat: map teal" }
+  johann_olive:    { colors: ["#FFF8E8", "#D0DD77", "#7F8E23", "#1C1F08"], why: "Johann's hair and collar: map olive" }
+  royal_gold:      { colors: ["#FFF8E8", "#FBCF59", "#A87E0E", "#282007"], why: "crowns: gold" }
+  royal_red:       { colors: ["#FFF8E8", "#D83838", "#902030", "#4A0C14"], bold: true, why: "royal robes: Lord British's map red (#D03838); line = royal_skin's, so outlines and beards run on across tile edges. BOLD like jester_red" }
+
 dialog_portraits:
-  # royals keep the royal sprite on the map; their portraits keep a skin-tone
-  # face (shade 1), warm brown shading (2) and royal red only in the darkest
-  # shade (crown, robe, outline): option A. Alternatives kept for later:
-  # B shade 2 #B88060, outline navy #302058 (the royal sprite's); C #D07850, maroon #601828.
-  lord_british: { portrait: 0x01, colors: ["#FFF8E8", "#FFE0B0", "#C08860", "#902830"] }
-  gnu_gnu:      { portrait: 0x00, colors: ["#FFF8E8", "#FFE0B0", "#C08860", "#902830"] }
-  eep_eep:      { portrait: 0x09, colors: ["#FFF8E8", "#FFE0B0", "#C08860", "#902830"] }
+  # v5 (Carmelo: "make portraits better"): one 3-shade palette cannot hold a natural face
+  # and a character colour at ecffaca contrast, so portraits colour single 8x8 tiles from up
+  # to two more palettes (`tiles` / `pals`, DlgPortrait8 borrows two UI palettes the dialog
+  # screen does not show): face tiles skin, hair / hat / hood / clothes tiles the NPC's map
+  # hue. Royals: skin face, gold crown, red robe (Lord British's map sprite).
+  lord_british:
+    { portrait: 0x01, colors: royal_skin,
+      tiles: ["YYYY", "....", "....", "R..R"], pals: { Y: royal_gold, R: royal_red }, why: "crown gold, shoulders royal red, face and beard skin" }
+  gnu_gnu:
+    { portrait: 0x00, colors: royal_skin,
+      tiles: ["YYYY", "Y..Y", "....", "R..R"], pals: { Y: royal_gold, R: royal_red }, why: "crown (top row, sides) gold, shoulders royal red, face skin" }
+  eep_eep:
+    { portrait: 0x09, colors: royal_skin,
+      tiles: ["....", "....", "....", "RRRR"], pals: { R: royal_red }, why: "collar royal red (whole bottom row: the band runs under the beard), face skin" }
   sign:                                            # signs (talk $01/$02): the map sign is an `item`
     portrait: 0x08                                 # sprite (pale yellow plaque); shade 1 fills the
-    colors: ["#FFF8E8", "#F8F0C0", "#E8B030", "#704010"]   # whole picture, so a softer pale gold
+    colors: ["#FFF8E8", "#E8D4A0", "#A47812", "#2F1B07"]   # whole picture, so a softer pale gold
   black_knight:     # portrait $15 (talk $1A): near-black helm like his sprite (creatures.black_knight),
     portrait: 0x15  # not its shade order: the helm's plates are portrait shade 1, so dark steel
     colors: ["#FFF8E8", "#343844", "#A0A8B8", "#040408"]   # plates, grey trim, black outline
-  # named NPCs: exactly their map colours (`npcs`, shades 1-3)
-  sherry:       { portrait: 0x06, npc: sherry }
-  beh_lem:      { portrait: 0x07, npc: beh_lem }
-  kador:        { portrait: 0x0A, npc: kador }
-  chuckles:     { portrait: 0x0B, npc: chuckles }
-  klip:         { portrait: 0x0C, npc: klip_klop }
-  klop:         { portrait: 0x0D, npc: klip_klop }
-  dr_cat:       { portrait: 0x0E, npc: dr_cat }
-  penumbra:     { portrait: 0x0F, npc: penumbra }
-  johann:       { portrait: 0x10, npc: johann }
-  loubet:       { portrait: 0x11, npc: loubet }
-  zoltan:       { portrait: 0x12, npc: zoltan }
-  finn:         { portrait: 0x13, npc: finn }
-  ariana:       { portrait: 0x14, npc: ariana }
-  melissa:      { portrait: 0x16, npc: melissa }
-  utomo:        { portrait: 0x17, npc: utomo }
-  taynith:      { portrait: 0x18, npc: taynith }
+  # named NPCs. Humans: `skin` face tiles, the map hue (`npcs`) on hair / hat / hood /
+  # clothes tiles. Animals keep one palette from their map colours (`npc`, `line` = the map
+  # body hue at portrait-line darkness). Contrast rule (Carmelo, v2 review: "wash out
+  # contrast"): every portrait shade keeps the ecffaca luminance (light 208, mid 123, line 31,
+  # +-8%, line may be darker; `bold` palettes excepted; tests/test_dx_patch.py).
+  sherry:       { portrait: 0x06, npc: sherry, line: "#27180D" }
+  beh_lem:      { portrait: 0x07, npc: beh_lem, line: "#10242F" }
+  kador:        { portrait: 0x0A, npc: kador, line: "#1F1F1F" }
+  chuckles:
+    { portrait: 0x0B, colors: skin,
+      tiles: ["GGRR", "G..R", "...R", "...."], pals: { G: jester_green, R: jester_red }, why: "jester hat: left lobe green, right lobe and hair red (map body); face skin" }
+  klip:         { portrait: 0x0C, npc: klip_klop, line: "#2F180C" }
+  klop:         { portrait: 0x0D, npc: klip_klop, line: "#2F180C" }
+  dr_cat:       { portrait: 0x0E, npc: dr_cat, line: "#341704" }
+  penumbra:
+    { portrait: 0x0F, colors: skin,
+      tiles: ["IIII", "I..I", "I...", "I..."], pals: { I: penumbra_indigo }, why: "hair and robe indigo, face skin" }
+  johann:
+    { portrait: 0x10, colors: skin,
+      tiles: ["OOOO", "O..O", "O..O", "OOOO"], pals: { O: johann_olive }, why: "hair and collar olive, face skin" }
+  loubet:
+    { portrait: 0x11, colors: skin,
+      tiles: ["TTTT", "T..T", "T...", "TTTT"], pals: { T: loubet_teal }, why: "hair and coat teal, face skin" }
+  zoltan:
+    { portrait: 0x12, colors: skin,
+      tiles: ["PPPP", "...P", "...P", "...."], pals: { P: zoltan_purple }, why: "bandana and its knot purple, face and beard skin" }
+  finn:
+    { portrait: 0x13, colors: skin,
+      tiles: ["BBBB", "....", "....", "B..B"], pals: { B: finn_blue }, why: "cap and collar blue, face and hair skin" }
+  ariana:
+    { portrait: 0x14, colors: skin,
+      tiles: ["GGGG", "G..G", "G..G", "G..G"], pals: { G: ariana_gold }, why: "hair gold all round, face skin" }
+  melissa:
+    { portrait: 0x16, colors: skin,
+      tiles: ["RRRR", "R..R", "R..R", "R..R"], pals: { R: melissa_rose }, why: "hood rose all round, face skin" }
+  utomo:
+    { portrait: 0x17, colors: skin,
+      tiles: ["SSSS", "....", "....", "S..S"], pals: { S: utomo_saffron }, why: "topknot and shoulders saffron (outline only: no fill pixels), face skin" }
+  taynith:
+    { portrait: 0x18, colors: skin,
+      tiles: ["FFFF", "F..F", "F..F", "FFFF"], pals: { F: taynith_forest }, why: "hood and robe forest green, face skin" }
 
 # Per-area-theme BG color overrides (theme names come from
 # palettes/bg_tile_categories.yaml `area_themes`). Palettes not listed keep
@@ -368,10 +420,11 @@ flat_bg: ["#FFFFFF", "#B0B0B0", "#606060", "#000000"]
 
 # Named NPCs (Carmelo, 2026-10-11): each talking character has its own natural
 # colour on the map, allocated per area like the creatures (OBJ palettes 1-6,
-# creatures.py), and its dialog portrait uses the same three colours
-# (`dialog_portraits` npc:). Shades as on the map sprite: 1 light (skin,
-# highlights, the shadow under the feet), 2 mid (hair, trim), 3 dark (the
-# body and outline: the colour you see on the map; the portrait's outline).
+# creatures.py), and its dialog portrait the same hues (`dialog_portraits` npc:).
+# Shades as on the map sprite: 1 light (skin, highlights, the shadow under the
+# feet), 2 mid (hood, hair, trim), 3 the body AND outline (the colour you see on
+# the map: saturated, luminance ~50-80). Hues spread round the wheel so NPCs that
+# share a sprite or a room differ (v4).
 # NPCs are allocated after the creatures; when a room wants more than 6
 # palettes the NPCs that do not fit wear the shared `folk` colours.
 # Graphics shared by several NPCs ($46, $6A): `colors` = the generic sprite
@@ -380,40 +433,40 @@ flat_bg: ["#FFFFFF", "#B0B0B0", "#606060", "#000000"]
 npcs:
   sherry:       # $40, B34/B36 (talk $04/$06): Sherry the mouse
     ids: [0x40]
-    colors: ["#FFFFFF", "#F0D8D0", "#A89080", "#504038"]
+    colors: ["#FFFFFF", "#E8C4B7", "#907360", "#45382E"]
     why: brown-grey mouse fur, pink-white belly
   kador:        # $4E, B37 (talk $07)
     ids: [0x4E]
-    colors: ["#FFFFFF", "#FFFFF8", "#C8C0B8", "#585050"]
+    colors: ["#FFFFFF", "#E0DCD4", "#7F7973", "#373737"]
     why: white dog with a grey outline
   utomo:        # $54, B42 (talk $12)
     ids: [0x54]
-    colors: ["#FFFFFF", "#F8D0A0", "#C08848", "#A04810"]
-    why: saffron monk's robe
+    colors: ["#FFFFFF", "#F6C5A4", "#B06B47", "#804807"]
+    why: "saffron monk's robe; skin and its shadow stay natural (they are his face)"
   finn:         # $58, B45 (talk $15)
     ids: [0x58]
-    colors: ["#FFFFFF", "#FFD8B0", "#B08060", "#204C88"]
+    colors: ["#FFFFFF", "#F6C5A4", "#A7705A", "#12427F"]
     why: sailor blue
   ariana:       # $5A, B3C (talk $0C)
     ids: [0x5A]
-    colors: ["#FFFFFF", "#FFE0C8", "#E0B048", "#803058"]
-    why: blonde girl in a plum dress
+    colors: ["#FFFFFF", "#F6C5A4", "#9F7F17", "#6D2066"]
+    why: blonde girl (gold hair = colour 2) in a plum dress
   dr_cat:       # $5C, B3E (talk $0E)
     ids: [0x5C]
-    colors: ["#FFFFFF", "#FFD898", "#E89038", "#7A3810"]
+    colors: ["#FFFFFF", "#FFD898", "#CB6810", "#6F3209"]
     why: orange tabby cat
   beh_lem:      # $5E, B38 (talk $08)
     ids: [0x5E]
-    colors: ["#FFFFFF", "#D8DCE8", "#8C94AC", "#343C58"]
-    why: slate-grey gargoyle
+    colors: ["#FFFFFF", "#DCCAB7", "#867769", "#2D383D"]
+    why: "warm stone-grey gargoyle (slate blue made the portrait face look ghostly)"
   klip_klop:    # $60 front / $62 back half, B39/B3A (talk $09/$0A): one horse, two talkers
     ids: [0x60, 0x62]
-    colors: ["#FFFFFF", "#F8D8A8", "#C07838", "#5A2C10"]
+    colors: ["#FFFFFF", "#F5C883", "#B86E2E", "#5F2F18"]
     why: chestnut horse; Klip and Klop are the two halves of one horse, so one colour
   chuckles:     # $70 (large $F0), B2B/B33/B3B (talk $03/$0B/$1C): the jester
     ids: [0x70]
-    colors: ["#FFFFFF", "#FFD8B0", "#E04838", "#2C6C34"]
-    why: jester motley, green with red trim
+    colors: ["#FFFFFF", "#F6C5A4", "#27B733", "#981627"]
+    why: jester motley, red with green trim (red is the body colour so it shows on the map)
   hooded:       # $46: generic hooded figure (A23, A3F) in folk colours
     ids: [0x46]
     colors: ["#FFFFFF", "#FFD8B0", "#C07840", "#402010"]
@@ -421,16 +474,16 @@ npcs:
     variants:
       - name: penumbra
         templates: [B3F]
-        colors: ["#FFFFFF", "#FFD8B8", "#B08870", "#283878"]
-        why: "Penumbra (talk $0F): the astronomer's midnight-blue robe"
+        colors: ["#FFFFFF", "#F6C5A4", "#6870D3", "#222A9F"]
+        why: "Penumbra (talk $0F): the astronomer's indigo robe and hood"
       - name: taynith
         templates: [B44]
-        colors: ["#FFFFFF", "#FFD8B8", "#B08870", "#2C6034"]
-        why: "Taynith (talk $14): forest-green hood"
+        colors: ["#FFFFFF", "#F6C5A4", "#38A74E", "#165723"]
+        why: "Taynith (talk $14): forest-green hood (the hood is colour 2: mid green)"
       - name: melissa
         templates: [B46]
-        colors: ["#FFFFFF", "#FFD8B8", "#B87868", "#882848"]
-        why: "Melissa (talk $16): rose-red cloak"
+        colors: ["#FFFFFF", "#F6C5A4", "#CC4F7D", "#7F1B40"]
+        why: "Melissa (talk $16): rose cloak and hood"
   townsman:     # $6A: generic townsman (A3E, B30) in folk colours
     ids: [0x6A]
     colors: ["#FFFFFF", "#FFD8B0", "#C07840", "#402010"]
@@ -438,15 +491,15 @@ npcs:
     variants:
       - name: johann
         templates: [B2A, B40]
-        colors: ["#FFFFFF", "#FFD8B0", "#B08060", "#2E6A2E"]
-        why: "Johann (talk $10/$1D): green tunic"
+        colors: ["#FFFFFF", "#F6C5A4", "#AC7047", "#40470F"]
+        why: "Johann (talk $10/$1D): olive / brown-green tunic (not Taynith's forest green)"
       - name: loubet
         templates: [B41]
-        colors: ["#FFFFFF", "#FFD8B0", "#B08060", "#206878"]
+        colors: ["#FFFFFF", "#F6C5A4", "#A17052", "#0C5054"]
         why: "Loubet (talk $11): teal coat"
       - name: zoltan
         templates: [B43, B47]
-        colors: ["#FFFFFF", "#FFD8B0", "#B08060", "#6A2C8C"]
+        colors: ["#FFFFFF", "#F6C5A4", "#AC6858", "#5B207E"]
         why: "Zoltan (talk $13/$17): purple robe"
 
 # Natural creature colours (Carmelo, Oct 2026: "colors should naturally be

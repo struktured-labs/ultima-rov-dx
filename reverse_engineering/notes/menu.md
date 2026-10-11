@@ -93,11 +93,26 @@ $3DB8 $3FD9`, 1:`$4336 $5121`. None uses HL/DE/A after the return.
   bank 2 but no text record uses them. Talk ids `$19` (template B30) and `$1B` (B2C) point into
   other text (portrait bytes `$E7`/`$74`): unused templates, not forced.
 * DX: the portrait tiles use BG palette 5 (`earth`, text_screen ranges); nothing else on the
-  dialog does. `SceneHook` calls `DlgPortrait8` at every game LCD-on (LCD off); at the return
-  address `DLG_RET` = `$1324` it reads P from the game's stack (SP+25 there) and, if
-  `PORTRAIT_TAB` (bank 8 `$7F00`: count, (P, 4 colours)*) has it, overwrites `BASE_BG` palette 5
-  and sets `CUR_THEME = $FE` (the next screen reloads its theme); `SyncBG` then writes CRAM with
-  the LCD still off. Colours: `rov_palettes.yaml` `dialog_portraits` (named NPCs: exactly their `npcs` map colours; royals: skin face, royal red outline; signs and the Black Knight explicit).
+  dialog does. `SceneHook` calls `DlgPortrait8` at every game LCD-on (LCD off, after `BuildLut`
+  and `SetTheme`); at the return address `DLG_RET` = `$1324` it reads P from the game's stack
+  (SP+25 there) and, if `PORTRAIT_TAB` (bank 8 `$7F00`: count, (P, base, extra 1, extra 2, 4
+  tile-map bytes)*) has it, copies the base palette (`PORTRAIT_POOL` `$7A00`, colours 1-3) into
+  `BASE_BG` palette 5 and the extras into two borrowed UI palettes, and writes the 16 portrait
+  tiles' palettes (2 bits per tile from bit 7, row-major `$D4-$E3`: 0 base, 1/2 extra) into the
+  live LUT; `SyncBG` writes CRAM and `FillAttrs8` the attributes with the LCD still off.
+  `CUR_THEME = $FE`: the next screen reloads its theme (the borrowed palettes come back) and
+  rebuilds its LUT.
+* Dialog screen palettes (probe: map `$9C00` + window `$9800`, menu theme): 0 `ui` (text, paper),
+  7 `gold` (frames `$04-$09`, star `$E4`, digits, coin), 6 `fire` (hearts `$F4`), 5 `earth`
+  (portrait), A/B icons `$F8-$FF` = their item palette (any of grass, water, stone, wood, fire,
+  gold; `ui` when empty). Borrowable: 1 grass, 2 water, 3 stone, 4 wood minus the two icons'
+  palettes: `PORTRAIT_SLOTS[ItemPal(A) * 8 + ItemPal(B)]` (builder) names the first two left.
+  An item swapped into A/B during a dialog (live refresh) could take a borrowed palette until
+  the dialog closes (not seen: A/B change in the start menu, not in dialogs).
+* Colours: `rov_palettes.yaml` `dialog_portraits` + `portrait_palettes`: human NPCs `skin` face
+  tiles and their `npcs` map hue on hair / hat / hood / clothes tiles (`tiles`, `pals`); animals
+  one palette from their map colours; royals skin face, gold crown, red robe; signs and the
+  Black Knight explicit.
 
 ## Known limits
 * On theme-0 maps (overworld, castle) item palettes keep their own colour 0, so the A/B icons sit

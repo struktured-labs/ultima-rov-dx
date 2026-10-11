@@ -2,6 +2,43 @@
 
 ## [Unreleased]
 
+### Changed (talk-dialog portraits in per-tile colours, 2026-10-11)
+
+- Portraits break the one-palette limit: each of the 16 portrait tiles picks its palette.
+  `DlgPortrait8` loads the portrait's base palette into BG palette 5 as before and up to two
+  more into UI palettes the dialog screen does not show (grass, water, stone, wood, minus the
+  two the side-panel A/B icons use: `PORTRAIT_SLOTS`), and writes the tile palettes into the
+  live LUT before the attribute fill. The next screen reloads its theme and LUT, so the
+  borrowed palettes come back. Text, frames and side panel are unchanged.
+- Human NPCs: face tiles in natural skin (ecffaca), hair / hat / hood / clothes tiles in their
+  map hue at ecffaca contrast: Chuckles' jester hat red and green, Melissa's hood rose,
+  Penumbra's hair indigo, Taynith's hood forest green, Ariana's hair gold, Zoltan's bandana
+  purple, Finn's cap blue, Loubet teal, Johann olive, Utomo saffron (outline only). Royals:
+  skin face, gold crown, red robe. Animals, the sign and the Black Knight keep one palette.
+- Config: `rov_palettes.yaml` `portrait_palettes` (named, with a `why`; `bold` for the two
+  saturated fills, jester red and royal red) and `dialog_portraits` `tiles` / `pals`; the
+  builder validates them (2 extra palettes at most, enough free palettes for any A/B icons).
+  Bank 8: `PORTRAIT_TAB` entries are now (portrait, base, extra 1, extra 2, tile map),
+  `PORTRAIT_POOL` `$7A00` (was the unused THEME_OBJ_ROM), `PORTRAIT_SLOTS` `$7B80`.
+
+### Changed (NPC portraits and sprites at ecffaca contrast, 2026-10-11)
+
+- Every portrait (except the Black Knight's inverted helm) keeps the value contrast of the
+  ecffaca portraits: light / mid within 8% of the earth palette's luminance (208 / 123), the
+  line shade as dark (<= 34). Character colour is only a hue shift of the mid and line shades;
+  human faces stay skin (light `#F6C5A4`, mid a skin shadow tinted toward the character).
+  Royal portraits: `#F8CCA0` / `#AC6F44` / dark royal red `#4A0C14`. New test
+  `test_portrait_contrast_like_ecffaca`.
+- Map sprites of the named NPCs (v4, distinct hues): most NPC sprites draw body and outline
+  in colour 3, so colour 3 is the saturated character hue at luminance ~50-80 (dark enough to
+  outline on castle, town and dungeon floors) and colour 2 the hood / hair / trim at ~123.
+  Hues spread round the wheel: Chuckles red with green trim, Klip/Klop chestnut, Dr Cat
+  ginger, Utomo saffron, Johann olive, Taynith forest green, Loubet teal, Finn blue, Penumbra
+  indigo, Zoltan purple, Ariana plum (gold hair), Melissa rose; Sherry, Kador, Beh Lem stay
+  near-neutral. Portraits keep skin faces and carry the hue in their line (`line:` now takes
+  a colour, the map hue at ~27). Tests: same-sprite NPCs and common pairs differ by > 40
+  degrees of hue; portrait lines stay in the map body's hue family.
+
 ### Changed (named NPCs in their own colours on the map, 2026-10-11)
 
 - Each named NPC now has its own natural colour on the map, allocated per area like the
