@@ -9,40 +9,22 @@
 # Keys are ids with bit 7 and bit 0 cleared (0x00-0x7E).
 schema_version: 1
 player: avatar
-# Monsters are coloured by toughness tier, never by area: OBJ palettes 1-3
-# are base / stronger / strongest (reverse_engineering/notes/monsters.md).
-# Every monster graphic below uses `monster`; a record spawned from a
-# stronger variant template of the same graphic (more HP / damage, e.g. the
-# 48 HP / 16 damage slime vs the 64 HP / 8 damage one) is moved to
-# palette 1 + tier at run time (bank-2 AllocHook, WRAM2 TierOff). Tiers are
-# derived from the ROM's templates at build time (monsters.py).
-tier_palettes: [monster, monster_strong, monster_elite]
-default: monster
+# Creatures (monsters, the Black Knight, wizards) are not listed here: each
+# one has its natural colour in rov_palettes.yaml `creatures`, and the
+# runtime fills OBJ palettes 1-6 per area with the creatures, folk, royal
+# and item sprites that area loads (reverse_engineering/notes/monsters.md
+# "Colours"). The categories below are classes of that allocation too:
+# their colours are the obj_palettes entries of the same name.
+# Graphics listed nowhere (people-bank $76-$7E: no template) use `default`.
+default: folk
 # The ship while sailing: tiles $B8-$BF in a slot the loader never filled
-# (bank 0 $FF96 = $2B under the player). Brown hull.
+# (bank 0 $FF96 = $2B under the player). Brown hull; surface areas always
+# reserve the folk palette for it.
 ship: folk
-# Verified in the Cavern of Hatred (areas 0x18/0x19): 0x0A bat, 0x14 rat,
-# 0x1A skeleton (large), 0x40 imp, 0x46 hooded rogue. 0x40 and 0x5E only
-# appear as talking NPCs (template damage byte >= $80 = talk id): folk.
-# 0x64 (brigands, 32-40 HP / 7 damage) stays folk: human, one stat tier.
+# Verified in the Cavern of Hatred (areas 0x18/0x19): 0x40 imp, 0x46 hooded
+# rogue. 0x40 and 0x5E only appear as talking NPCs (template damage byte
+# >= $80 = talk id): folk.
 ids:
-  monster: [0x00, 0x02, 0x04, 0x06, 0x0A, 0x0C, 0x0E, 0x10, 0x14, 0x16, 0x1A, 0x1C, 0x1E, 0x20, 0x22, 0x24,
-            0x26, 0x28, 0x2A, 0x2C, 0x2E, 0x32, 0x34, 0x36, 0x38, 0x3C, 0x72, 0x74]
   item:    [0x08, 0x12, 0x18, 0x30, 0x3A, 0x3E]   # wisp sparkle, chest, bomb, sign, thrown blades
-  folk:    [0x40, 0x42, 0x44, 0x46, 0x4A, 0x4E, 0x54, 0x58, 0x5A, 0x5C, 0x5E, 0x60, 0x62, 0x64, 0x6A, 0x6E, 0x70]  # 0x70 = jester (large)
+  folk:    [0x40, 0x42, 0x44, 0x46, 0x4A, 0x4E, 0x54, 0x58, 0x5A, 0x5C, 0x5E, 0x60, 0x62, 0x6A, 0x6E, 0x70]  # 0x70 = jester (large)
   royal:   [0x48, 0x4C, 0x50, 0x56, 0x66, 0x68, 0x6C]   # Lord British, guards: one colour everywhere
-  # 0x52 = the Black Knight (sword + shield; talker template B2E on the overworld
-  # and in the dungeons). Royal made his grey armour red (issue #10). This entry
-  # is only his fallback (elite purple) for a screen that also loads a royal
-  # sprite, which the game never does: see knight_borrow.
-  monster_elite: [0x52]
-# Context toggle (issue #10): the Black Knight never shares a screen with Lord
-# British or the guards, so while he is in a loaded sprite slot and no other
-# `royal` sprite is, he borrows OBJ palette 5 (royal) and the runtime rewrites
-# that palette with `colors` (rov_palettes.yaml knight_colors; shade 2 = armour,
-# shade 3 = outline). The royal colours come back as soon as a royal sprite is
-# loaded, and on every non-map screen (parade, ending, dialogs).
-knight_borrow:
-  id: 0x52
-  slot: royal
-  colors: black

@@ -22,22 +22,13 @@ bg_palettes:
 
 obj_palettes:
   avatar:  { colors: ["#FFFFFF", "#FFE0C0", "#3870D8", "#101830"] }  # the player (tiles < $80)
-  monster:        { colors: ["#FFFFFF", "#C8F088", "#48A030", "#102808"] }  # tier 0: every monster's base (green)
-  monster_strong: { colors: ["#FFFFFF", "#FFC0A0", "#E03828", "#400C08"] }  # tier 1: stronger variant (red)
-  monster_elite:  { colors: ["#FFFFFF", "#E8C8FF", "#9048D8", "#200838"] }  # tier 2: strongest variant (purple)
+  creature_a: { colors: ["#FFFFFF", "#C8F088", "#48A030", "#102808"] }  # OBJ 1-3: power-on contents only; on map screens
+  creature_b: { colors: ["#FFFFFF", "#FFC0A0", "#E03828", "#400C08"] }  # OBJ palettes 1-6 are refilled per area from
+  creature_c: { colors: ["#FFFFFF", "#E8C8FF", "#9048D8", "#200838"] }  # `creatures` below (monsters.md "Colours")
   folk:    { colors: ["#FFFFFF", "#FFD8B0", "#C07840", "#402010"] }  # townsfolk, animals
   royal:   { colors: ["#FFFFFF", "#FFE0B0", "#D03838", "#302058"] }  # guards, Lord British
   item:    { colors: ["#FFFFFF", "#FFF8A0", "#E8B030", "#704010"] }  # chests, sparkles, missiles
   obp1:    { colors: ["#FFFFFF", "#E0E0E0", "#909090", "#202020"] }  # sprites using DMG OBP1
-
-# The Black Knight's colours while he borrows OBJ palette 5 (obj_categories.yaml
-# knight_borrow picks one). Shade 1 = highlights, 2 = armour, 3 = outline.
-knight_colors:
-  steel: ["#FFFFFF", "#D8E0EC", "#7C889C", "#182030"]   # blue-grey steel
-  black: ["#FFFFFF", "#A0A8B8", "#343844", "#040408"]   # near-black armour, grey highlights
-  # experiment: helmet darker than the armour. The helmet face is shade 1, which the
-  # shield face, belt and shoulder highlights share (8x16 OBJs: no per-tile palette).
-  black_helm: ["#FFFFFF", "#1C2028", "#4C5462", "#000000"]
 
 # The four champions, in the order of WRAM1 $D133 (0 Mariah, 1 Iolo, 2 Dupre,
 # 3 Shamino; reverse_engineering/notes/heroes.md). `sprite` replaces OBJ
@@ -331,3 +322,125 @@ wand_fire: ["#FFFFFF", "#FFE070", "#F88828", "#D82810"]
 # white, $FF = black): every CGB palette gets the same colour, so blanking
 # frames are uniform instead of showing each palette's colour 0.
 flat_bg: ["#FFFFFF", "#B0B0B0", "#606060", "#000000"]
+
+# Natural creature colours (Carmelo, Oct 2026: "colors should naturally be
+# assigned to creatures, but, if the game has harder versions of the same
+# creature we can be more artistic to indicate such").
+# One entry per creature type, identified by its sprite graphic(s) (`ids`:
+# OBJPAL keys, id & $7E; large sprites list their continuation graphics too).
+# The colour is the same in every area. `variants` exist only where the ROM
+# has a tougher template of the same graphic (monsters.tiers: 1.4x damage and
+# +4, or 4x HP); the builder checks that their number matches the ROM. Shades:
+# 0 transparent (keep white), 1 light, 2 mid, 3 dark outline.
+# Runtime (monsters.md "Colours"): when an area loads, OBJ palettes 1-6 are
+# filled with the creatures in its sprite slots (folk / royal / item take one
+# palette each when present), a tiered creature gets one palette per tier.
+creatures:
+  rat:          # $14 "Rats" (parade). Every dungeon.
+    ids: [0x14]
+    colors: ["#FFFFFF", "#E8D0B0", "#987050", "#302018"]
+    why: brown sewer rat, pale belly
+  bat:          # $0A. Every dungeon, also shops (cave bats).
+    ids: [0x0A]
+    colors: ["#FFFFFF", "#D8C0D0", "#705068", "#201020"]
+    why: dusky violet-brown cave bat (mostly dark shades)
+  slime:        # $0C "Slimes"
+    ids: [0x0C]
+    colors: ["#FFFFFF", "#B8F070", "#48A828", "#103010"]
+    why: green ooze
+    variants:
+      - colors: ["#FFFFFF", "#FFB0A0", "#D83828", "#401008"]
+        why: "B11 (48 HP, 16 damage, double the bite): red slime"
+  gremlin:      # $0E "Gremlins" (they steal food in the Cavern of Cowardice)
+    ids: [0x0E]
+    colors: ["#FFFFFF", "#F8E0B0", "#C08848", "#382010"]
+    why: ochre-skinned imp
+    variants:
+      - colors: ["#FFFFFF", "#F8B8A0", "#B83828", "#380808"]
+        why: "A08/B07 (64-72 HP, 23 damage): crimson gremlin"
+  spider:       # $16. Abyss, Pride, Selfishness, the spider-web cave
+    ids: [0x16]
+    colors: ["#FFFFFF", "#F06048", "#5C4868", "#140C18"]
+    why: black-violet giant spider with red eyes and markings
+  skeleton:     # $1A (large: $1C $1E) "Skeletons"
+    ids: [0x1A, 0x1C, 0x1E]
+    colors: ["#FFFFFF", "#F8F0D8", "#C0B490", "#40382C"]
+    why: old bone
+    variants:
+      - colors: ["#FFFFFF", "#FFD8C8", "#C85848", "#401010"]
+        why: "A21/A40/B10 (25 damage vs 15): blood-red bones"
+  jagger:       # $20 "Jaggers": a living boulder
+    ids: [0x20]
+    colors: ["#FFFFFF", "#E0D8C8", "#948878", "#302820"]
+    why: grey-brown stone
+    variants:
+      - colors: ["#FFFFFF", "#F8C060", "#C04820", "#300C08"]
+        why: "A14 (72 HP vs 8): molten magma rock"
+  troll:        # $22 (large: $24 $26) "Trolls"
+    ids: [0x22, 0x24, 0x26]
+    colors: ["#FFFFFF", "#D0E0A8", "#6C9048", "#1C2810"]
+    why: mossy green-grey troll hide
+    variants:
+      - colors: ["#FFFFFF", "#C8D8E8", "#5878A0", "#141C30"]
+        why: "B1D/B17/A13 (15-17 damage vs 1-2): slate-blue cave troll"
+      - colors: ["#FFFFFF", "#F0C0A0", "#A84030", "#300C08"]
+        why: "A12/A41/B16 (25 damage): rust-red war troll"
+  snake:        # $2C "Snakes"
+    ids: [0x2C]
+    colors: ["#FFFFFF", "#F0E080", "#A08830", "#302408"]
+    why: sand-yellow viper
+    variants:
+      - colors: ["#FFFFFF", "#F8D060", "#D03828", "#300808"]
+        why: "A3A (27 damage vs 8): red-and-gold coral snake"
+  centipede:    # $32 (notes called it worm; the sprite is a long many-legged body)
+    ids: [0x32]
+    colors: ["#FFFFFF", "#F8D080", "#C86828", "#381808"]
+    why: orange-brown chitin (no dark shade in the sprite)
+    variants:
+      - colors: ["#FFFFFF", "#E0B8F8", "#8840B8", "#200838"]
+        why: "B15 (72 HP vs 8): venom-violet giant centipede"
+  ghost:        # $04 "Ghosts"
+    ids: [0x04]
+    colors: ["#FFFFFF", "#E0F0FF", "#88A8D0", "#283858"]
+    why: pale spectral blue
+  reaper:       # $02 "Reapers" (no contact damage)
+    ids: [0x02]
+    colors: ["#FFFFFF", "#D0C0E0", "#605078", "#100818"]
+    why: shadowy violet-black
+  cyclops:      # $34 (large: $36 $38) "Cyclops"
+    ids: [0x34, 0x36, 0x38]
+    colors: ["#FFFFFF", "#FFD8C0", "#C87860", "#401810"]
+    why: ruddy giant's skin
+  octopus:      # $2A, in pools and the sea
+    ids: [0x2A]
+    colors: ["#FFFFFF", "#F8C0D8", "#B84880", "#381028"]
+    why: pink-purple octopus
+  shark:        # $28 fin in the water
+    ids: [0x28]
+    colors: ["#FFFFFF", "#D8E8F8", "#6880A8", "#182840"]
+    why: blue-grey shark
+  sea_serpent:  # $10, overworld sea and the Abyss
+    ids: [0x10]
+    colors: ["#FFFFFF", "#B8F0E0", "#30A090", "#082C28"]
+    why: teal sea serpent
+  dragon:       # $00 / $06 head / $3C body: the Abyss dragons (bosses)
+    ids: [0x00, 0x06, 0x3C]
+    colors: ["#FFFFFF", "#F8C070", "#C83820", "#380808"]
+    why: red dragon, golden belly
+  hooded_mage:  # $2E (template A2B, 127 HP; also loaded beside bats in many rooms)
+    ids: [0x2E]
+    colors: ["#FFFFFF", "#C8D0F8", "#4858B0", "#101838"]
+    why: deep-blue hooded robe
+  wizard:       # $64, people bank, "Wizards" in the parade (notes called them brigands)
+    ids: [0x64]
+    colors: ["#FFFFFF", "#F0D8B0", "#7048B0", "#1C1030"]
+    why: violet wizard robe, skin-tone face
+  black_knight: # $52, talker B2E on the overworld and in dungeons
+    ids: [0x52]
+    colors: ["#FFFFFF", "#A0A8B8", "#343844", "#040408"]
+    why: near-black armour, grey highlights (issue #10)
+  # graphics with no template (unused): one stable colour if they ever load
+  unused:
+    ids: [0x72, 0x74]
+    colors: ["#FFFFFF", "#C8F088", "#48A030", "#102808"]
+    why: never loaded (no template)

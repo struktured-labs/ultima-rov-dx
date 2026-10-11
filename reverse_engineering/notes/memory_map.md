@@ -38,7 +38,7 @@ restores bank 1 (the only bank the hooked callers run from) after far calls.
 | `$FF8E` | VBlank-happened flag |
 | `$FF91` | player cell in the area map (high nibble row, low nibble column) |
 | `$FFA0-$FFAF` | metatile slot -> graphic index |
-| free | `$FF98-$FF9F`, `$FFE8-$FFFE` (DX uses `$FF98-$FF9D`: `$FF9C` PARADE_LIST, also written on DMG; `$FF9D` PARADE_ON; `$FF9E` KNIGHT_DIRTY) |
+| free | `$FF98-$FF9F`, `$FFE8-$FFF2` (`$FFF3-$FFFE`: WRAM1 reader, below). DX uses all of `$FF98-$FF9F`: `$FF98` HR_DISPATCH, `$FF99` HR_LCDMODE, `$FF9A` HR_SLOTG, `$FF9B` HR_CGB, `$FF9C` PARADE_LIST (also written on DMG), `$FF9D` PARADE_ON, `$FF9E` NAT_DIRTY (bit p = OBJ palette p changed, CRAM sync due in VBlank), `$FF9F` PARADE_CUR (parade page whose colours are loaded); and `$FFE8` PARADE_STEP, `$FFE9` PARADE_TGT (parade palette preload, see monsters.md) |
 | WRAM bank 2-7 | unused by the DMG game (DX runtime lives in bank 2) |
 
 ## LCD-on sites seen (PyBoy hook on the DX `rst $28`)

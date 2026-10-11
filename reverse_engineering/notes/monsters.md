@@ -104,46 +104,45 @@ per template (70 bytes) at bank 2 `$7FBA` (`TIER_TAB`).
 
 ## Colours
 
-The convention: each monster type has one colour everywhere. A different
-colour means a tougher variant, never a different dungeon.
+The convention (Carmelo, 2026-10-10): each creature has its natural colour everywhere; a
+different colour only marks a tougher version of the same sprite, never a different dungeon.
+The table is `rov_palettes.yaml` `creatures` (one entry per creature: sprite keys, colours,
+reason, and `variants` keyed by the template tiers). Folk, royals, items and the player keep
+their fixed categories (`obj_categories.yaml`); the wizard `$64` is a creature now.
 
-| OBJ palette | use | colours |
-|---|---|---|
-| 0 | avatar / player (champion colours rewritten per hero) | |
-| 1 | `monster` — base tier (green) | `#FFFFFF #C8F088 #48A030 #102808` |
-| 2 | `monster_strong` — stronger (red) | `#FFFFFF #FFC0A0 #E03828 #400C08` |
-| 3 | `monster_elite` — strongest (purple) | `#FFFFFF #E8C8FF #9048D8 #200838` |
-| 4 | `folk` — townsfolk, brigands, talking NPCs, jester | |
-| 5 | `royal` — Lord British, guards (one colour everywhere) | |
-| 6 | `item` — chests, signs, bombs, wisps, thrown blades | |
-| 7 | `obp1` — cursor, wand fire, title OBP1 sprites | |
+Tiered creatures (variant colours): slime, gremlin, skeleton, jagger, troll (2 variants),
+snake, centipede. Only templates observed in the ROM with higher HP/damage on the same
+graphic get a variant (tier rule below).
 
-The black knights used to get a steel colour inside dungeons (`obj_themes`).
-That was per-area tinting of one unchanged knight, not a variant, so it was
-removed. `royal` then turned his grey armour red (issue #10), so the Black
-Knight (`$52`, talker template B2E on the overworld and in Cowardice /
-Selfishness) now uses OBJ palette 3 (`monster_elite`, dark purple) everywhere.
-It is a static `obj_categories.yaml` entry, not a tier: `TierPal` only adds a
-tier to palette 1. A true steel colour would need a free OBJ palette (all 8 are
-taken on map screens: 7 is the wand fire).
+| OBJ palette | use |
+|---|---|
+| 0 | avatar / player (champion colours rewritten per hero) |
+| 1-6 | assigned per area to the creature/folk/royal/item classes present (below) |
+| 7 | `obp1` — cursor, wand fire, hit flash (DMG OBP1 sprites) |
 
-Prototype (issue #10 follow-up): context toggle instead of a free palette. The
-knight never shares a screen with Lord British or the guards, so he borrows
-palette 5 (`obj_categories.yaml` `knight_borrow`, colours `rov_palettes.yaml`
-`knight_colors`):
+### Per-area allocation (`creatures.py`, bank-9 `NatLcd9` / `NatPrep9`)
 
-* `KnightScan8` (bank 8, from `Prep8` on map screens and `KnightLcd8` at every
-  LCD-on): borrow if `$52` is in a loaded slot (`$C580`, `[$C539]` slots) and
-  no other palette-5 sprite is. Selfishness `$36` loads `$50` (royal list) with
-  the knight, so then a second pass checks the shadow OAM: borrow unless an
-  entry in the royal slots' tiles (`KNIGHT_LO`-`KNIGHT_HI`) is visible.
-* `KnightSet8`: the state is `OBJPAL[$52]` itself (5 = borrowing, else the
-  fallback 3). On a change: `OBJPAL[$52/$53]`, `BASE_OBJ` palette 5 from
-  bank 8 `KNIGHT_ROM` or `ROYAL_ROM`, HRAM `KNIGHT_DIRTY` = 1.
-* `KnightSync8` (TierFar mode 8 from `W2Pal`, right after the OAM DMA): writes
-  CRAM palette 5 (8 bytes through OBP0) if LY is 144-145, else retries next
-  DMA. At LCD-on the full `SyncOBJ` covers it and the flag is cleared.
-* Non-map LCD-on (dialogs, parade, ending) forces the royal colours.
+* At map LCD-on, the classes of the loaded sprite slots (`$C580`, `[$C539]`) and the area's
+  spawn list get palettes 1-6; a tiered class gets a contiguous block (base + variants) and
+  `OBJPAL[key]` = first palette | `$80`, so `TierPal` adds `ENTRY_TIER`.
+* `Prep8` calls `NatPrep9` every frame: a signature of the slots is compared and the
+  allocation redone only on a change, only below LY 96 (`NAT_LY`) or in VBlank (else retried
+  next frame). Changed palettes set `NAT_DIRTY` bits; `SyncDirty8` (after the OAM DMA)
+  writes them to CRAM while LY is 144-145 (144-147 in the parade).
+* Overflow (more than 6 palettes wanted): variant blocks shrink to the base colour first; only
+  then would a class share its nearest-colour class's palette. Observed: Injustice `00*`
+  (slime), Selfishness `4C` (centipede, troll, skeleton), Pride/Abyss `2B*` (jagger), `38*`
+  (troll); no class sharing anywhere.
+* The black-knight borrow and per-area `obj_themes` are gone (the builder rejects
+  `tier_palettes`, `knight_borrow`, `obj_themes`).
+
+### Parade
+
+The builder plans the attract parade per page (`creatures.parade_plan`): each page's classes
+get palettes disjoint from the previous page's (0 and 7 allowed, CRAM only). Page 0 is set at
+the parade LCD-on (`ParadePage9`); while page k shows, `ParadeStep9` (from `SyncDirty8`,
+VBlank) writes page k+1's palettes one per frame (`PARADE_STEP`/`PARADE_TGT`), so the page
+switch itself does no palette work (no colour work runs during the page reload).
 
 ### Runtime
 

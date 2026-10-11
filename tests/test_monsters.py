@@ -46,9 +46,10 @@ class RomTemplatesTest(unittest.TestCase):
     def setUpClass(cls):
         cls.rom = ROM.read_bytes()
         cls.temps = M.templates(cls.rom)
-        cats = yaml.safe_load((ROOT / "palettes" / "obj_categories.yaml").read_text())
-        cls.cats = cats
-        cls.tier = M.tiers(cls.temps, set(cats["ids"]["monster"]))
+        cls.pal = yaml.safe_load((ROOT / "palettes" / "rov_palettes.yaml").read_text())
+        cls.cats = yaml.safe_load((ROOT / "palettes" / "obj_categories.yaml").read_text())
+        cls.ckeys = {k for c in cls.pal["creatures"].values() for k in c["ids"]}
+        cls.tier = M.tiers(cls.temps, cls.ckeys)
         cls.by_name = {t.name: t for t in cls.temps}
 
     def tier_of(self, name):
@@ -74,13 +75,12 @@ class RomTemplatesTest(unittest.TestCase):
                              {0}, hex(key))
 
     def test_no_per_area_obj_tint(self):
-        pal = yaml.safe_load((ROOT / "palettes" / "rov_palettes.yaml").read_text())
-        self.assertFalse(pal.get("obj_themes"))
-        self.assertEqual(self.cats["tier_palettes"], ["monster", "monster_strong", "monster_elite"])
-        names = [p["name"] for p in pal["obj"]] if isinstance(pal.get("obj"), list) else None
-        if names:
-            self.assertEqual(names[1:4], ["monster", "monster_strong", "monster_elite"])
-            self.assertEqual(len(names), 8)
+        # one natural colour per creature everywhere; variants only where the ROM has tougher templates
+        self.assertFalse(self.pal.get("obj_themes"))
+        self.assertNotIn("tier_palettes", self.cats)
+        for name, c in self.pal["creatures"].items():
+            found = {self.tier[t.index] for t in self.temps if t.key in c["ids"]}
+            self.assertEqual(max(found | {0}), len(c.get("variants") or []), name)
 
     def test_tier_table_in_rom(self):
         import build_dx
@@ -89,7 +89,11 @@ class RomTemplatesTest(unittest.TestCase):
         out = build_dx.build(self.rom, build_dx.load_inputs())
         _, syms = assemble([("dx.asm", dx_patch._asm_source())])
         off = GL.file_offset(2, syms["TIER_TAB"])
-        tab = M.tier_table(self.temps, self.tier)
+        from ultima_rov_dx import creatures as CR
+        cr = CR.build(self.pal, self.cats, self.temps)
+        self.assertEqual(set(cr.tiered_keys), {0x0C, 0x0E, 0x1A, 0x1C, 0x1E, 0x20, 0x22, 0x24, 0x26, 0x2C, 0x32})
+        tab = M.tier_table(self.temps, M.tiers(self.temps, set(cr.tiered_keys)))
+        self.assertEqual(tab, M.tier_table(self.temps, self.tier))         # untiered creatures: tier 0 anyway
         self.assertEqual(out[off:off + len(tab)], tab)
         self.assertEqual(set(self.rom[GL.BANK2_FREE[0]:GL.BANK2_FREE[1]]), {0xFF})   # was unused fill
         alloc = GL.file_offset(2, 0x5FE6)
@@ -99,8 +103,10 @@ class RomTemplatesTest(unittest.TestCase):
 
 @unittest.skipUnless(ROM.is_file() and yaml is not None, "original ROM not present")
 class RuntimeColoursTest(unittest.TestCase):
-    """Teleport into areas with mixed variants: each monster OAM entry uses OBJ palette 1 + its
-    template's tier; floor-item tiles use their item's palette."""
+    """Teleport into areas with mixed variants: each creature OAM entry uses the palette the
+    natural-colour allocation (creatures.allocate on the live state) gives its class, plus its
+    template's tier where the creature owns a block of tier palettes; floor-item tiles use their
+    item's palette."""
 
     def test_variant_and_pickup_palettes(self):
         try:
@@ -109,9 +115,11 @@ class RuntimeColoursTest(unittest.TestCase):
             self.skipTest("pyboy not installed (uv sync --extra emu)")
         import build_dx
         import capture_screens as cs
-        from ultima_rov_dx import dx_patch
+        from ultima_rov_dx import creatures as CR, dx_patch
         from ultima_rov_dx.sm83asm import assemble
-        out = build_dx.build(ROM.read_bytes(), build_dx.load_inputs())
+        inp = build_dx.load_inputs()
+        out = build_dx.build(ROM.read_bytes(), inp)
+        cr = CR.build(inp["palettes"], inp["obj_categories"], M.templates(ROM.read_bytes()))
         _, syms = assemble([("dx.asm", dx_patch._asm_source())])
         rec_tier, lut, item_pal, lcd_mode = syms["REC_TIER"], syms["LUT"], syms["ITEM_PAL"], syms["LCD_MODE"]
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as d:
@@ -176,6 +184,11 @@ class RuntimeColoursTest(unittest.TestCase):
                 pals = set()
                 for _ in range(120):
                     pb.tick(1, True)
+                    slots, n = [m[0xC580 + j] for j in range(16)], min(m[0xC539], 16)
+                    lst, j = [], 0xC5C0
+                    while j < 0xC600 and m[j + 1]:
+                        lst.append((m[j], m[j + 1])); j += 2
+                    al = CR.allocate(cr, slots, n, lst, m[0xC508], surface=m[2, syms["MAP_THEME"]] == 0)
                     for i in range(16):
                         if m[1, 0xD000 + 16 * i] == 0xFF:
                             continue
@@ -184,12 +197,18 @@ class RuntimeColoursTest(unittest.TestCase):
                             continue
                         t = m[2, rec_tier + i]
                         for k in (0, 4):
-                            at = m[0xFE03 + off + k] & 7
-                            if m[0xFE00 + off + k] == 0 or at not in (1, 2, 3):
+                            y, tile, attr = m[0xFE00 + off + k], m[0xFE02 + off + k], m[0xFE03 + off + k]
+                            s = (tile - 0x80) >> 3
+                            if y == 0 or tile < 0x80 or s >= n or attr & 0x10:
                                 continue
-                            pals.add(at)
-                            bad += at != 1 + t
-                            good += at == 1 + t
+                            while s > 0 and slots[s] == 0xFF:
+                                s -= 1
+                            v = al.objpal[slots[s] & 0x7E]
+                            want = (v & 7) + (t if v & 0x80 else 0)
+                            at = attr & 7
+                            pals.add((cr.names[cr.class_of_key(slots[s] & 0x7E) - 1], at - (v & 7)))
+                            bad += at != want
+                            good += at == want
                             carried += (m[0xC003 + off + k] & 7) == at   # coloured in the shadow OAM
                 seen[area] = pals
                 # Prep8 colours the shadow OAM at the game's idle wait (tiers rebuilt from the
@@ -200,9 +219,9 @@ class RuntimeColoursTest(unittest.TestCase):
                 self.assertGreater(carried, good // 2, hex(area))
             pb.stop(save=False)
         self.assertGreater(items, 3)
-        self.assertIn(3, seen[0x2C])                         # strongest trolls (B16)
-        self.assertLessEqual({1, 2}, seen[0x27])             # base and 25-damage skeletons
-        self.assertIn(2, seen[0x4A])                         # 64 HP / 23 damage gremlins
+        self.assertIn(("troll", 2), seen[0x2C])              # strongest trolls (B16): third palette of the block
+        self.assertIn(("skeleton", 1), seen[0x27])           # 25-damage skeletons (the base one may be off screen)
+        self.assertIn(("gremlin", 1), seen[0x4A])            # 64 HP / 23 damage gremlins
 
 
 if __name__ == "__main__":

@@ -59,7 +59,10 @@ HR_SLOTG        equ $FF9A   ; scratch: graphic index in Slot
 HR_VBLANK       equ $FF8E   ; game: set by its VBlank interrupt, cleared at its idle waits
 PARADE_LIST     equ $FF9C   ; low byte of the parade's graphic list (bank 7 $7CA6 + 5k), set by ParadeLoad (also on DMG: unused HRAM)
 PARADE_ON       equ $FF9D   ; 1 = the attract-loop parade is up: OamPass colours its sprites from PARADE_TAB (CGB)
-KNIGHT_DIRTY    equ $FF9E   ; 1 = OBJ palette KNIGHT_SLOT changed in BASE_OBJ (Black Knight borrow): CRAM sync due (CGB)
+NAT_DIRTY       equ $FF9E   ; bit p = OBJ palette p changed in BASE_OBJ with the LCD on (creature colours): CRAM sync due (CGB)
+PARADE_CUR      equ $FF9F   ; PARADE_LIST whose colours are in OBJ palettes 1-6 (parade page change, CGB)
+PARADE_STEP     equ $FFE8   ; index into the NAT_PLIST entry of the page being loaded (ParadeStep9)
+PARADE_TGT      equ $FFE9   ; parade list whose colours ParadeStep9 is loading
 HR_CGB          equ $FF9B   ; 1 = CGB (set by Boot on every power-up; KEY1 is not
                             ;     a reliable DMG test on all emulators)
 
@@ -84,8 +87,6 @@ SWEEP_LO        equ $D714   ; map attribute sweep: next $98xx/$9Bxx cell, SWEEP_
 SWEEP_HI        equ $D715
 MAP_CACHED      equ $D716   ; ROM theme held in WRAM slot SLOT_MAP ($FF = none; set by bank-8 MapTheme)
 HERO_CACHED     equ $D717   ; champion whose colours are in OBJ palette 0 ($FF = none; set by bank-8 HeroObj)
-THEME_OBJ       equ $DFD0   ; 4 slots x 4 colours of OBJ palette THEME_OBJ_SLOT (per-theme override; no obj_themes are set: knights stay royal everywhere)
-THEME_OBJ_SLOT  equ 5       ; royal
 FIRE_OBJ        equ $DFF0   ; 4 colours of the wand's fireball (OBJ palette 7 on map screens, via OBP0)
 FIRE_TILES      equ $38     ; wand projectile tiles $38-$47 (items $06-$08, either button)
 FIRE_PAL        equ 7
@@ -103,7 +104,7 @@ SLOTG           equ $D7E0   ; 16: graphic index g of metatile slot s (debug/insp
 SLOTPAL         equ $D7F0   ; 16: palette of metatile slot s
 ATTR_PROG       equ $D800   ; translated attribute program
 REC_TIER        equ $D7C0   ; 16: colour tier 0-2 of object record i ($D000+16i), set by the bank-2 AllocHook
-MONSTER_PAL     equ 1       ; OBJ palettes 1-3: monster tiers base / stronger / strongest (TierPal adds the tier)
+TIERED          equ $80     ; OBJPAL bit 7: the creature has a block of palettes, one per tier (TierPal adds the tier)
 ENTRY_TIER      equ $DB10   ; 40: tier per OAM entry (TierEnd, from REC_TIER and [record+3]; read by TierPal)
 ITEM_IDS        equ $C5B0   ; WRAM0: item id of floor-item slot k (BG tiles $40+4k-$43+4k; $FF = empty)
 ITEM_CACHE      equ $D7D0   ; 15: ITEM_IDS as last coloured (low byte = low(ITEM_IDS) + $20)
@@ -146,7 +147,7 @@ BRAND_VRAM      equ $8A00   ; tile $A0 with LCDC $89 (signed tile data, $80-$FF 
 AREA_THEME      equ $6800   ; bank 8: ROM theme per area id [$D12F], 256 with AREA_FLAG = 0, then 256 with 1
 METAPAL         equ $6A00   ; bank 8: palette per metatile graphic, 128 per set (MP_SETS)
 THEME_BG_ROM    equ $7200   ; bank 8: 64 bytes of BG base colours per ROM theme
-THEME_OBJ_ROM   equ $7A00   ; bank 8: 8 bytes (OBJ palette THEME_OBJ_SLOT) per ROM theme
+THEME_OBJ_ROM   equ $7A00   ; bank 8: reserved (was OBJ palette 5 per ROM theme; creatures keep one colour everywhere)
 RT_SLOT         equ $7B00   ; bank 8: WRAM slot per ROM theme (0 surface, 1 dungeon cache, 2 entrance, 3 UI)
 MP_IDX          equ $7B20   ; bank 8: METAPAL set per ROM theme
 SCENE_LUTS      equ $5800   ; bank 8: 256-byte LUTs of scene pictures (MAX_SCENE_LUTS, SCENES LUT index)
@@ -160,20 +161,38 @@ CARD_UI         equ $7C80   ; bank 8: low byte of BASE_BG's UI palette (where CA
 GOLD_DIGITS     equ $7D00   ; bank 8: DIGIT_LEN bytes, side-panel digits $E8-$F1 redrawn in gold (VRAM bank 1)
 PARADE_PAL_ROM  equ $7E00   ; bank 8: PARADE_LEN bytes, OBJ palette per byte of the parade lists 7:$7CA6-$7CBE (builder, from OBJPAL)
 PARADE_TAB      equ ENTRY_TIER  ; WRAM2: PARADE_PAL_ROM copied over ENTRY_TIER (unused off map screens, cleared at every LCD-on)
-; Black Knight context toggle (issue #10, reverse_engineering/notes/monsters.md):
-; the knight ($52) never shares a screen with Lord British or the guards, so
-; while it is loaded and no other royal sprite is, it borrows OBJ palette
-; KNIGHT_SLOT (royal) recoloured with KNIGHT_ROM; else palette 5 holds the
-; royal colours again and the knight falls back to KNIGHT_FALLBACK. The
-; state lives in OBJPAL[KNIGHT_ID] itself (= KNIGHT_SLOT while borrowing).
-KNIGHT_ID       equ $52     ; sprite id (key: id & $7E) of the Black Knight
-KNIGHT_SLOT     equ 5       ; OBJ palette borrowed (royal)
-KNIGHT_ROM      equ $7E20   ; bank 8: 8 bytes, the knight's colours (builder: obj_categories knight_borrow)
-ROYAL_ROM       equ $7E28   ; bank 8: 8 bytes, palette KNIGHT_SLOT's own colours (restored)
-KNIGHT_FALLBACK equ $7E30   ; bank 8: OBJ palette of the knight when a royal sprite is loaded too
-KNIGHT_MODE     equ 8       ; TierFar mode: KnightSync8
-KNIGHT_LO       equ $DB39   ; WRAM2 scratch (KnightScan8): first / last tile of the loaded royal slots
-KNIGHT_HI       equ $DB3A
+; Natural creature colours (reverse_engineering/notes/monsters.md "Colours",
+; creatures.py): each creature type has its own colour everywhere, tougher
+; variants of the same sprite get a variant colour. On map screens OBJ
+; palettes 1-6 are filled per area from the loaded sprite slots by bank-9
+; NatAssign9 (at map LCD-on, and from Prep8 when the slots change with the
+; LCD on); the attract-loop parade fills them per page (ParadePage9).
+BANK9_ORG       equ $4000
+BANK9_SIG_ADDR  equ $4001   ; bank 9 signature byte (SigBank: VBlank interrupting bank-9 code)
+NAT_KEY_CLASS   equ $7000   ; bank 9: 64, base colour class per sprite key >> 1
+NAT_TIERS       equ $7100   ; bank 9: 64, tiers per base class (1-3; 0 = variant class)
+NAT_TPL         equ $7200   ; bank 9: 139, template U -> tier << 6 | base class (tier >= 1 only)
+NAT_FB          equ $7300   ; bank 9: 3 per class, nearest-coloured base classes (more than 6 classes)
+NAT_COL         equ $7400   ; bank 9: 8 per class (64), the colours; tiers of a creature are consecutive classes
+NAT_PARADE      equ $7600   ; bank 9: 64 per parade page: colours of OBJ palette p at 8 x p (creatures.parade_plan)
+NAT_PLIST       equ $7800   ; bank 9: 16 per parade page: the OBJ palettes it loads, $FF-terminated
+NAT_FOLK        equ $7900   ; bank 9: class of the ship (surface maps reserve it)
+BANK9_SIG       equ $9D     ; byte at bank 9 $4001 (builder: differs from banks 1-8)
+NAT_FIRST       equ 1       ; OBJ palettes NAT_FIRST..NAT_LAST are allocated per area
+NAT_LAST        equ 6
+NORMAL_TYPES    equ 67      ; templates of the first object group (monsters.py)
+FLOOR_TYPES     equ $48     ; area list types >= $48: floor items
+AREA_LIST       equ $C5C0   ; area object list (position, type | $80), type 0 ends
+AREA_ALT        equ $C508   ; low byte of the first alt-group entry
+; WRAM bank 3 (unused by the game), bank-9 scratch:
+NAT_SIG         equ $D000   ; 19: slot count, area id, area flag, 16 slot ids of the last allocation
+NAT_NEED        equ $D100   ; 64 per class: tiers wanted (0 = not loaded)
+NAT_PH          equ $D140   ; 64 per class: first OBJ palette | TIERED
+NAT_SZ          equ $D180   ; 64 per class: palettes owned (0 = shares another class's)
+NAT_ORD         equ $D300   ; base classes in allocation order
+NAT_N           equ $D3F0   ; their count
+SYNC_MODE       equ 8       ; TierFar mode: SyncDirty8
+NAT_LY          equ 96      ; NatPrep9 reallocates only below this line (or in VBlank): Prep8 ends before VBlank
 PARADE_LISTS    equ $7CA6   ; bank 7: the parade's five 4-graphic lists ($FF-terminated, 5 bytes each)
 PARADE_LEN      equ 25
 PARADE_RET      equ $4854   ; return address of the parade's LCD-on site 7:$4853 (rst $28)
@@ -684,7 +703,7 @@ Bank8Boot:
         ldh [rSVBK], a
         xor a                           ; no parade yet (HRAM is random at power-on)
         ldh [PARADE_ON], a
-        ldh [KNIGHT_DIRTY], a
+        ldh [NAT_DIRTY], a
         jr .wait
 .notcgb1:
         ld a, 1
@@ -731,8 +750,8 @@ Bank8Boot:
 
 ; A = ROM theme of the area being loaded (bank 8 mapped, SVBK = 2).
 ; Returns the WRAM theme slot in A. Surface, entrance and UI themes have
-; fixed slots; a dungeon theme is copied into SLOT_MAP (BG base colours and
-; OBJ palette THEME_OBJ_SLOT) unless it is already there, and CUR_THEME is
+; fixed slots; a dungeon theme is copied into SLOT_MAP (BG base colours)
+; unless it is already there, and CUR_THEME is
 ; invalidated so SetTheme reloads it. Keeps C.
 MapTheme:
         ld e, a
@@ -770,21 +789,6 @@ MapTheme:
         dec b
         jr nz, .bg
         pop de
-        ld a, e                         ; HL = THEME_OBJ_ROM + theme*8
-        add a
-        add a
-        add a
-        add low(THEME_OBJ_ROM)
-        ld l, a
-        ld h, high(THEME_OBJ_ROM)
-        ld de, THEME_OBJ + SLOT_MAP * 8
-        ld b, 8
-.obj:
-        ld a, [hl+]
-        ld [de], a
-        inc e
-        dec b
-        jr nz, .obj
         ld a, SLOT_MAP
         ret
 
@@ -1012,6 +1016,10 @@ SigBank:
         cp b                            ; bank-8 routine interrupted by VBlank)
         ld a, 8
         ret z
+        ld a, BANK9_SIG                 ; bank-9 creature colours (NatAssign9)
+        cp b                            ; interrupted by VBlank
+        ld a, 9
+        ret z
         ld hl, BANK_SIG
         ld c, 1
 .s:
@@ -1042,7 +1050,7 @@ TierScan8:
         bit 2, c
         jp nz, FillAttrs8
         bit 3, c
-        jp nz, KnightSync8
+        jp nz, SyncDirty8
         call TierCore
         jp SigBank
 TierCore:
@@ -1102,7 +1110,7 @@ TierCore:
 ; champion in INV+$33 (= WRAM1 $D133, ReadInv just ran). CUR_THEME = $FF:
 ; the next screen reloads its theme, so the change stays in the menu.
 HeroMenu8:
-        call KnightLcd8                 ; (every LCD-on: Black Knight palette, LCD off)
+        call NatLcd8                    ; (every LCD-on: creature colours, LCD off)
         ld a, [LCD_BYTE]                ; only on the start menu's LCD-on
         cp $64
         jp nz, SigBank
@@ -1130,7 +1138,8 @@ HeroMenu8:
         jp SigBank
 
 ; SceneHook at the parade's LCD-on (SVBK = 2, TierClear just ran):
-; PARADE_TAB = PARADE_PAL_ROM, PARADE_ON = 1 until the next LCD-on.
+; PARADE_TAB = PARADE_PAL_ROM, PARADE_ON = 1 until the next LCD-on, OBJ
+; palettes 1-6 = the first page's creature colours (SyncOBJ follows).
 ; Preserves HL.
 ParadeOn8:
         push hl
@@ -1145,6 +1154,10 @@ ParadeOn8:
         jr nz, .c
         ld a, 1
         ldh [PARADE_ON], a
+        ld hl, ParadePage9
+        call Far9
+        xor a                           ; (the LCD-on SyncOBJ writes them)
+        ldh [NAT_DIRTY], a
         pop hl
         ret
 
@@ -1189,8 +1202,8 @@ Prep8:
         ld c, $80
         call TierCore
         call LiveFloor
-        call KnightScan8                ; Black Knight: borrow palette 5 or not
-        call KnightSet8
+        ld hl, NatPrep9                 ; creature colours: sprite slots changed?
+        call Far9
 .pal:
         ld hl, $C000
         call OamPass
@@ -1238,177 +1251,79 @@ FillAttrs8:
         ldh [rVBK], a
         jp SigBank
 
-; Black Knight context toggle (see KNIGHT_ID). SVBK = 2, bank 8 mapped.
-; KnightScan8: A = 1 (borrow) if the knight is in a loaded sprite slot ($C580,
-; the first [$C539] slots) and no other sprite of palette KNIGHT_SLOT (Lord
-; British, guards, $50) is drawn, else 0. Pass 1 walks the slots; only when
-; a royal sprite is loaded too (Selfishness $36 loads $50 with the knight)
-; pass 2 looks for a visible shadow-OAM entry in the royal slots' tiles
-; [KNIGHT_LO, KNIGHT_HI]. Clobbers BC, DE, HL.
-KnightScan8:
-        ld a, [SPRITE_COUNT]
-        cp 17
-        jr c, .n16
-        ld a, 16
-.n16:
-        ld b, a
-        ld c, 0                         ; bit 0 knight, 1 royal, 2 in a royal (large) sprite
-        or a
-        jr z, .end
-        ld hl, SPRITE_IDS
-        ld d, high(OBJPAL)
-.l:
-        ld a, [hl]
-        cp $FF                          ; continuation of a large sprite
-        jr z, .cont
-        res 2, c
-        and $7E
-        cp KNIGHT_ID
-        jr z, .k
-        ld e, a
-        ld a, [de]
-        cp KNIGHT_SLOT
-        jr nz, .n
-        bit 1, c
-        jr nz, .more
-        set 1, c
-        call .tile
-        ld [KNIGHT_LO], a
-.more:
-        set 2, c
-.ext:
-        call .tile
-        add 7
-        ld [KNIGHT_HI], a
-        jr .n
-.cont:
-        bit 2, c
-        jr nz, .ext
-        jr .n
-.k:
-        set 0, c
-.n:
-        inc l
-        dec b
-        jr nz, .l
-.end:
-        ld a, c
-        and 3
-        cp 1
-        jr z, .yes
-        cp 3
-        jr nz, .no
-        ld a, [KNIGHT_LO]
-        ld d, a
-        ld a, [KNIGHT_HI]
-        ld e, a
-        ld hl, $C000
-        ld b, 40
-.o:
-        ld a, [hl]                      ; Y: 0 or >= 160 = hidden
-        dec a
-        cp 159
-        jr nc, .s
-        inc l
-        inc l
-        ld a, [hl-]                     ; tile
-        dec l
-        cp d
-        jr c, .s
-        cp e
-        jr z, .no                       ; a royal sprite is drawn
-        jr c, .no
-.s:
-        ld a, l
-        add 4
-        ld l, a
-        dec b
-        jr nz, .o
-.yes:
-        ld a, 1
-        ret
-.no:
-        xor a
-        ret
-.tile:                                  ; A = first tile of slot L - low(SPRITE_IDS)
-        ld a, l
-        sub low(SPRITE_IDS)
-        add a
-        add a
-        add a
-        add $80
-        ret
-; A = 1: borrow (OBJPAL[KNIGHT_ID] = KNIGHT_SLOT, palette KNIGHT_SLOT =
-; KNIGHT_ROM), 0: royal (OBJPAL[KNIGHT_ID] = KNIGHT_FALLBACK, palette =
-; ROYAL_ROM). Only on a change: BASE_OBJ updated, KNIGHT_DIRTY = 1 (the
-; next VBlank writes that one CRAM palette, KnightSync8). Clobbers BC, DE, HL.
-KnightSet8:
-        ld c, a
-        ld a, [OBJPAL + KNIGHT_ID]
-        cp KNIGHT_SLOT
-        ld a, 0
-        jr nz, .cur
-        inc a
-.cur:
-        cp c
-        ret z
-        ld hl, ROYAL_ROM
-        ld a, [KNIGHT_FALLBACK]
-        dec c
-        jr nz, .set
-        ld hl, KNIGHT_ROM
-        ld a, KNIGHT_SLOT
-.set:
-        ld [OBJPAL + KNIGHT_ID], a
-        ld [OBJPAL + KNIGHT_ID + 1], a
-        ld de, BASE_OBJ + KNIGHT_SLOT * 8
-        ld b, 8
-.c:
-        ld a, [hl+]
-        ld [de], a
-        inc e
-        dec b
-        jr nz, .c
-        ld a, 1
-        ldh [KNIGHT_DIRTY], a
-        ret
-; Every LCD-on (LCD off, HeroMenu8; SyncOBJ follows and writes all of CRAM):
-; map screens scan the slots, every other screen gets the royal colours
-; back (the parade, the ending, Lord British's dialogs). Preserves BC, HL.
-KnightLcd8:
+; Every LCD-on (LCD off, HeroMenu8; SyncOBJ follows and writes all of CRAM,
+; so no palette is left dirty): map screens get their creature colours
+; (bank 9 NatLcd9). Other screens keep the last map's colours (dialogs show
+; its sprites); the parade sets its own (ParadeOn8). Preserves BC, HL.
+NatLcd8:
         push bc
         push hl
         ld a, [LCD_MODE]
         or a
-        ld a, 0
-        jr nz, .set                     ; not a map: royal (A = 0)
-        call KnightScan8
-.set:
-        call KnightSet8
+        jr nz, .d
+        ld hl, NatLcd9
+        call Far9
+.d:
         xor a
-        ldh [KNIGHT_DIRTY], a
+        ldh [NAT_DIRTY], a
         pop hl
         pop bc
         ret
-; TierFar mode KNIGHT_MODE (W2Pal, right after the OAM DMA, KNIGHT_DIRTY):
-; write OBJ palette KNIGHT_SLOT to CRAM through OBP0, only while LY is still
-; at the start of VBlank (144-145, the side-panel refresh's window); else the
-; flag stays and the next DMA retries. B = caller's bank signature.
-KnightSync8:
+; TierFar mode SYNC_MODE (W2Pal, right after the OAM DMA, when NAT_DIRTY or
+; PARADE_ON): a new parade page loads its colours first (ParadeStep9, one
+; palette per frame). Then
+; the dirty OBJ palettes go to CRAM through OBP0, lowest first, only while
+; LY is still at the start of VBlank (144-145 on maps, the side-panel
+; refresh's window; 144-147 in the parade, whose hook starts at LY 146); the
+; rest stay dirty for the next DMA. B = caller's bank signature.
+SyncDirty8:
+        push bc
+        ldh a, [PARADE_ON]
+        or a
+        jr z, .s
+        ld hl, ParadeStep9              ; preload the next page's colours
+        call Far9
+.s:
+        ldh a, [PARADE_ON]              ; window: LY 144-145 on maps, 144-147
+        add a                           ; in the parade (its hook runs at 146)
+        add 2
+        ld e, a
         ldh a, [rLY]
         sub 144
-        cp 2
-        jp nc, SigBank
-        push bc
-        xor a
-        ldh [KNIGHT_DIRTY], a
-        ld a, $80 | (KNIGHT_SLOT * 8)
+        cp e
+        jr nc, .x
+        ldh a, [NAT_DIRTY]
+        or a
+        jr z, .x
+        ld c, 0                         ; C = lowest dirty palette, B = its bit
+        ld b, 1
+.f:
+        rrca
+        jr c, .g
+        inc c
+        sla b
+        jr .f
+.g:
+        ldh a, [NAT_DIRTY]
+        xor b
+        ldh [NAT_DIRTY], a
+        ld a, c
+        add a
+        add a
+        add a
+        ld e, a
+        or $80
         ldh [rOCPS], a
-        ld hl, BASE_OBJ + KNIGHT_SLOT * 8
+        ld a, e
+        add low(BASE_OBJ)
+        ld l, a
+        ld h, high(BASE_OBJ)
         ld a, [LAST_OBP0]
         ld d, a
         ld bc, $0100 | rOCPD
         call SyncGroup
+        jr .s
+.x:
         pop bc
         jp SigBank
 Bank8bEnd:
@@ -1536,10 +1451,12 @@ W2Pal:
 .obj:
         call SyncOBJ
 .knight:
-        ldh a, [KNIGHT_DIRTY]           ; Black Knight palette changed (Prep8):
-        or a                            ; that one CRAM palette, in bank 8
+        ldh a, [PARADE_ON]              ; creature colours changed with the LCD
+        ld c, a                         ; on (Prep8, parade page): those CRAM
+        ldh a, [NAT_DIRTY]              ; palettes, in bank 8
+        or c
         jr z, .oam
-        ld c, KNIGHT_MODE
+        ld c, SYNC_MODE
         call TierFar
 .oam:
         ld a, [PREP_DONE]               ; Prep8 coloured the shadow OAM at the
@@ -1589,7 +1506,7 @@ OamPass:
         ld e, a
         ld d, high(OBJPAL)
         ld a, [de]
-        jp TierPal                      ; monster palette + the entry's tier
+        jp TierPal                      ; creature palette (+ the entry's tier)
 .unl:
         call UnloadedPal
         jr .apply
@@ -2306,6 +2223,18 @@ W2CodeEnd:
 ; ======================================================== WRAM bank 2, $DF00-$DFFF
 section wram2b, $21300, $DF00
 
+; Bank-9 call from bank-8 code (SVBK = 2): HL = routine, back in bank 8.
+; Clobbers A. A VBlank inside bank 9 maps it back through SigBank.
+Far9:
+        ld a, 9
+        ld [MBC_BANK], a
+        call .hl
+        ld a, 8
+        ld [MBC_BANK], a
+        ret
+.hl:
+        jp hl
+
 ; A = OBJ palette of a sprite tile in a slot the loader has not filled
 ; ($C539 count): the champion (attack pose), or the ship while sailing.
 UnloadedPal:
@@ -2547,11 +2476,14 @@ LiveFloor:
         ld [SWEEP_HI], a
         ret
 
-; W2Pal, per OAM entry whose sprite id has OBJ palette A: monsters
-; (MONSTER_PAL) get MONSTER_PAL + the entry's tier. HL = attribute byte.
+; W2Pal, per OAM entry whose sprite id has OBJPAL value A: a creature with
+; tougher variants in this area (TIERED) owns a block of palettes, one per
+; tier, and gets its first palette + the entry's tier. HL = attribute byte.
 TierPal:
-        cp MONSTER_PAL
-        jp nz, OamPass.apply
+        bit 7, a
+        jp z, OamPass.apply
+        and 7
+        ld c, a
         ld a, l
         rrca
         rrca
@@ -2571,7 +2503,7 @@ TierPal:
         ld a, [de]
 .k:
         and 3
-        add MONSTER_PAL
+        add c
         jp OamPass.apply
 
 ; A = item id: A = BG palette of its side-panel A/B icon. ItemPal, unless
@@ -2748,3 +2680,606 @@ AllocHook:
         ld bc, $D000
         jp ALLOC_REST
 Bank2End:
+
+; ======================================================== bank 9: creature colours
+; Natural creature colours (creatures.py is the Python model, monsters.md
+; "Colours"). Entered through Far9 with SVBK = 2 and left with SVBK = 2
+; (Far9 returns into WRAM bank 2); scratch in WRAM bank 3 (NAT_*: NEED, PH
+; and SZ share page $D1, indexed by class), tables in this bank (builder).
+section bank9, $24000, BANK9_ORG
+        db $00, BANK9_SIG               ; $4001: tells bank 9 apart (SigBank)
+
+; Prep8 (map screens, every idle wait): reallocate only when the sprite
+; slots or the area changed since the last allocation (ship voyage into a
+; new area with the LCD on); changed palettes are synced in VBlank.
+; A full reallocation late in the frame could run Prep8 into VBlank, so
+; past NAT_LY (and before VBlank) it waits a frame: the signature is spoilt
+; ($EE is no slot count) so the next idle wait sees the change again.
+NatPrep9:
+        call NatSig
+        ret z
+        ldh a, [rLY]
+        cp NAT_LY
+        jr c, NatAssign9
+        cp 144
+        jr nc, NatAssign9
+        ld a, 3
+        ldh [rSVBK], a
+        ld a, $EE
+        ld [NAT_SIG], a
+        ld a, 2
+        ldh [rSVBK], a
+        ret
+; Map LCD-on (LCD off): always reallocate.
+NatLcd9:
+        call NatSig
+; OBJ palettes NAT_FIRST..NAT_LAST for the loaded sprite slots ($C539 count,
+; $C580 ids): one class per creature / folk / royal / item in slot order
+; (plus folk for the ship on surface maps, MAP_THEME 0); a creature with
+; tougher templates in the area list ($C5C0) is widened to one palette per
+; tier while palettes are left; classes past NAT_LAST share the palette of
+; their nearest-coloured loaded class (NAT_FB). Writes BASE_OBJ (NAT_DIRTY
+; bit per changed palette), OBJPAL of the loaded keys and SHIP_PAL.
+NatAssign9:
+        ld a, [MAP_THEME]
+        push af
+        ld a, 3
+        ldh [rSVBK], a
+        ld hl, NAT_NEED                 ; NEED, PH, SZ = 0
+        xor a
+        ld b, 192
+.z:
+        ld [hl+], a
+        dec b
+        jr nz, .z
+; classes of the loaded slots, in slot order
+        ld de, NAT_ORD
+        call NatCount
+        jr z, .nos
+        ld b, a
+        ld hl, SPRITE_IDS
+.sl:
+        ld a, [hl+]
+        cp $FF                          ; continuation of a large sprite
+        jr z, .sn
+        push hl
+        call NatKey                     ; A = class of id A
+        call NatAdd
+        pop hl
+.sn:
+        dec b
+        jr nz, .sl
+.nos:
+        pop af
+        or a
+        jr nz, .nf
+        ld a, [NAT_FOLK]                ; surface map: the ship's palette
+        call NatAdd
+.nf:
+        ld a, e
+        ld [NAT_N], a
+; tiers wanted: the highest tier of each loaded creature in the area list
+        ld a, [AREA_ALT]
+        ld c, a
+        ld hl, AREA_LIST
+.ls:
+        inc l
+        ld a, [hl+]                     ; type; HL = next pair
+        or a
+        jr z, .le
+        and $7F
+        cp FLOOR_TYPES
+        jr nc, .lnext
+        ld b, a
+        ld a, l
+        sub 2                           ; this pair's address (low byte)
+        cp c
+        ld a, b
+        jr c, .grp
+        add NORMAL_TYPES                ; alt group
+.grp:
+        push hl
+        ld l, a
+        ld h, high(NAT_TPL)
+        ld a, [hl]
+        or a
+        jr z, .lp                       ; tier 0 / not a tiered creature
+        ld b, a
+        and $3F
+        ld l, a
+        ld h, high(NAT_NEED)
+        ld a, [hl]
+        or a
+        jr z, .lp                       ; not loaded
+        ld a, b
+        rlca
+        rlca
+        and 3
+        inc a
+        cp [hl]
+        jr c, .lp
+        ld [hl], a
+.lp:
+        pop hl
+.lnext:
+        ld a, l
+        or a
+        jr nz, .ls                      ; up to $C600
+.le:
+        ld a, [NAT_N]
+        or a
+        jp z, .objpal
+; sizes: 1 each, a creature widened to its tiers while palettes are left
+        ld b, a
+        ld a, NAT_LAST - NAT_FIRST + 1
+        sub b
+        jr nc, .sp
+        xor a
+.sp:
+        ld c, a                         ; C = spare palettes
+        ld de, NAT_ORD
+        ld h, high(NAT_NEED)            ; (NEED / PH / SZ page)
+.sz:
+        ld a, [de]
+        inc e
+        ld l, a
+        ld a, [hl]                      ; tiers wanted
+        set 7, l                        ; L = SZ (low(NAT_SZ) = $80)
+        ld [hl], 1
+        dec a                           ; extra palettes
+        jr z, .szn
+        cp c
+        jr z, .fit
+        jr nc, .szn
+.fit:
+        inc a
+        ld [hl], a
+        dec a
+        cpl
+        inc a
+        add c
+        ld c, a                         ; spare -= extra
+.szn:
+        dec b
+        jr nz, .sz
+; place from NAT_FIRST in order: PH = first palette | TIERED (block > 1);
+; a block past NAT_LAST gets SZ = 0 (shares, below)
+        ld a, [NAT_N]
+        ld b, a
+        ld de, NAT_ORD
+        ld c, NAT_FIRST                 ; next free palette
+.pl:
+        ld a, [de]
+        inc e
+        or low(NAT_SZ)
+        ld l, a
+        ld a, [hl]                      ; size
+        dec a
+        add c
+        cp NAT_LAST + 1
+        jr nc, .ov
+        ld a, [hl]
+        cp 2
+        ld a, c
+        jr c, .one
+        or TIERED
+.one:
+        res 7, l
+        set 6, l                        ; L = PH ($40 + class)
+        ld [hl], a
+        res 6, l
+        set 7, l
+        ld a, [hl]
+        add c
+        ld c, a
+        jr .pn
+.ov:
+        ld [hl], 0
+.pn:
+        dec b
+        jr nz, .pl
+; shared classes: the palette of the first loaded class in NAT_FB
+        ld a, [NAT_N]
+        ld b, a
+        ld de, NAT_ORD
+.sh:
+        ld a, [de]
+        inc e
+        or low(NAT_PH)
+        ld l, a
+        ld a, [hl]
+        or a
+        jr nz, .shn
+        push de
+        ld a, l
+        and $3F
+        ld e, a
+        add a
+        add e
+        ld e, a                         ; 3 x class
+        ld d, high(NAT_FB)
+        ld c, 3
+        push hl
+.fb:
+        ld a, [de]
+        inc e
+        or low(NAT_PH)
+        ld l, a
+        ld a, [hl]
+        and 7
+        jr nz, .fbg
+        dec c
+        jr nz, .fb
+        ld a, NAT_FIRST
+.fbg:
+        pop hl
+        ld [hl], a
+        pop de
+.shn:
+        dec b
+        jr nz, .sh
+; colours: each block into BASE_OBJ (WRAM2), dirty bit per changed palette
+        ld a, [NAT_N]
+        ld b, a
+        ld de, NAT_ORD
+.cl:
+        ld a, [de]
+        inc e
+        push de
+        push bc
+        ld c, a                         ; class
+        or low(NAT_SZ)
+        ld l, a
+        ld h, high(NAT_SZ)
+        ld a, [hl]
+        or a
+        jr z, .cn                       ; shares another class's palette
+        ld b, a                         ; B = palettes
+        res 7, l
+        set 6, l
+        ld a, [hl]
+        and 7
+        push af                         ; first palette
+        ld l, c
+        ld h, 0
+        add hl, hl
+        add hl, hl
+        add hl, hl
+        ld de, NAT_COL
+        add hl, de                      ; HL = its colours (tiers follow)
+        pop af
+        ld c, a
+.blk:
+        push bc
+        ld a, c
+        add a
+        add a
+        add a
+        add low(BASE_OBJ)
+        ld e, a
+        ld d, high(BASE_OBJ)
+        ld a, 2
+        ldh [rSVBK], a
+        call NatCopy8                   ; Z = unchanged
+        ld a, 3
+        ldh [rSVBK], a
+        pop bc
+        call nz, NatDirty
+        inc c
+        dec b
+        jr nz, .blk
+.cn:
+        pop bc
+        pop de
+        dec b
+        jr nz, .cl
+; OBJPAL of every loaded key, SHIP_PAL
+.objpal:
+        call NatCount
+        jr z, .ship
+        ld b, a
+        ld hl, SPRITE_IDS
+.ol:
+        ld a, [hl+]
+        cp $FF
+        jr z, .on
+        push hl
+        and $7E
+        ld e, a
+        call NatKey
+        or low(NAT_PH)
+        ld l, a
+        ld h, high(NAT_PH)
+        ld c, [hl]
+        ld d, high(OBJPAL)
+        ld a, 2
+        ldh [rSVBK], a
+        ld a, c
+        ld [de], a                      ; (id | 1: same graphic, OamPass
+        inc e                           ; reads OBJPAL[id & $7F])
+        ld [de], a
+        ld a, 3
+        ldh [rSVBK], a
+        pop hl
+.on:
+        dec b
+        jr nz, .ol
+.ship:
+        ld a, [NAT_FOLK]
+        or low(NAT_PH)
+        ld l, a
+        ld h, high(NAT_PH)
+        ld a, [hl]
+        and 7
+        ld c, a
+        ld a, 2
+        ldh [rSVBK], a
+        ld a, c
+        or a
+        ret z
+        ld [SHIP_PAL], a
+        ret
+
+; Sprite-slot signature (count, area, flag, 16 ids) against the last one
+; (WRAM3 NAT_SIG), updated. NZ = changed. Returns with SVBK = 2.
+NatSig:
+        ld a, 1
+        ldh [rSVBK], a
+        ld a, [AREA_ID]
+        ld d, a
+        ld a, [AREA_FLAG]
+        ld e, a
+        ld a, 3
+        ldh [rSVBK], a
+        ld c, 0
+        ld hl, NAT_SIG
+        call NatCount
+        call .put
+        ld a, d
+        call .put
+        ld a, e
+        call .put
+        ld de, SPRITE_IDS
+        ld b, 16
+.s:
+        ld a, [de]
+        inc e
+        call .put
+        dec b
+        jr nz, .s
+        ld a, 2
+        ldh [rSVBK], a
+        ld a, c
+        or a
+        ret
+.put:
+        cp [hl]
+        jr z, .same
+        ld [hl], a
+        ld c, 1
+.same:
+        inc l
+        ret
+
+; A = loaded slot count (at most 16), Z = none.
+NatCount:
+        ld a, [SPRITE_COUNT]
+        cp 17
+        jr c, .n
+        ld a, 16
+.n:
+        or a
+        ret
+; A = sprite id: A = its base class. Clobbers HL.
+NatKey:
+        and $7E
+        rrca
+        ld l, a
+        ld h, high(NAT_KEY_CLASS)
+        ld a, [hl]
+        ret
+; A = class: appended to NAT_ORD (DE) unless already there. Clobbers HL.
+NatAdd:
+        ld l, a
+        ld h, high(NAT_NEED)
+        ld a, [hl]
+        or a
+        ret nz
+        ld [hl], 1
+        ld a, l
+        ld [de], a
+        inc e
+        ret
+; 8 bytes HL -> DE (WRAM2 BASE_OBJ, SVBK = 2); NZ if any changed. HL += 8.
+; Clobbers BC.
+NatCopy8:
+        ld bc, $0800
+.c:
+        ld a, [de]
+        cp [hl]
+        jr z, .s
+        ld a, [hl]
+        ld [de], a
+        ld c, 1
+.s:
+        inc hl
+        inc e
+        dec b
+        jr nz, .c
+        ld a, c
+        or a
+        ret
+; NAT_DIRTY |= 1 << C (C = 1-7). Preserves BC, DE, HL.
+NatDirty:
+        push bc
+        ld b, c
+        ld a, 1
+.sh:
+        add a
+        dec b
+        jr nz, .sh
+        ld b, a
+        ldh a, [NAT_DIRTY]
+        or b
+        ldh [NAT_DIRTY], a
+        pop bc
+        ret
+
+; Attract-loop parade (SVBK = 2). The builder gives each page of four
+; graphics its own OBJ palettes, none of them used by the page before it
+; (creatures.parade_plan; the parade shows no player or OBP1 sprite, so 0 and
+; 7 are free too): page k+1's colours go into CRAM while page k is still up
+; and are in place when its sprites appear. NAT_PLIST + 16 x page = the
+; palettes the page loads ($FF-terminated), NAT_PARADE + 64 x page + 8 x p =
+; their colours. PARADE_CUR = the last page fully loaded.
+;
+; ParadePage9 (the parade's LCD-on, LCD off, ParadeOn8): page PARADE_LIST
+; (palettes 1-6 only) into BASE_OBJ; SyncOBJ writes CRAM.
+ParadePage9:
+        ldh a, [PARADE_LIST]
+        ldh [PARADE_CUR], a
+        ldh [PARADE_TGT], a
+        ld c, a
+        xor a
+        ldh [PARADE_STEP], a
+        call NatPage
+        ret nc
+        swap a
+        ld e, a
+        ld d, high(NAT_PLIST)
+.l:
+        ld a, [de]
+        cp $FF
+        ret z
+        push de
+        call NatParadeSrc
+        call NatBase
+        pop de
+        inc e
+        jr .l
+; VBlank (SyncDirty8, LY 144-147): one palette of the page after PARADE_LIST
+; per frame, straight into CRAM (palettes 1-6 also into BASE_OBJ, so a resync
+; keeps them; 0 and 7 only in CRAM, the next LCD-on restores them).
+ParadeStep9:
+        ldh a, [PARADE_LIST]
+        ld c, a
+        ldh a, [PARADE_CUR]
+        cp c
+        jr nz, .other
+        ld a, c                         ; this page loaded: the next one
+        add 5
+        cp low(PARADE_LISTS) + PARADE_LEN
+        ret nc                          ; (the last page)
+        ld c, a
+        jr .t
+.other:
+        ld b, a
+        ld a, c
+        add 5
+        cp b
+        ret z                           ; the next page is loaded already
+.t:
+        ldh a, [PARADE_TGT]             ; C = the page to load
+        cp c
+        jr z, .same
+        ld a, c
+        ldh [PARADE_TGT], a
+        xor a
+        ldh [PARADE_STEP], a
+.same:
+        ldh a, [rLY]
+        sub 144
+        cp 4
+        ret nc
+        call NatPage
+        ret nc
+        swap a
+        ld e, a
+        ldh a, [PARADE_STEP]
+        add e
+        ld e, a
+        ld d, high(NAT_PLIST)
+        ld a, [de]
+        cp $FF
+        jr z, .done
+        ld a, e                         ; STEP + 1
+        and $0F
+        inc a
+        ldh [PARADE_STEP], a
+        ld a, [de]
+        push af
+        call NatParadeSrc               ; HL = colours, A = palette
+        add a
+        add a
+        add a
+        or $80
+        ldh [rOCPS], a
+        ld a, [LAST_OBP0]
+        ld d, a
+        ld bc, $0100 | rOCPD
+        push hl
+        call SyncGroup
+        pop hl
+        pop af
+        jp NatBase
+.done:
+        ld a, c
+        ldh [PARADE_CUR], a
+        ret
+; C = parade list byte: A = B = page, carry set (clear: not a list).
+NatPage:
+        ld a, c
+        sub low(PARADE_LISTS)
+        cp PARADE_LEN
+        ret nc
+        ld b, $FF
+.d:
+        inc b
+        sub 5
+        jr nc, .d
+        ld a, b
+        scf
+        ret
+; A = palette, B = page: HL = NAT_PARADE + 64 x page + 8 x palette. Keeps A, BC.
+NatParadeSrc:
+        push af
+        ld l, b
+        ld h, 0
+        add hl, hl
+        add hl, hl
+        add hl, hl
+        add hl, hl
+        add hl, hl
+        add hl, hl
+        add a
+        add a
+        add a
+        add l
+        ld l, a
+        ld a, h
+        adc high(NAT_PARADE)
+        ld h, a
+        pop af
+        ret
+; A = palette, HL = its colours: BASE_OBJ = them if palette 1-6 (dirty bit
+; if changed). Keeps BC.
+NatBase:
+        cp NAT_FIRST
+        ret c
+        cp NAT_LAST + 1
+        ret nc
+        push bc
+        ld c, a
+        add a
+        add a
+        add a
+        add low(BASE_OBJ)
+        ld e, a
+        ld d, high(BASE_OBJ)
+        push bc
+        call NatCopy8
+        pop bc
+        call nz, NatDirty
+        pop bc
+        ret
+Bank9End:

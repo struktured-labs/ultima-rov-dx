@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+### Changed (natural creature colours, 2026-10-10)
+
+- Monsters use one natural colour per creature everywhere (`rov_palettes.yaml` `creatures`:
+  rats brown, slimes green, skeletons bone, trolls mossy green-grey, ...). A different shade
+  marks only a tougher version of the same sprite (slime, gremlin, skeleton, jagger, troll,
+  snake, centipede). Replaces the green/red/purple tier palettes, the per-area knight theme and
+  the Black Knight palette borrow.
+- OBJ palettes 1-6 are allocated per area to the classes present and re-allocated when the
+  loaded sprites change (outside VBlank, CRAM writes in VBlank only). In the 4 areas that want
+  more than 6 palettes the variants fall back to the base colour.
+- The attract parade preloads each foe page's colours during the previous page.
+- SameBoy: OAM blocked writes 24 (HEAD 25, pre-existing parade OamPass), OBPD 0 blocked.
+
 ### Changed (Black Knight near-black via palette borrow, issue #10, prototype 2026-10-08)
 
 - The Black Knight (`$52`) borrows the `royal` OBJ palette 5 while he is loaded and no other

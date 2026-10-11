@@ -14,6 +14,7 @@ from typing import Any
 
 from . import branding as BR
 from . import game_layout as GL
+from . import creatures as CR
 from . import monsters as MON
 from . import palettes as P
 from . import rom_utils
@@ -21,7 +22,7 @@ from .sm83asm import assemble
 
 DX_SIZE = 0x40000
 RST28, RST30 = 0xEF, 0xF7
-MAX_THEMES = 4    # dx.asm MAX_THEMES: WRAM theme slots (BG_THEMES / THEME_OBJ)
+MAX_THEMES = 4    # dx.asm MAX_THEMES: WRAM theme slots (BG_THEMES)
 ROM_THEMES = 32   # dx.asm ROM_THEMES: themes stored in bank 8
 MAX_SCENE_LUTS = 4   # dx.asm SCENE_LUTS: 4 x 256 bytes before LUT_TITLE_ROM
 MP_SETS = 16      # dx.asm MP_SETS: distinct metatile palette maps (METAPAL), shared via MP_IDX
@@ -55,12 +56,10 @@ class Tables:
     item_pal: bytes = bytes(64)       # BG palette per item id (inventory + side-panel icons)
     ui_theme: int = 0                 # theme of text screens, dialogs and the start menu
     menu_obj: bytes = bytes(8)        # start-menu cursor colours (OBJ palette 7 in menu mode)
-    theme_obj: bytes = bytes(32)      # per WRAM slot: 4 colours of OBJ palette THEME_OBJ_SLOT
     fire_obj: bytes = bytes(8)        # wand fireball colours (OBJ palette 7 on map screens)
     ship_pal: int = 0                 # OBJ palette of the sailing ship (sprite in an unloaded slot)
     text_ranges: bytes = b"\0\0"   # text screens, then champion select: count, (first, last, pal)*
     theme_bg_rom: bytes = bytes(64 * ROM_THEMES)   # BG base colours per ROM theme (bank 8)
-    theme_obj_rom: bytes = bytes(8 * ROM_THEMES)   # OBJ palette 5 per ROM theme (bank 8)
     rt_slot: bytes = bytes(ROM_THEMES)             # WRAM slot per ROM theme
     theme_names: tuple = ()                        # ROM theme names, index = theme
     first_map: int = 0                             # ROM theme initially in WRAM slot SLOT_MAP
@@ -74,11 +73,7 @@ class Tables:
     card_tint: bytes = bytes(128)                  # 16 x 8: title-card UI palette per dungeon (bank 8 CARD_TINT)
     card_ui: int = 0                               # BG palette index of the UI palette (CARD_TINT target)
     digit_pal: int = -1                            # BG palette of the gold side-panel digits (-1: off)
-    knight_id: int = 0x52                          # Black Knight sprite id (obj_categories knight_borrow)
-    knight_slot: int = 5                           # OBJ palette it borrows while no royal sprite is loaded
-    knight_rom: bytes = bytes(8)                   # its colours then (bank 8 KNIGHT_ROM)
-    royal_rom: bytes = bytes(8)                    # the borrowed palette's own colours (bank 8 ROYAL_ROM)
-    knight_fallback: int = 0                       # its OBJ palette while a royal sprite is loaded (static OBJPAL)
+
 
 
 def _index(names: list[str], name: str, what: str) -> int:
@@ -111,18 +106,30 @@ def gold_digits(original: bytes) -> bytes:
     return bytes(out)
 
 
-def parade_palettes(original: bytes, objpal: bytes) -> bytes:
-    """OBJ palette per byte of the attract-loop parade lists (bank 7 $7CA6):
-    each graphic gets its gameplay palette (OBJPAL of its sprite id; monsters
-    the base tier), the $FF terminators PLAYER_PAL (0)."""
+def parade_plan(original: bytes, cr: CR.Creatures) -> CR.ParadePlan:
+    """Attract-loop parade (bank 7 $7CA6, verified): per page of four graphics
+    the OBJ palette of each list byte (PARADE_PAL_ROM, the $FF terminators
+    PLAYER_PAL 0), the palettes it loads and their colours (bank 9 NAT_PLIST /
+    NAT_PARADE; creatures.parade_plan)."""
     off = GL.file_offset(*GL.PARADE_LISTS)
     got = bytes(original[off:off + len(GL.PARADE_LIST_BYTES)])
     if got != GL.PARADE_LIST_BYTES:
         raise PatchError(f"parade lists at 7:{GL.PARADE_LISTS[1]:04x}: expected {GL.PARADE_LIST_BYTES.hex()} got {got.hex()}")
-    out = bytearray()
-    for b in got:
-        out.append(0 if b == 0xFF else objpal[(b & 0x3F) | ((b & 0x80) >> 1)])
-    return bytes(out)
+    try:
+        plan = CR.parade_plan(cr, got)
+    except CR.CreatureError as e:
+        raise PatchError(f"parade: {e}") from None
+    for k, load in enumerate(plan.loads):        # preloaded while the page before is up
+        if k and set(load) & set(plan.pages[k - 1].values()):
+            raise PatchError(f"parade page {k} loads a palette page {k - 1} shows")
+    return plan
+
+
+def creatures(original: bytes, pal_data: dict[str, Any], obj_cat: dict[str, Any]) -> CR.Creatures:
+    try:
+        return CR.build(pal_data, obj_cat, MON.templates(original))
+    except CR.CreatureError as e:
+        raise PatchError(f"creatures: {e}") from None
 
 
 def build_tables(pal_data: dict[str, Any], bg_cat: dict[str, Any], obj_cat: dict[str, Any]) -> Tables:
@@ -167,9 +174,13 @@ def build_tables(pal_data: dict[str, Any], bg_cat: dict[str, Any], obj_cat: dict
             if not 0 <= i < 128 or i & 1:
                 raise PatchError(f"sprite id {i:#x} must be even and < $80")
             objpal[i] = objpal[i | 1] = idx
-    tier_pals = [_index(obj_names, n, "tier_palettes") for n in obj_cat.get("tier_palettes") or []]
-    if tier_pals != [1, 2, 3]:
-        raise PatchError("tier_palettes must name OBJ palettes 1, 2, 3 (base, stronger, strongest; dx.asm MONSTER_PAL)")
+    for name, ent in (pal_data.get("creatures") or {}).items():
+        for i in ent.get("ids") or []:          # (creatures.build validates)
+            if 0 <= i < 128:
+                objpal[i] = objpal[i | 1] = 1   # until the first map LCD-on (NatLcd9)
+    for k in ("tier_palettes", "knight_borrow"):
+        if obj_cat.get(k) is not None:
+            raise PatchError(f"obj_categories `{k}` is gone: creature colours are rov_palettes.yaml `creatures`")
     player = _index(obj_names, obj_cat.get("player", obj_names[0]), "player")
     if player != 0:
         raise PatchError("the player palette must be OBJ palette 0 (PLAYER_PAL in dx.asm)")
@@ -291,18 +302,8 @@ def build_tables(pal_data: dict[str, Any], bg_cat: dict[str, Any], obj_cat: dict
     if len(fire) != 4:
         raise PatchError("wand_fire needs 4 colours")
     fire_obj = b"".join(P.bgr555(c).to_bytes(2, "little") for c in fire)
-    slot_name = obj_names[5]
-    ot = pal_data.get("obj_themes") or {}
-    for tname in ot:
-        if tname not in theme_names[1:]:
-            raise PatchError(f"obj_themes.{tname} is not an area_themes entry")
-        for pname in ot[tname]:
-            if pname != slot_name:
-                raise PatchError(f"obj_themes.{tname}.{pname}: only {slot_name!r} (OBJ palette 5) can follow the theme")
-    obj_sets = []
-    for tname in theme_names:
-        spec = (ot.get(tname) or {}).get(slot_name) or pal_data["obj_palettes"][slot_name]
-        obj_sets.append(b"".join(P.bgr555(c).to_bytes(2, "little") for c in spec["colors"]))
+    if pal_data.get("obj_themes"):
+        raise PatchError("obj_themes: creatures keep their natural colour in every area (rov_palettes.yaml `creatures`)")
     # WRAM slots: 0 surface (theme 0), 1 the current dungeon (cache filled by
     # bank-8 MapTheme; starts with the first map theme), 2 entrance, 3 UI.
     if entrance_theme and entrance_theme == ui_theme:
@@ -319,10 +320,8 @@ def build_tables(pal_data: dict[str, Any], bg_cat: dict[str, Any], obj_cat: dict
     first_map = next((t for t in range(1, len(theme_names)) if rt_slot[t] == SLOT_MAP), 0)
     slot_theme = [0, first_map, entrance_theme, ui_theme]
     bg_themes = b"".join(bg_sets[t] for t in slot_theme)
-    theme_obj = bytearray(b"".join(obj_sets[t] for t in slot_theme))
     pad = ROM_THEMES - len(theme_names)
     theme_bg_rom = b"".join(bg_sets) + bytes(64 * pad)
-    theme_obj_rom = b"".join(obj_sets) + bytes(8 * pad)
     sets: list[bytes] = []
     mp_idx = bytearray(ROM_THEMES)
     for t, mp in enumerate(metapals):
@@ -432,47 +431,10 @@ def build_tables(pal_data: dict[str, Any], bg_cat: dict[str, Any], obj_cat: dict
     return Tables(bytes(objpal), enc["bg"], enc["obj"], lut_title, bytes(lut_game), lut_logo,
                   b"".join(metapals), bytes(area_theme), bg_themes, picture_lut, SLOT_ENTRANCE if entrance_theme else 0,
                   flat_bg, bytes(fix),
-                  lut_menu, bytes(item_pal), SLOT_UI if ui_theme else 0, menu_obj, bytes(theme_obj), fire_obj, ship_pal,
-                  bytes(text_ranges), theme_bg_rom, theme_obj_rom, bytes(rt_slot), tuple(theme_names), first_map,
+                  lut_menu, bytes(item_pal), SLOT_UI if ui_theme else 0, menu_obj, fire_obj, ship_pal,
+                  bytes(text_ranges), theme_bg_rom, bytes(rt_slot), tuple(theme_names), first_map,
                   bytes(mp_idx), hero_obj, hero_bg, bytes(scene_entries), bytes(scene_luts), bytes(scene_obj),
-                  tuple(scene_names), bytes(card_tint), ui, digit_pal, *knight_borrow(pal_data, obj_cat, obj_names, objpal, enc["obj"]))
-
-
-def knight_borrow(pal_data: dict[str, Any], obj_cat: dict[str, Any], obj_names: list[str], objpal: bytes | bytearray,
-                  obj_enc: bytes) -> tuple[int, int, bytes, bytes, int]:
-    """Black Knight context toggle (issue #10): obj_categories `knight_borrow`
-    {id, slot, colors} names the sprite, the OBJ palette it borrows while no
-    other sprite of that palette is loaded, and its colours then (a key of
-    rov_palettes.yaml `knight_colors`, or 4 colours). Its static OBJPAL entry
-    (ids:) is the fallback for screens that also load a royal sprite.
-    Without `knight_borrow` the borrow keeps the fallback's colours."""
-    spec = obj_cat.get("knight_borrow") or {}
-    kid = int(spec.get("id", 0x52))
-    if not 0 <= kid < 128 or kid & 1:
-        raise PatchError(f"knight_borrow id {kid:#x} must be even and < $80")
-    slot = _index(obj_names, spec.get("slot", obj_names[5]), "knight_borrow slot")
-    fallback = objpal[kid]
-    if fallback == slot:
-        raise PatchError(f"knight_borrow: sprite {kid:#x} must not be listed under {obj_names[slot]!r} "
-                         "(its ids: entry is the fallback while a royal sprite is loaded)")
-    if fallback == 0 or fallback == 7:
-        raise PatchError("knight_borrow fallback must be an OBJ palette 1-6 (0 = player, 7 = OBP1 / wand fire)")
-    royal = obj_enc[8 * slot:8 * slot + 8]
-    colors = spec.get("colors")
-    if colors is None:
-        knight = obj_enc[8 * fallback:8 * fallback + 8]
-    else:
-        if isinstance(colors, str):
-            table = pal_data.get("knight_colors") or {}
-            if colors not in table:
-                raise PatchError(f"knight_borrow colors {colors!r} is not a knight_colors entry")
-            colors = table[colors]
-        if not isinstance(colors, list) or len(colors) != 4:
-            raise PatchError("knight_borrow colors need 4 colours")
-        knight = b"".join(P.bgr555(c).to_bytes(2, "little") for c in colors)
-    if not any(objpal[i] == slot for i in range(128) if i & 0x7E != kid):
-        raise PatchError(f"knight_borrow slot {obj_names[slot]!r} has no other sprite: nothing to borrow from")
-    return kid, slot, knight, royal, fallback
+                  tuple(scene_names), bytes(card_tint), ui, digit_pal)
 
 
 def _asm_source() -> str:
@@ -550,7 +512,7 @@ def build(original: bytes, pal_data: dict[str, Any], bg_cat: dict[str, Any], obj
             or syms["LUT_LOGO_ROM"] + 256 > syms["SCENES"] or syms["SCENES"] + 256 > syms["SCENE_OBJ"]
             or syms["SCENE_OBJ"] + 0xF0 > syms["BANK_SIG"] or syms["BANK_SIG"] + 7 > syms["BRAND_TILES"]):
         raise PatchError("bank 8 scene table layout overlap")
-    if syms["W2bEnd"] > syms["THEME_OBJ"] or syms["BG_THEMES"] + 64 * MAX_THEMES > syms["UnloadedPal"]:
+    if syms["W2bEnd"] > syms["FIRE_OBJ"] or syms["BG_THEMES"] + 64 * MAX_THEMES > syms["UnloadedPal"]:
         raise PatchError(f"WRAM2 section wram2b overlaps BG_THEMES or ends past $E000 ({syms['W2bEnd']:#x})")
     if syms["W2CodeEnd"] > syms["OBJPAL"]:
         raise PatchError(f"WRAM2 code too large (ends {syms['W2CodeEnd']:#x})")
@@ -561,8 +523,8 @@ def build(original: bytes, pal_data: dict[str, Any], bg_cat: dict[str, Any], obj
             or syms["ITEM_CACHE"] + syms["FLOOR_SLOTS"] > syms["SLOTG"]
             or (syms["ITEM_CACHE"] & 0xFF) != (syms["ITEM_IDS"] & 0xFF) + 0x20
             or syms["FLOOR_TILES"] + 4 * syms["FLOOR_SLOTS"] > 0x80
-            or syms["MONSTER_PAL"] != 1 or syms["TEMPLATE_BASE"] != MON.TEMPLATE_ADDR):
-        raise PatchError("REC_TIER / MONSTER_PAL / TEMPLATE_BASE layout")
+            or syms["TIERED"] != 0x80 or syms["TEMPLATE_BASE"] != MON.TEMPLATE_ADDR):
+        raise PatchError("REC_TIER / TIERED / TEMPLATE_BASE layout")
     tier_len = (MON.COUNT + 1) // 2
     if syms["Bank2End"] > syms["TIER_TAB"] or syms["TIER_TAB"] + tier_len > 0x8000:
         raise PatchError(f"bank 2 hook ({syms['Bank2End']:#x}) and TIER_TAB overlap or overflow")
@@ -626,10 +588,11 @@ def build(original: bytes, pal_data: dict[str, Any], bg_cat: dict[str, Any], obj
     w2(syms["OBJPAL"], t.objpal, "OBJPAL")
     w2(syms["ENTRY_TIER"], bytes(41), "ENTRY_TIER")
     w2(syms["REC_TIER"], bytes(16) + bytes([0xFE] * syms["FLOOR_SLOTS"]), "REC_TIER/ITEM_CACHE")
-    # monster colour tiers per template (bank 2, read by AllocHook)
+    # creature colour tiers per template (bank 2, read by AllocHook): only
+    # creatures with variants (rov_palettes.yaml `creatures`)
+    cr = creatures(original, pal_data, obj_cat)
     temps = MON.templates(original)
-    tiered = {i for i in range(0, 128, 2) if t.objpal[i] == syms["MONSTER_PAL"]}
-    tier_tab = MON.tier_table(temps, MON.tiers(temps, tiered))
+    tier_tab = MON.tier_table(temps, MON.tiers(temps, set(cr.tiered_keys)))
     tier_off = GL.file_offset(2, syms["TIER_TAB"])
     if any(b != 0xFF for b in original[tier_off:tier_off + len(tier_tab)]):
         raise PatchError("TIER_TAB overwrites non-free bytes")
@@ -643,9 +606,6 @@ def build(original: bytes, pal_data: dict[str, Any], bg_cat: dict[str, Any], obj
         raise PatchError("HERO_CACHED must follow MAP_CACHED")
     w2(syms["MENU_OBJ"], t.menu_obj, "MENU_OBJ")
     w2(syms["FIRE_OBJ"], t.fire_obj, "FIRE_OBJ")
-    if syms["THEME_OBJ_SLOT"] != 5 or syms["THEME_OBJ"] + len(t.theme_obj) > syms["FIRE_OBJ"]:
-        raise PatchError("THEME_OBJ layout")
-    w2(syms["THEME_OBJ"], t.theme_obj, "THEME_OBJ")
     if len(t.text_ranges) > syms["TEXT_RANGES_LEN"]:
         raise PatchError(f"text_screen + champion_screen ranges: {len(t.text_ranges)} bytes > {syms['TEXT_RANGES_LEN']}")
     w2(syms["TEXT_RANGES"], t.text_ranges, "TEXT_RANGES")
@@ -657,7 +617,6 @@ def build(original: bytes, pal_data: dict[str, Any], bg_cat: dict[str, Any], obj
     w2(syms["BG_THEMES"], t.bg_themes, "BG_THEMES")
     put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["AREA_THEME"]), t.area_theme, "AREA_THEME")
     put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["THEME_BG_ROM"]), t.theme_bg_rom, "THEME_BG_ROM")
-    put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["THEME_OBJ_ROM"]), t.theme_obj_rom, "THEME_OBJ_ROM")
     put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["RT_SLOT"]), t.rt_slot, "RT_SLOT")
     put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["MP_IDX"]), t.mp_idx, "MP_IDX")
     # scenes: per-site theme / picture LUT / OBJ palette 0, and the bank signatures
@@ -678,25 +637,33 @@ def build(original: bytes, pal_data: dict[str, Any], bg_cat: dict[str, Any], obj
     put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["CARD_TINT"]), t.card_tint, "CARD_TINT")
     put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["CARD_UI"]), bytes([(syms["BASE_BG"] + 8 * t.card_ui) & 0xFF]), "CARD_UI")
     put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["GOLD_DIGITS"]), gold_digits(original), "GOLD_DIGITS")
-    put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["PARADE_PAL_ROM"]), parade_palettes(original, t.objpal), "PARADE_PAL_ROM")
-    # Black Knight context toggle (KnightScan8 / KnightSet8 / KnightSync8)
+    plan = parade_plan(original, cr)
+    put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["PARADE_PAL_ROM"]), plan.pal, "PARADE_PAL_ROM")
+    # natural creature colours (bank 9: NatPrep9 / NatLcd9 / ParadePage9, creatures.py model)
     hram_free = {a + i for a, n in GL.FREE_HRAM for i in range(n)}
     hr_used = {syms[k] for k in ("HR_DISPATCH", "HR_LCDMODE", "HR_SLOTG", "HR_CGB", "PARADE_LIST", "PARADE_ON")}
-    if (syms["KNIGHT_ID"] != t.knight_id or syms["KNIGHT_SLOT"] != t.knight_slot
-            or syms["KNIGHT_SLOT"] != syms["THEME_OBJ_SLOT"] or syms["KNIGHT_DIRTY"] not in hram_free
-            or syms["KNIGHT_DIRTY"] in hr_used
-            or syms["KNIGHT_ROM"] < syms["PARADE_PAL_ROM"] + syms["PARADE_LEN"]
-            or syms["ROYAL_ROM"] != syms["KNIGHT_ROM"] + 8 or syms["KNIGHT_FALLBACK"] != syms["ROYAL_ROM"] + 8
-            or syms["KNIGHT_FALLBACK"] >= 0x8000 or syms["KNIGHT_MODE"] != 8
-            or syms["KNIGHT_LO"] < syms["ENTRY_TIER"] + 41 or syms["KNIGHT_HI"] != syms["KNIGHT_LO"] + 1
-            or syms["KNIGHT_HI"] >= syms["W2C_ORG"]
-            or t.royal_rom != t.base_obj[8 * t.knight_slot:8 * t.knight_slot + 8]
-            or t.objpal[t.knight_id] != t.knight_fallback or t.objpal[t.knight_id | 1] != t.knight_fallback):
-        raise PatchError("Black Knight borrow layout: KNIGHT_ID / KNIGHT_SLOT / KNIGHT_DIRTY / KNIGHT_ROM")
-    if pal_data.get("obj_themes"):
-        raise PatchError("obj_themes and the Black Knight borrow both rewrite OBJ palette 5")
-    put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["KNIGHT_ROM"]), t.knight_rom + t.royal_rom + bytes([t.knight_fallback]),
-        "KNIGHT_ROM/ROYAL_ROM/KNIGHT_FALLBACK")
+    nat_tabs = [("NAT_KEY_CLASS", cr.key_class), ("NAT_TIERS", cr.class_tiers), ("NAT_TPL", cr.tpl),
+                ("NAT_FB", cr.fallback), ("NAT_COL", cr.class_col), ("NAT_PARADE", plan.colors),
+                ("NAT_PLIST", plan.plist), ("NAT_FOLK", bytes([cr.folk]))]
+    nat_hr = [syms[k] for k in ("NAT_DIRTY", "PARADE_CUR", "PARADE_STEP", "PARADE_TGT")]
+    sig9 = syms["BANK9_SIG"]
+    if (syms["Bank9End"] > syms["NAT_KEY_CLASS"] or any(syms[k] & 0xFF for k, _ in nat_tabs)
+            or syms["BANK9_SIG_ADDR"] != 0x4001 or syms["BANK9_ORG"] != 0x4000
+            or sig9 in sig or sig9 == rom[0x4000 * 8 + 1] or rom[0x4000 * 9 + 1] != sig9
+            or syms["NAT_FIRST"] != CR.FIRST_PAL or syms["NAT_LAST"] != CR.LAST_PAL
+            or syms["NORMAL_TYPES"] != MON.NORMAL_TYPES or syms["FLOOR_TYPES"] != CR.FLOOR_TYPES
+            or syms["AREA_LIST"] != CR.LIST_ADDR or syms["SYNC_MODE"] != 8
+            or set(nat_hr) - hram_free or set(nat_hr) & hr_used or len(set(nat_hr)) != 4 or syms["HELPER"] <= max(nat_hr)
+            or syms["NAT_NEED"] != 0xD100 or syms["NAT_PH"] != 0xD140 or syms["NAT_SZ"] != 0xD180
+            or syms["NAT_SIG"] + 19 > syms["NAT_NEED"] or syms["NAT_ORD"] + 17 > syms["NAT_N"]
+            or len(cr.names) + 1 > 0x40 or len(cr.tpl) > 256 or len(plan.colors) != 64 * 5 or len(plan.plist) != 16 * 5
+            or any(p not in range(syms["NAT_FIRST"], syms["NAT_LAST"] + 1) for p in plan.loads[0])):
+        raise PatchError("natural colour layout: bank 9 / NAT_* / BANK9_SIG")
+    end = syms["NAT_FOLK"] + 1
+    for (k, data), nxt in zip(nat_tabs, [syms[k] for k, _ in nat_tabs[1:]] + [end]):
+        if syms[k] + len(data) > nxt or nxt > 0x8000:
+            raise PatchError(f"{k}: {len(data)} bytes overflow")
+        put(GL.file_offset(9, syms[k]), data, k)
     w2(syms["SLOTPAL"], bytes([t.metapal[0]] * 16), "SLOTPAL")
     put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["LUT_TITLE_ROM"]), t.lut_title, "LUT_TITLE_ROM")
     if syms["HERO_BG"] != syms["LUT_GAME"]:
