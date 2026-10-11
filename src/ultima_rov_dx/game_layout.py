@@ -127,6 +127,31 @@ HOOKS: tuple[Hook, ...] = (
     Hook("parade_gfx_page", file_offset(7, 0x48D3), bytes.fromhex("d1cdee49"),
          "attract-loop parade, next pages (7:$48C8): pop de; call $49EE -> call ParadeLoad"),
 )
+# Portrait shade remaps (data only; dx_patch.remap_tiles). Some portrait tiles hold hair in
+# the same shade as a hat's fill, so no tile palette can colour both (Carmelo, v5 review). The DX
+# build swaps shades in those tiles so hat and hair fall on different palette entries:
+# (hook, {old shade: new shade}, pixels kept as they are: (tile, row, col) within the hook).
+# * Finn ($13: bank 2 $7933, 16 tiles x 16 bytes), tiles 1-3, the cap's middle and right end:
+#   the two rows under the brim are his fringe in shade 2 like the cap's blue stripes. Stripes
+#   2 -> 1, the fringe stays 2, the light-blue edge pixels 1 -> 0 (palette finn_cap).
+# * Zoltan ($12: $7833), tiles 0-2, the bandana: its last row is his hairline (shade 1 / 2),
+#   the band purple shade 2. Band 2 -> 1, hairline 1 -> 2, hairline shade-2 pixels kept.
+# * Zoltan tile 11, the bandana's knot: purple shade 2 next to the edge of his beard (shade 1).
+#   Swapped (palette zoltan_band: shade 1 purple, shade 2 brown).
+FINN_FRINGE = frozenset({(0, 6, 6), (0, 7, 4), (0, 7, 5),                        # (tile, row, col)
+                         (1, 6, 1), (1, 6, 2), (1, 6, 4), (1, 6, 5), (1, 6, 6), (1, 6, 7),
+                         (1, 7, 1), (1, 7, 2), (1, 7, 5), (1, 7, 7), (2, 7, 0), (2, 7, 1)})
+PORTRAIT_REMAPS: tuple[tuple[Hook, dict[int, int], frozenset[tuple[int, int, int]]], ...] = (
+    (Hook("finn_cap_tiles", file_offset(2, 0x7943),
+          bytes.fromhex("ffff009f002000cf003003470c9e103c8000f8f00e0c03ff0000ffff006f00650000000000008000c0804040e0c030e0"),
+          "Finn portrait tiles 1-3 (cap and fringe)"), {1: 0, 2: 1}, FINN_FRINGE),
+    (Hook("zoltan_band_tiles", file_offset(2, 0x7833),
+          bytes.fromhex("000001010203040505070b0f0f0f08167f7f80ef00ff80fd00df00ffffff1008c0c03cfc03ff01f700ff00fbf0ff7b1f"),
+          "Zoltan portrait tiles 0-2 (bandana and hairline)"), {1: 2, 2: 1},
+     frozenset({(0, 7, 3), (0, 7, 5), (0, 7, 6), (1, 7, 4), (2, 7, 5)})),
+    (Hook("zoltan_knot_tile", file_offset(2, 0x7833 + 16 * 11), bytes.fromhex("60607878e4fce2eef97df57fa92fe767"),
+          "Zoltan portrait tile 11 (bandana knot and beard edge)"), {1: 2, 2: 1}, frozenset()),
+)
 PALETTE_INIT_HOOK = HOOKS[0]
 VBLANK_HOOK = HOOKS[1]   # OAM DMA is called from ~10 sites, so the hook is the HRAM routine itself
 TILEMAP_WRITER_HOOKS = HOOKS[2:4]

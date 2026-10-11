@@ -19,7 +19,19 @@
   blade stays with the champion.
 - Portraits: Lord British (robe red off the hair), Chuckles (brow and ear skin), Utomo,
   Taynith (cloak off the face), Penumbra (hairline), Eep Eep (the hole under him earth brown,
-  not a red puddle), Gnu Gnu (neck and jaw stay skin; shirt folds red).
+  not a red puddle), Gnu Gnu (neck and jaw stay skin; shirt folds red), Johann (eyebrows
+  brown, not olive; the left edge of his jaw skin), Loubet (left eye skin; his short beard
+  brown, the coat stays teal), Melissa (cheek beside the nose skin, not hood red), Zoltan
+  (hairline under the bandana and the beard edge brown, not lavender / purple), Finn (fringe
+  under the cap brown; the cap keeps its blue stripes). Finn's fringe and Zoltan's hairline
+  shared a shade with the cap / bandana fill inside the same tiles, so the DX build remaps
+  those tiles' shades (`game_layout.PORTRAIT_REMAPS`, data only, original bytes verified)
+  and colours them with `finn_cap` / `zoltan_band`. Pixel audit of every portrait (face and
+  hair pixels against hat / hood / clothes palettes): nothing else found.
+- Rune shrine: the champion no longer flashes between his colours and a creature colour while
+  he walks up to the altar. Off the map, `SlotCount` now reports no loaded monster slots, so
+  the walk frames (tiles $80-$8F, which the dungeon's stale slot count made creature
+  palette 1) stay in the champion's palette. The original keeps OBP0 throughout the walk.
 - Floor items: heart key red, rock grey; the Cavern of Selfishness boulders and cobbles grey
   stone. Item $17 (was labelled "lamp") is the Lightning Amulet: gold on the floor, in the
   menu and on the side panel.

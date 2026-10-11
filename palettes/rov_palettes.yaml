@@ -79,6 +79,7 @@ portrait_palettes:
   jester_red:      { colors: ["#FFF8E8", "#E83838", "#982028", "#400810"], bold: true, why: "Chuckles' right hat lobe and hair: map body red. BOLD: the lobe is a shade-1 fill, red at 208 would be pink" }
   jester_green:    { colors: ["#FFF8E8", "#98F09F", "#27B733", "#0A270C"], why: "Chuckles' left hat lobe: map trim green" }
   melissa_rose:    { colors: ["#FFF8E8", "#F9B8D0", "#DF477F", "#3E0F21"], why: "Melissa's hood: map rose" }
+  melissa_rim:     { colors: ["#FFF8E8", "#F9B8D0", "#A86848", "#3E0F21"], why: "Melissa's hood edge tiles left of her face: hood lining rose light and rose line, shade 2 skin shading (there it is only the edge of her cheek and nose shadow)" }
   penumbra_indigo: { colors: ["#FFF8E8", "#C4C7FA", "#686FD9", "#14184E"], why: "Penumbra's hair and robe: map indigo" }
   penumbra_hairline: { colors: ["#FFF8E8", "#F0C0A0", "#A86848", "#14184E"], why: "Penumbra's hairline tiles: skin light and shading (forehead, eyes) with her indigo hair line" }
   taynith_forest:  { colors: ["#FFF8E8", "#A1E8AF", "#31A848", "#0B2811"], why: "Taynith's hood and robe: map forest green" }
@@ -86,9 +87,13 @@ portrait_palettes:
   ariana_gold:     { colors: ["#FFF8E8", "#F7CF63", "#A07B17", "#271F0A"], why: "Ariana's hair: map gold (colour 2)" }
   utomo_saffron:   { colors: ["#FFF8E8", "#FCC688", "#BF6D10", "#2F1C05"], why: "Utomo's topknot and shoulders: map saffron (only outline pixels there)" }
   zoltan_purple:   { colors: ["#FFF8E8", "#DFBDF3", "#A757D5", "#2D0F3E"], why: "Zoltan's bandana and its tail: map purple" }
+  zoltan_band:     { colors: ["#FFF8E8", "#AC5CDA", "#A86848", "#2D0F3E"], bold: true, why: "Zoltan's bandana and knot tiles after the DX shade remap (game_layout.PORTRAIT_REMAPS): band purple in shade 1, his hairline under the band and the beard edge beside the knot in shade 2 skin-shading brown, purple line. BOLD: the band is a shade-1 fill" }
   finn_blue:       { colors: ["#FFF8E8", "#B7D3F7", "#4588DE", "#0A203B"], why: "Finn's striped cap and collar: map sailor blue" }
+  finn_cap:        { colors: ["#FFF8E8", "#4588DE", "#A86848", "#0A203B"], bold: true, why: "Finn's cap middle tiles after the DX shade remap (game_layout.PORTRAIT_REMAPS): stripes sailor blue in shade 1, the fringe under the brim in shade 2 skin-shading brown like the rest of his hair, cap line. BOLD: the stripe blue is a shade-1 fill" }
   loubet_teal:     { colors: ["#FFF8E8", "#98E7ED", "#189FA9", "#06282A"], why: "Loubet's hair and coat: map teal" }
+  loubet_beard:    { colors: ["#FFF8E8", "#98E7ED", "#A86848", "#06282A"], why: "Loubet's beard tiles: his short beard (shade 2/3 dither under the chin) skin-shading brown like his side locks, the coat below keeps teal light and line" }
   johann_olive:    { colors: ["#FFF8E8", "#D0DD77", "#7F8E23", "#1C1F08"], why: "Johann's hair and collar: map olive" }
+  johann_brow:     { colors: ["#FFF8E8", "#D0DD77", "#A86848", "#1C1F08"], why: "Johann's brow tiles: hair light olive and olive line, shade 2 skin shading so his eyebrows (shade 2/3 along the tile bottom) read brown like his moustache, not olive" }
   eep_earth:       { colors: ["#FFF8E8", "#E4C898", "#9C7046", "#22160C"], why: "Eep Eep's hole: sandy rim, earth-brown shading, dark pit" }
   royal_gold:      { colors: ["#FFF8E8", "#FBCF59", "#A87E0E", "#282007"], why: "crowns: gold" }
   gnu_shoulder:    { colors: ["#FFF8E8", "#F8CCA0", "#E04848", "#4A0C14"], why: "Gnu Gnu's shoulder tiles: skin light (neck and jaw share shade 1 with the shirt fill), shirt folds royal red at ecffaca mid luminance, royal-red line" }
@@ -134,22 +139,22 @@ dialog_portraits:
       tiles: ["IIII", "IHHI", "I...", "I..."], pals: { I: penumbra_indigo, H: penumbra_hairline }, why: "hair and robe indigo, face skin. Row 2 middle tiles are the hairline: the fringe is all line pixels over her forehead and eyes, so penumbra_hairline keeps skin light and shading with the indigo line (v5 review: the fringe was skin-palette brown)" }
   johann:
     { portrait: 0x10, colors: skin,
-      tiles: ["OOOO", "O..O", "O..O", "OOOO"], pals: { O: johann_olive }, why: "hair and collar olive, face skin" }
+      tiles: ["OBBO", "...O", "...O", "OOOO"], pals: { O: johann_olive, B: johann_brow }, why: "hair and collar olive, face skin. Row 1 middle tiles end in his eyebrows (shade 2, olive made them green) and take johann_brow; the left column middle tiles hold only the hair outline plus the left edge of his cheek and jaw (olive made the lower-left chin green), so they stay skin (Carmelo, v5 review)" }
   loubet:
     { portrait: 0x11, colors: skin,
-      tiles: ["TTTT", "T..T", "T...", "TTTT"], pals: { T: loubet_teal }, why: "hair and coat teal, face skin" }
+      tiles: ["TTTT", "T...", "T...", "TBBT"], pals: { T: loubet_teal, B: loubet_beard }, why: "cap, hair tail and coat teal, face skin. Row 2 right tile is his left eye plus a lock of hair (teal put blue in the eye): skin, the lock brown like the one on the left. The bottom middle tiles start with a short beard (a 2/3 dither under the chin, not skin) that teal made blue: loubet_beard browns it and keeps the coat teal (Carmelo, v5 review)" }
   zoltan:
     { portrait: 0x12, colors: skin,
-      tiles: ["PPPP", "...P", "...P", "...."], pals: { P: zoltan_purple }, why: "bandana and its knot purple, face and beard skin" }
+      tiles: ["ZZZP", "...P", "...Z", "...."], pals: { P: zoltan_purple, Z: zoltan_band }, why: "bandana and its knot purple, face and beard skin. The bandana tiles' last row is his hairline and the knot tile's left column the edge of his beard; they shared shades with the band (lavender / purple hair): the DX build remaps those tiles and zoltan_band browns the hair (pixel audit, v5 review)" }
   finn:
     { portrait: 0x13, colors: skin,
-      tiles: ["BBBB", "....", "....", "B..B"], pals: { B: finn_blue }, why: "cap and collar blue, face and hair skin" }
+      tiles: ["BCCC", "....", "....", "B..B"], pals: { B: finn_blue, C: finn_cap }, why: "cap and collar blue, face and hair skin. The cap's middle and right tiles end in his fringe, which shared shade 2 with the stripes and was blue (Carmelo, v5 review): the DX build remaps those three tiles (stripes shade 1) and finn_cap browns the fringe" }
   ariana:
     { portrait: 0x14, colors: skin,
       tiles: ["GGGG", "G..G", "G..G", "G..G"], pals: { G: ariana_gold }, why: "hair gold all round, face skin" }
   melissa:
     { portrait: 0x16, colors: skin,
-      tiles: ["RRRR", "R..R", "R..R", "R..R"], pals: { R: melissa_rose }, why: "hood rose all round, face skin" }
+      tiles: ["RRRR", "K..R", "K..R", "R..R"], pals: { R: melissa_rose, K: melissa_rim }, why: "hood rose all round, face skin. The left column middle tiles end in the edge of her cheek beside the nose (shade 2, rose made it red; Carmelo, v5 review): melissa_rim keeps the hood lining rose and that shading skin" }
   utomo:
     { portrait: 0x17, colors: skin,
       tiles: ["SSSS", "....", "....", "...."], pals: { S: utomo_saffron }, why: "topknot saffron (outline only), face skin. The bottom corners are neck skin plus outline, so saffron only tinted the neck orange: skin" }

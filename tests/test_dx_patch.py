@@ -484,6 +484,39 @@ class TablesTest(unittest.TestCase):
         with self.assertRaises(dx_patch.PatchError):
             dx_patch.build_tables(p2, bg, obj)
 
+    def test_portrait_remaps(self):
+        # hair that shared a shade with a hat (Finn's fringe / cap stripes, Zoltan's hairline /
+        # bandana): the DX build swaps shades in those tiles (v5 review)
+        from ultima_rov_dx import dx_patch
+        px = lambda b, t, r, c: (b[16 * t + 2 * r] >> (7 - c) & 1) | (b[16 * t + 2 * r + 1] >> (7 - c) & 1) << 1
+        orig_rom = ROM.read_bytes()
+        for h, table, keep in GL.PORTRAIT_REMAPS:
+            self.assertEqual(orig_rom[h.offset:h.offset + len(h.preimage)], h.preimage, h.name)
+            new = dx_patch.remap_tiles(h.preimage, table, keep)
+            for t in range(len(h.preimage) // 16):
+                for r in range(8):
+                    for c in range(8):
+                        o = px(h.preimage, t, r, c)
+                        self.assertEqual(px(new, t, r, c), o if (t, r, c) in keep else table.get(o, o), (h.name, t, r, c))
+        fin = GL.PORTRAIT_REMAPS[0]
+        self.assertTrue(all(px(fin[0].preimage, t, r, c) == 2 for t, r, c in fin[2]))   # the fringe
+        dp = self.inputs["palettes"]["dialog_portraits"]
+        self.assertEqual(dp["finn"]["tiles"][0][1:], "CCC")
+        self.assertEqual((dp["zoltan"]["tiles"][0][:3], dp["zoltan"]["tiles"][2][3]), ("ZZZ", "Z"))
+
+    def test_johann_brows_and_jaw_stay_skin(self):
+        # Carmelo v5 review: olive tile palettes painted Johann's eyebrows (shade 2 along the
+        # bottom of the top middle tiles) and the left edge of his jaw (left column middle
+        # tiles) green. Brow tiles keep skin shading as shade 2; the jaw tiles are skin.
+        pal = self.inputs["palettes"]
+        spec = pal["dialog_portraits"]["johann"]
+        rows, pals, named = spec["tiles"], spec["pals"], pal["portrait_palettes"]
+        skin = named[spec["colors"]]["colors"]
+        self.assertEqual(rows[1][0], "."); self.assertEqual(rows[2][0], ".")
+        for c in rows[0][1:3]:
+            self.assertEqual(named[pals[c]]["colors"][2], skin[2])
+            self.assertEqual(named[pals[c]]["colors"][1], named["johann_olive"]["colors"][1])   # hair light stays olive
+
     def test_portrait_contrast_like_ecffaca(self):
         # every portrait palette (base and per-tile extras) keeps the value contrast of the
         # ecffaca portraits (all drawn in the UI theme's earth palette: BGR555 531E / 25B5 /
@@ -498,7 +531,7 @@ class TablesTest(unittest.TestCase):
         ref = [luma(w) for w in (0x531E, 0x25B5, 0x0866)]
         enc = lambda cols: b"".join(P.bgr555(c).to_bytes(2, "little") for c in cols)
         bold = {enc(v["colors"]) for v in pal["portrait_palettes"].values() if v.get("bold")}
-        self.assertEqual(len(bold), 2)                                   # jester red, royal red
+        self.assertEqual(len(bold), 4)                                   # jester red, royal red, Finn's cap, Zoltan's band
         for pid, (base, extra, _) in dec.items():
             for e in [base] + extra:
                 l = [luma(e[2 * k] | e[2 * k + 1] << 8) for k in (1, 2, 3)]
@@ -558,7 +591,9 @@ class TablesTest(unittest.TestCase):
             self.assertLessEqual(sum(not skin(v) for v in tiles[5:7] + tiles[9:11]), 1, f"{npc}: face tiles skin")
             m = cr.class_col[8 * cr.alias[npc]:8 * cr.alias[npc] + 8]
             for e in extra:
-                k = 3 if e[:6] == base[:6] else 2          # skin-keeping extra: its line carries the hue
+                # the hue lives in the first shade (2, 1, line) the extra does not share with the
+                # skin base: rim / brow tiles keep skin shading or skin light (v5 pixel audit)
+                k = next(k for k in (2, 1, 3) if e[2 * k:2 * k + 2] != base[2 * k:2 * k + 2])
                 self.assertLess(min(hue_d(w(e, k), w(m, 3)), hue_d(w(e, k), w(m, 2))), 30, npc)
         self.assertEqual(len(dec[0x0B][1]), 2)                             # jester: red and green
         self.assertGreater(hue_d(w(dec[0x0B][1][0], 2), w(dec[0x0B][1][1], 2)), 90)
@@ -661,6 +696,8 @@ class RealRomBuildTest(unittest.TestCase):
             allowed |= set(range(h.offset, h.offset + len(h.preimage)))
         allowed |= set(range(*GL.BANK2_FREE))           # AllocHook + TIER_TAB (was $FF fill)
         allowed |= set(range(*GL.BANK7_FREE))           # ParadeLoad (was $FF fill)
+        for h, _, _ in GL.PORTRAIT_REMAPS:              # portrait shade remaps (Finn, Zoltan)
+            allowed |= set(range(h.offset, h.offset + len(h.preimage)))
         for bank, addr in GL.GAME_LCD_ON_SITES + GL.TITLE_LCD_ON_SITES:
             off = GL.file_offset(bank, addr)
             allowed |= {off, off + 1}

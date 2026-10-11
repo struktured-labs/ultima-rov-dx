@@ -477,6 +477,25 @@ def npc_colors(pal_data: dict[str, Any], name: str) -> list[str] | None:
 PORTRAIT_LINE = "#301808"      # natural dark brown the `line` mix darkens a portrait's outline toward
 
 
+def remap_tiles(orig: bytes, table: dict[int, int], keep: frozenset) -> bytes:
+    """2bpp tiles with shade v -> table.get(v, v), except the (tile, row, col) pixels in keep
+    (GL.PORTRAIT_REMAPS)."""
+    out = bytearray(orig)
+    for t in range(len(orig) // 16):
+        for r in range(8):
+            lo, hi = orig[16 * t + 2 * r], orig[16 * t + 2 * r + 1]
+            nlo = nhi = 0
+            for c in range(8):
+                b = 7 - c
+                v = (lo >> b & 1) | (hi >> b & 1) << 1
+                if (t, r, c) not in keep:
+                    v = table.get(v, v)
+                nlo |= (v & 1) << b
+                nhi |= (v >> 1) << b
+            out[16 * t + 2 * r], out[16 * t + 2 * r + 1] = nlo, nhi
+    return bytes(out)
+
+
 def portrait_npc_colors(cols: list[str], spec: dict[str, Any], name: str) -> list[str]:
     """A face portrait from its NPC's map colours: `mid` replaces shade 2 (the
     portrait's face shading, where a clothing / hair colour would tint the
@@ -837,6 +856,11 @@ def build(original: bytes, pal_data: dict[str, Any], bg_cat: dict[str, Any], obj
         raise PatchError(f"ROM banks 1-7 are not told apart by their byte at $4001 ({sig.hex()})")
     put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["BANK_SIG"]), sig, "BANK_SIG")
     put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["HERO_OBJ_ROM"]), t.hero_obj, "HERO_OBJ_ROM")
+    # portrait tiles where hair and a hat share a shade: shade remaps (GL.PORTRAIT_REMAPS)
+    for h, table, keep in GL.PORTRAIT_REMAPS:
+        if bytes(original[h.offset:h.offset + len(h.preimage)]) != h.preimage:
+            raise PatchError(f"{h.name} at {h.offset:#x}: unexpected original bytes")
+        put(h.offset, remap_tiles(h.preimage, table, keep), h.name)
     # talk-dialog portrait colours (bank 8 DlgPortrait8 from SceneHook)
     if (syms["PORTRAIT_TAB"] < syms["PARADE_PAL_ROM"] + syms["PARADE_LEN"]
             or syms["PORTRAIT_TAB"] + 1 + 8 * MAX_DIALOG_PORTRAITS > 0x8000

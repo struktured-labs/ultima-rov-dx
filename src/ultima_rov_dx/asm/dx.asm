@@ -1701,9 +1701,7 @@ OamPass:
         call UnloadedPal
         jr .apply
 .player:
-        dec l
-        ld a, [hl]                      ; E = tile
-        inc l
+        add $80                         ; E = tile (A = tile - $80, carry)
         ld e, a
         ld a, [LCD_MODE]
         cp 4
@@ -1716,16 +1714,15 @@ OamPass:
         jr z, .pl                       ; share the projectile palette; the
         cp BODY_TILES                   ; sword blade ($10-$17, attack pose)
         jr nc, .pl                      ; stays with the champion
-        ld a, FIRE_PAL
+.fire:
+        ld a, FIRE_PAL                  ; (= CURSOR_PAL)
         jr .apply
 .menu:
         ld a, e                         ; start menu: cursor (tiles 0-3) gets
         cp 4                            ; its own palette
-        jr nc, .pl
-        ld a, CURSOR_PAL
-        jr .apply
+        jr c, .fire
 .pl:
-        ld a, PLAYER_PAL
+        xor a                           ; PLAYER_PAL
 .apply:
         ld c, a
         ld a, [hl]
@@ -1972,8 +1969,14 @@ W2LcdOnBody:
 SlotCount:
         ldh a, [PARADE_ON]
         or a
-        ld a, [SPRITE_COUNT]
-        ret z
+        jr nz, .parade
+        ld a, [LCD_MODE]                ; off the map no slot holds a monster:
+        or a                            ; the rune shrine's champion walks with
+        ld a, [SPRITE_COUNT]            ; tiles $80-$8F, which the dungeon's
+        ret z                           ; stale count made creature colours
+        xor a                           ; (rune flash, Carmelo 2026-10-11): 0
+        ret
+.parade:
         pop af                          ; not back into the slot lookup
         ldh a, [PARADE_LIST]
         add e
@@ -2017,7 +2020,32 @@ SetTheme:
 BuildLut:
         ld a, [LCD_MODE]
         or a
-        jp z, .game
+        jr nz, .ng
+.game:
+        ld hl, LUT_GAME + $40
+        ld de, LUT + $40
+.g:
+        ld a, [hl+]
+        ld [de], a
+        inc e
+        jr nz, .g
+        ld hl, SLOTPAL
+        ld de, LUT
+.s:
+        ld a, [hl+]
+        ld [de], a
+        inc e
+        ld [de], a
+        inc e
+        ld [de], a
+        inc e
+        ld [de], a
+        inc e
+        bit 6, e                        ; E = $40: done
+        jr z, .s
+        call ReadInv
+        jp MapItemsLut                  ; side-panel A/B icons + floor items by type
+.ng:
         dec a
         jr z, .castle
         dec a
@@ -2097,32 +2125,7 @@ BuildLut:
         ld a, [LCD_BYTE]
         cp $7F
         ret nz
-        jp TileRanges
-.game:
-        ld hl, LUT_GAME + $40
-        ld de, LUT + $40
-.g:
-        ld a, [hl+]
-        ld [de], a
-        inc e
-        jr nz, .g
-        ld hl, SLOTPAL
-        ld de, LUT
-.s:
-        ld a, [hl+]
-        ld [de], a
-        inc e
-        ld [de], a
-        inc e
-        ld [de], a
-        inc e
-        ld [de], a
-        inc e
-        ld a, e
-        cp $40
-        jr nz, .s
-        call ReadInv
-        jp MapItemsLut                  ; side-panel A/B icons + floor items by type
+                                        ; falls into TileRanges (champion select)
 
 ; HL = count, (first, last, palette)*: LUT[first..last] = palette. Advances HL.
 TileRanges:
