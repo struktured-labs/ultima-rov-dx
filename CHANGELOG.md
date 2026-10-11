@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+### Fixed (Carmelo's b9c516e review, 2026-10-11)
+
+- An item dropped live on the map (cheese, keys, any pickup) now shows its own colour from
+  the first frame. The drop (bank 0 `$145E`) draws the slot's tiles before the per-frame
+  `LiveFloor` refresh, so they took the slot's stale palette (often fire orange) for about a
+  second until the attribute sweep reached them. `W2Meta` now refreshes the floor-slot LUT
+  (`FloorItems`, which keeps BC/DE) before writing attributes for a floor-item tile
+  ($40-$7B); other metatiles pay nothing. Bytes from a shorter `W2Meta` range check / row
+  advance, a shared `Sweep` exit and `LiveFloor`/`FloorItems` tightening. Hardware scan
+  unchanged (VRAM/palette blocked 0, OAM 22).
+
 ### Fixed (Carmelo's a44eb26 review, 2026-10-11)
 
 - Sailing: the ship and the land around it no longer turn blue. The overworld has its own

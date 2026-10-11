@@ -2483,10 +2483,8 @@ Sweep:
         ld [SWEEP_HI], a
         ret
 .done:
-        xor a
-        ldh [rVBK], a
-        ld [SWEEP_HI], a
-        ret
+        ld h, 0                         ; SWEEP_HI = 0: idle
+        jr .save
 
 W2MetaW:
         push hl
@@ -2504,16 +2502,18 @@ W2Meta:
         sub $21
         ld e, a
         ld a, h
-        sbc 0
-        ld d, a                         ; DE = map address
-        cp $98
-        ret c
-        cp $A0
+        sbc $98
+        cp 8                            ; BG map $9800-$9FFF only
         ret nc
+        add $98
+        ld d, a                         ; DE = map address
         ld hl, sp+11
         ld a, [hl]
         sub 4
         ld c, a                         ; C = tile
+        sub FLOOR_TILES                 ; floor item tile: a slot just filled by
+        cp 4 * FLOOR_SLOTS              ; the live drop (0:$145E) is drawn in its
+        call c, FloorItems              ; colour now, not the slot's stale one
 .attr:                                  ; DE = map cell, C = top-left tile
         ld h, high(LUT)
         ld a, 1
@@ -2530,9 +2530,9 @@ W2Meta:
         ld a, e
         add $1F
         ld e, a
-        ld a, d
-        adc 0
-        ld d, a
+        jr nc, .row
+        inc d
+.row:
         dec c
         ld l, c
         ld a, [hl]
@@ -2644,6 +2644,8 @@ MapItemsLut:
 ; item_palettes) for each slot whose id changed since the last call; empty
 ; slots keep their entry. NZ if a slot was recoloured.
 FloorItems:
+        push bc                         ; W2Meta keeps its map cell and tile
+        push de
         ld de, ITEM_IDS
         ld c, 0
 .k:
@@ -2659,11 +2661,10 @@ FloorItems:
         jr z, .n
         call ItemPal                    ; A = palette (clobbers HL)
         ld b, a
-        ld a, e
-        sub low(ITEM_IDS)
+        ld a, e                         ; (e - low(ITEM_IDS)) * 4 + FLOOR_TILES
         add a
         add a
-        add FLOOR_TILES
+        add (FLOOR_TILES - 4 * low(ITEM_IDS)) & $FF
         ld l, a
         ld h, high(LUT)
         ld a, b
@@ -2677,7 +2678,9 @@ FloorItems:
         ld a, e
         cp low(ITEM_IDS) + FLOOR_SLOTS
         jr nz, .k
+        pop de
         ld a, c
+        pop bc
         or a
         ret
 
@@ -2688,10 +2691,10 @@ FloorItems:
 LiveFloor:
         call FloorItems
         ret z
-        xor a
-        ld [SWEEP_LO], a
-        ld a, $98
-        ld [SWEEP_HI], a
+        ld hl, SWEEP_LO
+        ld [hl], 0
+        inc l
+        ld [hl], $98                    ; SWEEP_HI
         ret
 
 ; W2Pal, per OAM entry whose sprite id has OBJPAL value A: a creature with
@@ -2775,7 +2778,7 @@ W2AfterDmaT:
         ret nz
         call LiveFloor
         ld c, 0
-        jp TierFar
+        jr TierFar
 
 ; LCD-on: no stale tiers on the new screen.
 BuildLutT:
