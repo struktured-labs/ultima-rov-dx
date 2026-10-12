@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fixed (Eep Eep's portrait, 2026-10-12)
+
+- Eep Eep's dialog portrait no longer has a red bottom row. The row was coloured `royal_red` as
+  a collar, but the picture is a bare round head: those tiles are its chin and the shadow under
+  it, so the red read as a pool of blood. The portrait is `royal_skin` throughout now.
+
 ### Changed (talk-dialog portraits in per-tile colours, 2026-10-11)
 
 - Portraits break the one-palette limit: each of the 16 portrait tiles picks its palette.

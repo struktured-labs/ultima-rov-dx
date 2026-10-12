@@ -96,9 +96,9 @@ dialog_portraits:
   gnu_gnu:
     { portrait: 0x00, colors: royal_skin,
       tiles: ["YYYY", "Y..Y", "....", "R..R"], pals: { Y: royal_gold, R: royal_red }, why: "crown (top row, sides) gold, shoulders royal red, face skin" }
-  eep_eep:
-    { portrait: 0x09, colors: royal_skin,
-      tiles: ["....", "....", "....", "RRRR"], pals: { R: royal_red }, why: "collar royal red (whole bottom row: the band runs under the beard), face skin" }
+  eep_eep:      # a bare round head: the bottom row is its chin and the shadow under it, not a
+    portrait: 0x09  # collar (royal red there read as a pool of blood), so royal skin only
+    colors: royal_skin
   sign:                                            # signs (talk $01/$02): the map sign is an `item`
     portrait: 0x08                                 # sprite (pale yellow plaque); shade 1 fills the
     colors: ["#FFF8E8", "#E8D4A0", "#A47812", "#2F1B07"]   # whole picture, so a softer pale gold

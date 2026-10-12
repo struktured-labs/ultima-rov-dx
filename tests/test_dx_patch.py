@@ -544,8 +544,9 @@ class TablesTest(unittest.TestCase):
                 self.assertLess(min(hue_d(w(e, 2), w(m, 3)), hue_d(w(e, 2), w(m, 2))), 30, npc)
         self.assertEqual(len(dec[0x0B][1]), 2)                             # jester: red and green
         self.assertGreater(hue_d(w(dec[0x0B][1][0], 2), w(dec[0x0B][1][1], 2)), 90)
-        for pid in (0x00, 0x01, 0x09):
+        for pid in (0x00, 0x01):
             self.assertGreaterEqual(len(dec[pid][1]), 1, f"royal {pid:#x}: robe / crown")
+        self.assertEqual((dec[0x09][1], dec[0x09][2]), ([], [0] * 16))     # Eep Eep: a bare head, no robe (red read as blood)
         bad = [{"tiles": ["ABC.", "....", "....", "...."], "pals": {"A": "skin", "B": "skin", "C": "skin"}},
                {"tiles": ["A...", "....", "....", "...."], "pals": {}},
                {"tiles": ["A...", "....", "...."], "pals": {"A": "skin"}},
