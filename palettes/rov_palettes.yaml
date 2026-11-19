@@ -228,14 +228,18 @@ bg_themes:
     gold:   { colors: ["#D8CC98", "#F8D830", "#B08808", "#403004"] }  # arrow floors, switches (bright gold)
 
   pride:  # The Cavern of Pride: vain marble halls, royal purple and gold
-    ui:     { colors: ["#D4CCD8", "#948C9C", "#C82818", "#1C1424"] }  # side panel
-    stone:  { colors: ["#D4CCD8", "#A898C0", "#605078", "#1C1428"] }  # floor + cobbled rock
-    wood:   { colors: ["#D4CCD8", "#B88858", "#6C4828", "#20140C"] }  # doors, chests, furniture, ladders
-    earth:  { colors: ["#D4CCD8", "#B888B0", "#704870", "#241024"] }  # brick, rubble
-    grass:  { colors: ["#D4CCD8", "#88B878", "#3C7038", "#102010"] }  # plants
-    water:  { colors: ["#D4CCD8", "#68A0E8", "#2850A8", "#081838"] }  # fountains, pools
-    fire:   { colors: ["#D4CCD8", "#F89840", "#C02818", "#400808"] }  # traps
-    gold:   { colors: ["#D4CCD8", "#F0C840", "#A87818", "#382408"] }  # arrow floors, switches
+    # Colour 0 was a near-grey lilac (#D4CCD8) and stone/earth mid-tones were
+    # desaturated, so floor-1 cobble and brick read as washed-out DMG grey.
+    # A clearer violet marble and mauve brick, with darker grout/outlines;
+    # gold is slightly brighter so carpets still pop on the shared colour 0.
+    ui:     { colors: ["#D0C0E4", "#A090B0", "#C82818", "#1C1028"] }  # side panel
+    stone:  { colors: ["#D0C0E4", "#A078C8", "#584088", "#140C20"] }  # floor + cobbled rock (violet marble)
+    wood:   { colors: ["#D0C0E4", "#C09050", "#6C4828", "#20140C"] }  # doors, chests, furniture, ladders
+    earth:  { colors: ["#D0C0E4", "#C878C0", "#784070", "#180C18"] }  # brick, rubble (mauve, not grey)
+    grass:  { colors: ["#D0C0E4", "#88B878", "#3C7038", "#102010"] }  # plants
+    water:  { colors: ["#D0C0E4", "#68A0E8", "#2850A8", "#081838"] }  # fountains, pools
+    fire:   { colors: ["#D0C0E4", "#F89840", "#C02818", "#400808"] }  # traps
+    gold:   { colors: ["#D0C0E4", "#F8D050", "#B08018", "#382408"] }  # arrow floors, switches
 
   abyss:  # The Great Stygian Abyss: ash, cinders and the dark Stygian water
     ui:     { colors: ["#B4A49C", "#807068", "#D02010", "#180C08"] }  # side panel
