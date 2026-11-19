@@ -78,6 +78,11 @@ class Tables:
     portrait_pool: bytes = b""                     # 6 per portrait palette: colours 1-3 (bank 8 PORTRAIT_POOL)
     portrait_slots: bytes = bytes([0xFF]) * 128    # 64 x 2: borrowed UI palettes per (A icon palette, B icon palette) (bank 8 PORTRAIT_SLOTS)
     portrait_borrow: tuple = ()                    # UI palettes no dialog-screen tile uses (besides the A/B icons)
+    rune_obj_pal: bytes = bytes(5)                 # OBJ pal index of start-menu rune sprites (Honesty..Sacrifice)
+    rune_bg_pal: bytes = bytes(3)                  # BG pal index of start-menu rune tiles $C0,$C4,$C8
+    rune_obj_cols: bytes = bytes(40)               # 5 x 8: colours for OBJ pals 1-5
+    rune_bg_col: bytes = bytes(8)                  # optional BG pal retint (domino)
+    rune_bg_slot: int = 0xFF                       # pal index to retint ($FF = none)
 
 
 
@@ -436,6 +441,45 @@ def build_tables(pal_data: dict[str, Any], bg_cat: dict[str, Any], obj_cat: dict
         digit_pal = _index(bg_names, bg_cat["panel_digits"], "panel_digits")
         for tile in GL.DIGIT_TILES:
             lut_game[tile] = digit_pal | 0x08        # attribute bit 3: tile data from VRAM bank 1
+    rune_obj_pal = bytearray(5)          # default: player pal 0 (legacy)
+    rune_bg_pal = bytearray(3)           # default: ui pal 0
+    rune_obj_cols = bytearray(40)
+    rune_bg_col = bytearray(8)
+    rune_bg_slot = 0xFF
+    rune_menu = pal_data.get("rune_menu") or {}
+    if rune_menu:
+        slots = rune_menu.get("obj_slots") or [1, 1, 1, 1, 1]
+        if len(slots) != 5 or any(not (1 <= int(s) <= 5) for s in slots):
+            raise PatchError("rune_menu.obj_slots needs 5 OBJ palette indices in 1-5")
+        rune_obj_pal = bytearray(int(s) for s in slots)
+        bg_names_list = list(bg_names)
+        bg_runes = rune_menu.get("bg") or {}
+        order = ("honor", "spirituality", "humility")
+        for i, key in enumerate(order):
+            if key in bg_runes:
+                rune_bg_pal[i] = _index(bg_names_list, bg_runes[key], f"rune_menu.bg.{key}")
+        cols = rune_menu.get("obj_palettes") or {}
+        obj_order = ("honesty", "compassion", "valor", "justice", "sacrifice")
+        for i, key in enumerate(obj_order):
+            colors = cols.get(key)
+            if not colors:
+                continue
+            if len(colors) != 4:
+                raise PatchError(f"rune_menu.obj_palettes.{key} needs 4 colours")
+            rune_obj_cols[i * 8:(i + 1) * 8] = b"".join(
+                P.bgr555(c).to_bytes(2, "little") for c in colors
+            )
+        retint = rune_menu.get("bg_retint")
+        if retint:
+            rune_bg_slot = _index(bg_names_list, retint["palette"], "rune_menu.bg_retint.palette")
+            colors = retint.get("colors") or []
+            if len(colors) != 4:
+                raise PatchError("rune_menu.bg_retint.colors needs 4 colours")
+            rune_bg_col = b"".join(P.bgr555(c).to_bytes(2, "little") for c in colors)
+            # every BG rune uses the retinted palette unless bg: overrode it
+            if not bg_runes:
+                rune_bg_pal = bytearray([rune_bg_slot, rune_bg_slot, rune_bg_slot])
+
     return Tables(bytes(objpal), enc["bg"], enc["obj"], lut_title, bytes(lut_game), lut_logo,
                   b"".join(metapals), bytes(area_theme), bg_themes, picture_lut, SLOT_ENTRANCE if entrance_theme else 0,
                   flat_bg, bytes(fix),
@@ -443,7 +487,9 @@ def build_tables(pal_data: dict[str, Any], bg_cat: dict[str, Any], obj_cat: dict
                   bytes(text_ranges), theme_bg_rom, bytes(rt_slot), tuple(theme_names), first_map,
                   bytes(mp_idx), hero_obj, hero_bg, bytes(scene_entries), bytes(scene_luts), bytes(scene_obj),
                   tuple(scene_names), bytes(card_tint), ui, digit_pal, dlg_portraits, portrait_pal,
-                  portrait_pool, portrait_slots, portrait_borrow)
+                  portrait_pool, portrait_slots, portrait_borrow,
+                  bytes(rune_obj_pal), bytes(rune_bg_pal), bytes(rune_obj_cols),
+                  bytes(rune_bg_col), rune_bg_slot)
 
 
 MAX_DIALOG_PORTRAITS = 31   # PORTRAIT_TAB: 1 + 8 * n bytes in bank 8 $7F00-$7FFF
@@ -725,7 +771,11 @@ def build(original: bytes, pal_data: dict[str, Any], bg_cat: dict[str, Any], obj
             or (syms["HERO_OBJ_ROM"] & 0xFF) + 32 > 0x100 or syms["HERO_OBJ_ROM"] + 32 > 0x8000):
         raise PatchError("bank 8 table layout overlap")
     if (syms["CARD_TINT"] & 0xFF or syms["HERO_OBJ_ROM"] + 32 > syms["CARD_TINT"] or syms["CARD_TINT"] + 128 > syms["CARD_UI"]
-            or syms["CARD_UI"] >= syms["GOLD_DIGITS"] or syms["GOLD_DIGITS"] + syms["DIGIT_LEN"] > 0x8000
+            or syms["CARD_UI"] >= syms["RUNE_OBJ_COLS"]
+            or syms["RUNE_OBJ_COLS"] + 40 > syms["RUNE_BG_COL"]
+            or syms["RUNE_BG_COL"] + 8 > syms["RUNE_BG_SLOT"]
+            or syms["RUNE_BG_SLOT"] + 1 > syms["GOLD_DIGITS"]
+            or syms["GOLD_DIGITS"] + syms["DIGIT_LEN"] > 0x8000
             or syms["DIGIT_LEN"] != 16 * len(GL.DIGIT_TILES)
             or syms["DIGIT_VRAM"] != 0x9000 + 16 * (GL.DIGIT_TILES[0] - 0x100)
             or (syms["BASE_BG"] & 0xFF) + 64 > 0x100 or syms["HR_CARD"] != GL.CARD_NUMBER_HRAM):
@@ -737,6 +787,8 @@ def build(original: bytes, pal_data: dict[str, Any], bg_cat: dict[str, Any], obj
         raise PatchError("bank 8 scene table layout overlap")
     if syms["W2bEnd"] > syms["FIRE_OBJ"] or syms["BG_THEMES"] + 64 * MAX_THEMES > syms["UnloadedPal"]:
         raise PatchError(f"WRAM2 section wram2b overlaps BG_THEMES or ends past $E000 ({syms['W2bEnd']:#x})")
+    if not (syms["FIRE_OBJ"] + 8 <= syms["RUNE_OBJ_PAL"] and syms["RUNE_OBJ_PAL"] + 8 <= 0xE000):
+        raise PatchError("RUNE_OBJ_PAL/RUNE_BG_PAL must sit in $DFF8-$DFFF after FIRE_OBJ")
     if syms["W2CodeEnd"] > syms["OBJPAL"]:
         raise PatchError(f"WRAM2 code too large (ends {syms['W2CodeEnd']:#x})")
     if (syms["ENTRY_TIER"] < syms["ATTR_PROG"] + 0x300 + 6 + 3 or syms["ENTRY_TIER"] + 40 + 1 > syms["W2C_ORG"]
@@ -829,6 +881,12 @@ def build(original: bytes, pal_data: dict[str, Any], bg_cat: dict[str, Any], obj
         raise PatchError("HERO_CACHED must follow MAP_CACHED")
     w2(syms["MENU_OBJ"], t.menu_obj, "MENU_OBJ")
     w2(syms["FIRE_OBJ"], t.fire_obj, "FIRE_OBJ")
+    if syms["RUNE_BG_PAL"] != syms["RUNE_OBJ_PAL"] + 5:
+        raise PatchError("RUNE_BG_PAL must follow RUNE_OBJ_PAL")
+    w2(syms["RUNE_OBJ_PAL"], t.rune_obj_pal + t.rune_bg_pal, "RUNE_OBJ_PAL/RUNE_BG_PAL")
+    put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["RUNE_OBJ_COLS"]), t.rune_obj_cols, "RUNE_OBJ_COLS")
+    put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["RUNE_BG_COL"]), t.rune_bg_col, "RUNE_BG_COL")
+    put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["RUNE_BG_SLOT"]), bytes([t.rune_bg_slot]), "RUNE_BG_SLOT")
     if len(t.text_ranges) > syms["TEXT_RANGES_LEN"]:
         raise PatchError(f"text_screen + champion_screen ranges: {len(t.text_ranges)} bytes > {syms['TEXT_RANGES_LEN']}")
     w2(syms["TEXT_RANGES"], t.text_ranges, "TEXT_RANGES")
