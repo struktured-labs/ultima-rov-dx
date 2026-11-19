@@ -169,6 +169,7 @@ CARD_UI         equ $7C80   ; bank 8: low byte of BASE_BG's UI palette (where CA
 RUNE_OBJ_COLS   equ $7C88   ; bank 8: 5 x 8, OBJ pals 1-5 colours for the start-menu rune sprites
 RUNE_BG_COL     equ $7CB0   ; bank 8: 8, optional BG pal retint (domino greyscale)
 RUNE_BG_SLOT    equ $7CB8   ; bank 8: 1, palette index to retint ($FF = none)
+RUNE_PAL_ROM    equ $7CB9   ; bank 8: 8, OBJ pals 1-5 + 3 BG pals; copied to WRAM each menu LCD-on
 GOLD_DIGITS     equ $7D00   ; bank 8: DIGIT_LEN bytes, side-panel digits $E8-$F1 redrawn in gold (VRAM bank 1)
 PARADE_PAL_ROM  equ $7E00   ; bank 8: PARADE_LEN bytes, OBJ palette per byte of the parade lists 7:$7CA6-$7CBE (builder, from OBJPAL)
 PORTRAIT_TAB    equ $7F00   ; bank 8: talk-dialog portraits: count, (portrait byte, base, extra 1, extra 2, 4 tile-map bytes)* (builder, rov_palettes.yaml dialog_portraits)
@@ -1180,7 +1181,7 @@ HeroMenu8:
         inc e
         dec c
         jr nz, .l
-        jp RuneMenu8                    ; rune pals, then CUR_THEME / Sync / SigBank
+        jp RunePalInit                  ; refresh WRAM indices, then RuneMenu8
 
 ; SceneHook at the parade's LCD-on (SVBK = 2, TierClear just ran):
 ; PARADE_TAB = PARADE_PAL_ROM, PARADE_ON = 1 until the next LCD-on, OBJ
@@ -1609,6 +1610,25 @@ RuneMenu8:
         jr nz, .o
         ret
 Bank8bEnd:
+
+; $7CB9-$7CFF sits between RUNE_BG_SLOT and GOLD_DIGITS ($7D00). bank8b is
+; full (Bank8bEnd $55FE, PICTURE_LUT $5600). HeroMenu8 jumps here (LCD off,
+; bank 8) so a 2ca3353 save state, which leaves $DFF8-$DFFF as $FF, cannot
+; paint the rune icons with VRAM bank 1 and flips (blank boxes).
+section bank8_rune, $23CC1, $7CC1
+RunePalInit:
+        ld hl, RUNE_PAL_ROM
+        ld de, RUNE_OBJ_PAL
+        ld c, 8
+.cp:
+        ld a, [hl+]
+        and 7                           ; palette only, never bank/flip bits
+        ld [de], a
+        inc e
+        dec c
+        jr nz, .cp
+        jp RuneMenu8
+RunePalInitEnd:
 
 ; ======================================================== WRAM bank 2 image
 

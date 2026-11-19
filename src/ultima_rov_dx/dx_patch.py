@@ -774,7 +774,8 @@ def build(original: bytes, pal_data: dict[str, Any], bg_cat: dict[str, Any], obj
             or syms["CARD_UI"] >= syms["RUNE_OBJ_COLS"]
             or syms["RUNE_OBJ_COLS"] + 40 > syms["RUNE_BG_COL"]
             or syms["RUNE_BG_COL"] + 8 > syms["RUNE_BG_SLOT"]
-            or syms["RUNE_BG_SLOT"] + 1 > syms["GOLD_DIGITS"]
+            or syms["RUNE_BG_SLOT"] + 1 > syms["RUNE_PAL_ROM"]
+            or syms["RUNE_PAL_ROM"] + 8 > syms["RunePalInit"] or syms["RunePalInitEnd"] > syms["GOLD_DIGITS"]
             or syms["GOLD_DIGITS"] + syms["DIGIT_LEN"] > 0x8000
             or syms["DIGIT_LEN"] != 16 * len(GL.DIGIT_TILES)
             or syms["DIGIT_VRAM"] != 0x9000 + 16 * (GL.DIGIT_TILES[0] - 0x100)
@@ -887,6 +888,7 @@ def build(original: bytes, pal_data: dict[str, Any], bg_cat: dict[str, Any], obj
     put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["RUNE_OBJ_COLS"]), t.rune_obj_cols, "RUNE_OBJ_COLS")
     put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["RUNE_BG_COL"]), t.rune_bg_col, "RUNE_BG_COL")
     put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["RUNE_BG_SLOT"]), bytes([t.rune_bg_slot]), "RUNE_BG_SLOT")
+    put(GL.file_offset(GL.DX_RUNTIME_BANK, syms["RUNE_PAL_ROM"]), t.rune_obj_pal + t.rune_bg_pal, "RUNE_PAL_ROM")
     if len(t.text_ranges) > syms["TEXT_RANGES_LEN"]:
         raise PatchError(f"text_screen + champion_screen ranges: {len(t.text_ranges)} bytes > {syms['TEXT_RANGES_LEN']}")
     w2(syms["TEXT_RANGES"], t.text_ranges, "TEXT_RANGES")
