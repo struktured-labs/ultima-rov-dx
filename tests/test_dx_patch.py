@@ -77,7 +77,9 @@ class TablesTest(unittest.TestCase):
 
     def test_panel_icons_on_panel_colour(self):
         # every map theme: the palettes an A/B icon can use share the side panel's colour 0
-        # (no tinted square); surface themes keep grass/water fields, IconPal falls back there
+        # (no tinted square); surface themes keep grass/water field colour 0, and wood
+        # colour 0 is grass so cottages blend (wood A/B icons get a green square, like
+        # the existing grass/water icon exceptions). IconPal falls back there.
         from ultima_rov_dx import dx_patch
         t = dx_patch.build_tables(self.inputs["palettes"], self.inputs["bg_categories"], self.inputs["obj_categories"])
         bg = self.inputs["bg_categories"]
@@ -88,12 +90,32 @@ class TablesTest(unittest.TestCase):
                 continue
             k = t.theme_names.index(name)
             rom = t.theme_bg_rom[64 * k:64 * k + 64]
-            skip = {pal.index("grass"), pal.index("water")} if spec.get("surface") else set()
+            skip = {pal.index("grass"), pal.index("water"), pal.index("wood")} if spec.get("surface") else set()
             for p in icon_pals - skip:
                 self.assertEqual(rom[8 * p:8 * p + 2], rom[0:2], f"{name}: {pal[p]}")
         # `earth` is the start-menu portrait palette: no item uses it
         self.assertFalse(bg["item_palettes"].get("earth"))
         self.assertNotIn(pal.index("earth"), set(t.item_pal))
+
+    def test_surface_boat_and_cottage_palettes(self):
+        # parked ship 0x49 uses the surface water (boat) palette; cottages stay wood
+        # with colour 0 = grass so they blend with the lawn
+        from ultima_rov_dx import dx_patch
+        t = dx_patch.build_tables(self.inputs["palettes"], self.inputs["bg_categories"], self.inputs["obj_categories"])
+        pal = self.inputs["palettes"]
+        bg_names = list(pal["bg_palettes"])
+        self.assertEqual(t.metapal[0x49], bg_names.index("water"))
+        self.assertEqual(t.metapal[0x4C], bg_names.index("wood"))
+        boat = ["#C8ECFF", "#FFFCEC", "#7C5428", "#2050A8"]
+        bg = self.inputs["bg_categories"]
+        for name, spec in bg["area_themes"].items():
+            if not spec.get("surface"):
+                continue
+            theme = pal["bg_themes"][name]
+            grass = theme.get("grass", pal["bg_palettes"]["grass"])["colors"]
+            self.assertEqual(theme["wood"]["colors"][0], grass[0], name)
+            self.assertEqual(theme["water"]["colors"], boat, name)
+
 
     def test_key_and_rock_item_palettes(self):
         # heart key red (fire), star key and lamp gold, rock grey (stone); Selfishness boulders grey
@@ -663,6 +685,23 @@ class RealRomBuildTest(unittest.TestCase):
         cls.original = ROM.read_bytes()
         cls.out = build_dx.build(cls.original, build_dx.load_inputs())
 
+    def test_water_wave_remaps(self):
+        # open-water tiles: shade 2 (wave mid-tone) becomes 3; fountain 0x0F is left alone
+        from ultima_rov_dx import dx_patch, game_layout as GL
+        px = lambda b, ti, r, c: (b[16 * ti + 2 * r] >> (7 - c) & 1) | (b[16 * ti + 2 * r + 1] >> (7 - c) & 1) << 1
+        for h, table, keep in GL.WATER_WAVE_REMAPS:
+            self.assertEqual(self.original[h.offset:h.offset + len(h.preimage)], h.preimage, h.name)
+            new = self.out[h.offset:h.offset + len(h.preimage)]
+            expect = dx_patch.remap_tiles(h.preimage, table, keep)
+            self.assertEqual(new, expect, h.name)
+            for ti in range(len(h.preimage) // 16):
+                for r in range(8):
+                    for c in range(8):
+                        o = px(h.preimage, ti, r, c)
+                        self.assertEqual(px(new, ti, r, c), table.get(o, o), (h.name, ti, r, c))
+        fountain = GL.file_offset(1, GL.METATILE_GFX_BASE + 0x0F * 64)
+        self.assertEqual(self.out[fountain:fountain + 64], self.original[fountain:fountain + 64])
+
     def test_header(self):
         hdr = rom_utils.parse_header(self.out)
         self.assertEqual(len(self.out), 0x40000)
@@ -697,6 +736,8 @@ class RealRomBuildTest(unittest.TestCase):
         allowed |= set(range(*GL.BANK2_FREE))           # AllocHook + TIER_TAB (was $FF fill)
         allowed |= set(range(*GL.BANK7_FREE))           # ParadeLoad (was $FF fill)
         for h, _, _ in GL.PORTRAIT_REMAPS:              # portrait shade remaps (Finn, Zoltan)
+            allowed |= set(range(h.offset, h.offset + len(h.preimage)))
+        for h, _, _ in GL.WATER_WAVE_REMAPS:            # water wave mid-tone 2->3 (parked ship)
             allowed |= set(range(h.offset, h.offset + len(h.preimage)))
         for bank, addr in GL.GAME_LCD_ON_SITES + GL.TITLE_LCD_ON_SITES:
             off = GL.file_offset(bank, addr)

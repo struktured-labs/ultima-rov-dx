@@ -919,6 +919,12 @@ def build(original: bytes, pal_data: dict[str, Any], bg_cat: dict[str, Any], obj
         if bytes(original[h.offset:h.offset + len(h.preimage)]) != h.preimage:
             raise PatchError(f"{h.name} at {h.offset:#x}: unexpected original bytes")
         put(h.offset, remap_tiles(h.preimage, table, keep), h.name)
+    # surface water tiles: wave mid-tone 2->3 so the shared boat palette can use
+    # shade 2 for the parked ship's hull (GL.WATER_WAVE_REMAPS)
+    for h, table, keep in GL.WATER_WAVE_REMAPS:
+        if bytes(original[h.offset:h.offset + len(h.preimage)]) != h.preimage:
+            raise PatchError(f"{h.name} at {h.offset:#x}: unexpected original bytes")
+        put(h.offset, remap_tiles(h.preimage, table, keep), h.name)
     # talk-dialog portrait colours (bank 8 DlgPortrait8 from SceneHook)
     if (syms["PORTRAIT_TAB"] < syms["PARADE_PAL_ROM"] + syms["PARADE_LEN"]
             or syms["PORTRAIT_TAB"] + 1 + 8 * MAX_DIALOG_PORTRAITS > 0x8000

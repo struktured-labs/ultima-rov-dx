@@ -262,29 +262,39 @@ bg_themes:
     gold:   { colors: ["#E8E8E0", "#E8C040", "#A06818", "#382008"] }  # carpets, banners (gold also colours the side-panel stars and coin)
 
   overworld:  # the overworld, Lord British's throne room and the Abyss isle (surface atlas):
-    # the base colours, but stone/wood/earth/fire share the side panel's parchment as
-    # colour 0 (grass and water keep their field colours), so A/B icons sit on parchment
+    # stone/earth/fire share the side panel's parchment as colour 0, so A/B icons
+    # sit on parchment. grass keeps its field colours. wood colour 0 is grass so
+    # cottages (0x4C) blend with the lawn (wood A/B icons therefore get a green
+    # colour 0 on the panel, like the existing grass/water icon exceptions).
+    # water is a shared boat palette: colour 0 stays light water so the parked
+    # ship (0x49) sits in the sea; shades 1-2 are cream sail and brown hull;
+    # shade 3 is the former wave mid-blue. Open-water tiles 0x0B / 0x45-48 have
+    # their wave mid-tone remapped 2->3 (game_layout.WATER_WAVE_REMAPS) so the
+    # sea does not pick up the hull brown. Ship outline shares that mid-blue.
     stone:  { colors: ["#FFF0C0", "#A8A8B8", "#585870", "#181820"] }
-    wood:   { colors: ["#FFF0C0", "#C89050", "#785028", "#281808"] }
+    wood:   { colors: ["#D8F0A0", "#C89050", "#785028", "#281808"] }
     earth:  { colors: ["#FFF0C0", "#C89868", "#885838", "#302010"] }
     fire:   { colors: ["#FFF0C0", "#F8A020", "#C03010", "#401008"] }
+    water:  { colors: ["#C8ECFF", "#FFFCEC", "#7C5428", "#2050A8"] }
 
   simon:  # Lord Simon's castle (surface atlas): warm sandstone, emerald lawns
     stone:  { colors: ["#FFF0C0", "#C8B898", "#786850", "#201810"] }  # floor + stone (colour 0 = panel parchment)
     earth:  { colors: ["#FFF0C0", "#C8A070", "#806040", "#302010"] }  # brick walls
-    wood:   { colors: ["#FFF0C0", "#C89050", "#785028", "#281808"] }
+    wood:   { colors: ["#D0F0A0", "#C89050", "#785028", "#281808"] }  # colour 0 = grass, cottages on the lawn
     fire:   { colors: ["#FFF0C0", "#F8A020", "#C03010", "#401008"] }
     gold:   { colors: ["#FFF0C0", "#E8C040", "#A06818", "#382008"] }  # ankhs, banners
     grass:  { colors: ["#D0F0A0", "#70C060", "#2C7038", "#0C2010"] }  # lawns, hedges (emerald)
+    water:  { colors: ["#C8ECFF", "#FFFCEC", "#7C5428", "#2050A8"] }  # shared boat palette (see overworld)
 
   lycaeum_grounds:  # the Lycaeum on its island (surface atlas): blue-grey marble, lapis walls
     stone:  { colors: ["#E8ECF4", "#A8B4D0", "#505C88", "#141828"] }  # floor + stone
     earth:  { colors: ["#E8ECF4", "#98A4D8", "#46509C", "#101438"] }  # brick walls
     # the side panel and every palette an A/B icon can use share the floor's colour 0
     ui:     { colors: ["#E8ECF4", "#C4BAB4", "#D83020", "#281810"] }
-    wood:   { colors: ["#E8ECF4", "#C89050", "#785028", "#281808"] }
+    wood:   { colors: ["#D8F0A0", "#C89050", "#785028", "#281808"] }  # colour 0 = grass, cottages on the lawn
     fire:   { colors: ["#E8ECF4", "#F8A020", "#C03010", "#401008"] }
     gold:   { colors: ["#E8ECF4", "#E8C040", "#A06818", "#382008"] }
+    water:  { colors: ["#C8ECFF", "#FFFCEC", "#7C5428", "#2050A8"] }  # shared boat palette (see overworld)
 
   lycaeum:  # Lycaeum halls: parchment marble, lapis and scholar's blue
     ui:     { colors: ["#D8D0B8", "#A09C94", "#C82818", "#201810"] }  # side panel
@@ -307,11 +317,12 @@ bg_themes:
     gold:   { colors: ["#E0CCA4", "#F0C838", "#C06018", "#401C08"] }  # shop signs, awnings, carpets
 
   market:  # Gnu Gnu's market and the Isle of the Avatar shop (surface atlas): bright stalls
-    wood:   { colors: ["#FFF0C0", "#E09848", "#985020", "#2C1808"] }  # stalls, doors, chests (colour 0 = panel parchment)
+    wood:   { colors: ["#D8F0A0", "#E09848", "#985020", "#2C1808"] }  # stalls, doors, chests (colour 0 = grass)
     stone:  { colors: ["#FFF0C0", "#A8A8B8", "#585870", "#181820"] }
     earth:  { colors: ["#FFF0C0", "#C89868", "#885838", "#302010"] }
     fire:   { colors: ["#FFF0C0", "#F8A020", "#C03010", "#401008"] }
     gold:   { colors: ["#FFF0C0", "#F8B838", "#D05818", "#401808"] }  # awnings, shop signs
+    water:  { colors: ["#C8ECFF", "#FFFCEC", "#7C5428", "#2050A8"] }  # shared boat palette (see overworld)
 
   catslair:  # the Cat's Lair: a cosy tavern shop, plum stone and amber
     ui:     { colors: ["#D8C8B8", "#A49890", "#C82818", "#201418"] }  # side panel

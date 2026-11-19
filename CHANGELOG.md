@@ -2,6 +2,24 @@
 
 ## [Unreleased]
 
+### Fixed (parked ship cream square and inventory-close flash, 2026-11-18)
+
+- The parked ship (metatile 0x49) no longer sits on a parchment square in the
+  sea. Surface themes share a boat water palette (light water, cream sail, brown
+  hull, mid-blue waves); 0x49 moves from wood to water. Open-water tiles 0x0B
+  and 0x45-0x48, plus the four bank-3 scrolling frames of 0x0B at $5B00, have
+  their wave mid-tone remapped 2->3 so the sea does not pick up the hull brown. The ship's outline shares that mid-blue (not the sailing
+  sprite's near-black). Fountain 0x0F is unchanged; town/dungeon 0x0B waves are
+  slightly darker (standard water colour 3).
+- Overworld cottages (0x4C) no longer sit on a parchment square: surface wood
+  colour 0 is the local grass colour 0 so houses blend with the lawn. Wood A/B
+  icons therefore get a green colour 0 on surface side panels (same kind of
+  exception as grass/water icons already had). fire/gold/stone/earth/ui stay
+  parchment so hearts, coins and the rest of the panel are unchanged.
+- The two-frame white flash when closing the inventory is original behaviour
+  (LCD off, then two LCD-on frames before the map is drawn). Not a DX bug;
+  left alone.
+
 ### Fixed (Carmelo's b9c516e review, 2026-10-11)
 
 - An item dropped live on the map (cheese, keys, any pickup) now shows its own colour from

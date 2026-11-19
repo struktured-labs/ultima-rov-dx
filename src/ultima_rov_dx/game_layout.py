@@ -152,6 +152,49 @@ PORTRAIT_REMAPS: tuple[tuple[Hook, dict[int, int], frozenset[tuple[int, int, int
     (Hook("zoltan_knot_tile", file_offset(2, 0x7833 + 16 * 11), bytes.fromhex("60607878e4fce2eef97df57fa92fe767"),
           "Zoltan portrait tile 11 (bandana knot and beard edge)"), {1: 2, 2: 1}, frozenset()),
 )
+# Surface-atlas water tiles: surface themes share the water palette with the parked
+# ship (metatile 0x49). Shades 1-2 of that palette are the cream sail and brown hull,
+# so open-water tiles that used shade 2 for the wave mid-tone would otherwise turn
+# brown. Remap shade 2 -> 3 (the former mid-blue, now colour 3). Fountain 0x0F (towns,
+# all four shades) is unchanged. 0x0B is also used in towns/dungeons: those waves
+# become colour 3 of the standard water palette (slightly darker). 0x45-0x48 are
+# overworld-only; their shade-1 sparkles stay (cream foam on the boat palette).
+# The scrolling 0x0B frames live in bank 3 at $5B00 (four 64-byte frames, loaded
+# from 0:$1691); they must be remapped too or the sea turns brown as soon as the
+# animator runs.
+WATER_WAVE_REMAPS: tuple[tuple[Hook, dict[int, int], frozenset[tuple[int, int, int]]], ...] = (
+    (Hook("water_0b_waves", file_offset(1, METATILE_GFX_BASE + 0x0B * 64),
+          bytes.fromhex("0000000c003300c00000003000cc0003000000c00033000c0000000300cc0030"
+                        "0000000c003300c00000003000cc0003000000c00033000c0000000300cc0030"),
+          "water 0x0B wave mid-tone 2->3"), {2: 3}, frozenset()),
+    (Hook("water_45_waves", file_offset(1, METATILE_GFX_BASE + 0x45 * 64),
+          bytes.fromhex("0000000c003300c00000003000cc000300002000000080000400000000001100"
+                        "0000000014004000000001002000020000009000040000002000000008000000"),
+          "overworld water 0x45 wave mid-tone 2->3"), {2: 3}, frozenset()),
+    (Hook("water_46_waves", file_offset(1, METATILE_GFX_BASE + 0x46 * 64),
+          bytes.fromhex("0000010020000400000040000800420000002000000080000400000000001100"
+                        "0000000c003300c00000003000cc010300009000040000002000000008000000"),
+          "overworld water 0x46 wave mid-tone 2->3"), {2: 3}, frozenset()),
+    (Hook("water_47_waves", file_offset(1, METATILE_GFX_BASE + 0x47 * 64),
+          bytes.fromhex("00000100200004000000400008004200000000c00033000c0000000300cc0030"
+                        "0000000014004000000001002000020000009000040000002000000008000000"),
+          "overworld water 0x47 wave mid-tone 2->3"), {2: 3}, frozenset()),
+    (Hook("water_48_waves", file_offset(1, METATILE_GFX_BASE + 0x48 * 64),
+          bytes.fromhex("0000010020000400000040000800420000002000000080000400000000001100"
+                        "00000000140040000000010020000200000000c00033000c0000000300cc0030"),
+          "overworld water 0x48 wave mid-tone 2->3"), {2: 3}, frozenset()),
+    (Hook("water_0b_anim_frames", file_offset(3, 0x5B00),
+          bytes.fromhex(
+              "00810046003800000030004c008300000006001900e00000000c001300e00000"
+              "00810046003800000030004c008300000006001900e00000000c001300e00000"
+              "00600091000e000000c00031000e000000810046003800000030004c00830000"
+              "00600091000e000000c00031000e000000810046003800000030004c00830000"
+              "0018006400830000000300c40038000000600091000e000000c00031000e0000"
+              "0018006400830000000300c40038000000600091000e000000c00031000e0000"
+              "0006001900e00000000c001300e000000018006400830000000300c400380000"
+              "0006001900e00000000c001300e000000018006400830000000300c400380000"),
+          "bank 3 $5B00: four 0x0B water-scroll frames, wave mid-tone 2->3"), {2: 3}, frozenset()),
+)
 PALETTE_INIT_HOOK = HOOKS[0]
 VBLANK_HOOK = HOOKS[1]   # OAM DMA is called from ~10 sites, so the hook is the HRAM routine itself
 TILEMAP_WRITER_HOOKS = HOOKS[2:4]
