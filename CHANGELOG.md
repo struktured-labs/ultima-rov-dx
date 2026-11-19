@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+### Fixed (blank start-menu runes after a 2ca3353 save state, 2026-11-18)
+
+- Start-menu rune icons no longer come up blank after loading a 2ca3353-era
+  save state. Variant B kept the rune OBJ/BG palette indices in WRAM2
+  `$DFF8-$DFFF`, filled only when the WRAM2 image is copied at CGB boot; a
+  2ca3353 state leaves those bytes as `$FF`. On the next menu LCD-on,
+  `RuneMenu8` wrote that `$FF` into OAM and BG attributes (VRAM bank 1 and
+  flips), so every collected rune boxed out blank. Cold boot was fine. The
+  8-byte index table is now copied from bank 8 ROM (`$7CB9`) into WRAM at
+  every start-menu LCD-on (LCD off), masked to 3 bits, before `RuneMenu8`
+  runs.
+
 ### Fixed (parked ship cream square and inventory-close flash, 2026-11-18)
 
 - The parked ship (metatile 0x49) no longer sits on a parchment square in the
