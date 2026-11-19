@@ -424,6 +424,26 @@ scene_obj:
 # shade index through OBP0).
 menu_cursor: ["#FFFFFF", "#F8E080", "#F09838", "#D83020"]
 
+# Start-menu collected-rune icons (bank 0 $0F5B): the first five (Honesty hand,
+# Compassion heart, Valor sword, Justice scales, Sacrifice flame) are OBJ
+# sprites, the last three (Honor chalice, Spirituality ankh, Humility staff)
+# are BG tiles $C0-$CB. Variant A (domino): every rune is high-contrast
+# white / mid-grey / black. Sprite colour 0 is transparent. The three BG
+# icons retint the menu `grass` palette (shared colour 0 stays parchment) so
+# they can share one black/white ramp; the green potion on this screen also
+# becomes greyscale until the menu closes.
+rune_menu:
+  obj_slots: [1, 1, 1, 1, 1]
+  obj_palettes:
+    honesty:     ["#000000", "#FFFFFF", "#888888", "#101010"]
+    compassion:  ["#000000", "#FFFFFF", "#888888", "#101010"]
+    valor:       ["#000000", "#FFFFFF", "#888888", "#101010"]
+    justice:     ["#000000", "#FFFFFF", "#888888", "#101010"]
+    sacrifice:   ["#000000", "#FFFFFF", "#888888", "#101010"]
+  bg_retint:
+    palette: grass
+    colors: ["#FFF8E8", "#FFFFFF", "#888888", "#101010"]
+
 # Weapon sprites on map screens (OBJ palette 7, shade index through OBP0):
 # every champion weapon tile below the body ($00-$67: arrows, crossbow bolts,
 # whip, hit puff, the wand's fireball, boomerang, throwing axe; not the sword

@@ -99,6 +99,8 @@ SWEEP_CELLS     equ 16      ; cells per frame (replaces the 4-cell side-panel re
 STAND_G         equ $FF96   ; graphic under the player ($2B = ship, bank 0 $2331)
 SHIP_G          equ $2B
 MENU_OBJ        equ $D718   ; 4 colours of the start-menu cursor (OBJ palette 7 in menu mode)
+RUNE_OBJ_PAL    equ $DFF8   ; 5: OBJ palette of start-menu rune sprites (Honesty..Sacrifice)
+RUNE_BG_PAL     equ $DFFD   ; 3: BG palette of start-menu rune tiles $C0-$CB (Honor..Humility)
 HR_BACKUP       equ $D720   ; 12: HRAM bytes under HELPER while it is installed
 TEXT_RANGES     equ $D72C   ; 20: text screens, then champion select: count, (first, last, palette)*
 TEXT_RANGES_LEN equ 20
@@ -164,6 +166,9 @@ BANK_SIG        equ $5FF0   ; bank 8: byte at $4001 of ROM banks 1-7 (finds the 
 HERO_OBJ_ROM    equ $7B40   ; bank 8: 4 x 8 bytes, OBJ palette 0 (PLAYER_PAL) per champion (HERO_ID)
 CARD_TINT       equ $7C00   ; bank 8: 16 x 8 bytes, title-card UI palette per dungeon ([HR_CARD] & 15; SCENES theme $FF)
 CARD_UI         equ $7C80   ; bank 8: low byte of BASE_BG's UI palette (where CARD_TINT goes)
+RUNE_OBJ_COLS   equ $7C88   ; bank 8: 5 x 8, OBJ pals 1-5 colours for the start-menu rune sprites
+RUNE_BG_COL     equ $7CB0   ; bank 8: 8, optional BG pal retint (domino greyscale)
+RUNE_BG_SLOT    equ $7CB8   ; bank 8: 1, palette index to retint ($FF = none)
 GOLD_DIGITS     equ $7D00   ; bank 8: DIGIT_LEN bytes, side-panel digits $E8-$F1 redrawn in gold (VRAM bank 1)
 PARADE_PAL_ROM  equ $7E00   ; bank 8: PARADE_LEN bytes, OBJ palette per byte of the parade lists 7:$7CA6-$7CBE (builder, from OBJPAL)
 PORTRAIT_TAB    equ $7F00   ; bank 8: talk-dialog portraits: count, (portrait byte, base, extra 1, extra 2, 4 tile-map bytes)* (builder, rov_palettes.yaml dialog_portraits)
@@ -1175,12 +1180,7 @@ HeroMenu8:
         inc e
         dec c
         jr nz, .l
-        ld a, $FF
-        ld [CUR_THEME], a
-        ld a, [LAST_BGP]
-        cpl
-        ld [LAST_BGP], a
-        jp SigBank
+        jp RuneMenu8                    ; rune pals, then CUR_THEME / Sync / SigBank
 
 ; SceneHook at the parade's LCD-on (SVBK = 2, TierClear just ran):
 ; PARADE_TAB = PARADE_PAL_ROM, PARADE_ON = 1 until the next LCD-on, OBJ
@@ -1515,6 +1515,98 @@ DlgPortrait8:
         ld a, [hl]
         ld [bc], a
         pop hl
+        ret
+
+; Start-menu collected-rune icons (0:$0F5B): first five are OBJ sprites
+; (tiles $08,$10,$18,$24,$28), last three are BG tiles $C0-$CB. Called at
+; the end of HeroMenu8 (LCD off, SVBK=2, bank 8). Sets OBJ pals 1-5, the
+; optional BG retint, LUT[$C0-$CB], and the CGB palette bits in OAM
+; ($C000 and $FE00) so OamPass keeps them (attr already nonzero).
+RuneMenu8:
+        ld hl, RUNE_OBJ_COLS
+        ld de, BASE_OBJ + 8
+        ld c, 40
+.ro:
+        ld a, [hl+]
+        ld [de], a
+        inc e
+        dec c
+        jr nz, .ro
+        ld a, [RUNE_BG_SLOT]
+        cp $FF
+        jr z, .lut
+        add a
+        add a
+        add a
+        add low(BASE_BG)
+        ld e, a
+        ld d, high(BASE_BG)
+        ld hl, RUNE_BG_COL
+        ld c, 8
+.rb:
+        ld a, [hl+]
+        ld [de], a
+        inc e
+        dec c
+        jr nz, .rb
+.lut:
+        ld hl, LUT + $C0
+        ld de, RUNE_BG_PAL
+        ld c, 3
+.l1:
+        ld a, [de]
+        inc de
+        ld b, 4
+.l2:
+        ld [hl+], a
+        dec b
+        jr nz, .l2
+        dec c
+        jr nz, .l1
+        ld hl, $C000
+        call .oam
+        ld hl, $FE00
+        call .oam
+        ld a, $FF
+        ld [CUR_THEME], a
+        ld a, [LAST_BGP]
+        cpl
+        ld [LAST_BGP], a
+        jp SigBank
+.oam:
+        ld b, 40
+.o:
+        inc l
+        inc l
+        ld a, [hl+]
+        cp $08
+        jr c, .next
+        cp $2C
+        jr nc, .next
+        rrca
+        rrca
+        rrca
+        and 7
+        dec a
+        cp 5
+        jr nc, .next
+        push hl
+        push bc
+        add low(RUNE_OBJ_PAL)
+        ld l, a
+        ld h, high(RUNE_OBJ_PAL)
+        ld a, [hl]
+        pop bc
+        pop hl
+        ld c, a
+        ld a, [hl]
+        and $F8
+        or c
+        ld [hl], a
+.next:
+        inc l
+        dec b
+        jr nz, .o
         ret
 Bank8bEnd:
 
